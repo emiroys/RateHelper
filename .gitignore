@@ -64,3 +64,4 @@ key.properties
 lib/env.g.dart
 google-services.json
 GoogleService-Info.plist
+agent-learnings.md
