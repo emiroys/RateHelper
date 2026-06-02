@@ -1,23 +1,60 @@
-<<<<<<< HEAD
-# ubertakip
+# Anti-Eres (ubertakip) 🚖
 
-A new Flutter project.
+Anti-Eres to otwartoźródłowy, lokalny asystent kierowcy zbudowany w technologii Flutter. Aplikacja pomaga kierowcom rideshare (Uber/Bolt) śledzić w czasie rzeczywistym statystyki akceptacji, odrzuceń, anulowań oraz ukończonych kursów — za pomocą pływającego wskaźnika Live Overlay (`SYSTEM_ALERT_WINDOW`), który działa nad innymi aplikacjami bez konieczności zamykania głównych programów do pracy.
 
-## Getting Started
+## 🔥 Główne Funkcje
 
-This project is a starting point for a Flutter application.
+- **Wskaźnik procentowy na żywo (Live Overlay):** pływający widżet nad aplikacjami Uber/Bolt pokazuje aktualny wskaźnik akceptacji w procentach.
+- **Szybkie zliczanie jednym dotknięciem:** wygodne liczniki na ekranie pozwalają aktualizować statystyki podczas jazdy bez rozpraszania uwagi.
+- **Zaawansowane ręczne wprowadzanie z klawiatury:** długie przytrzymanie dowolnej metryki na ekranie głównym otwiera szybkie wpisywanie wartości z klawiatury.
+- **Tygodniowy reset statystyk:** automatyczne lub ręczne zerowanie wyników w cyklu tygodniowym.
+- **Tryb Wakelock:** utrzymuje ekran włączony podczas pracy, zapobiegając jego wygaszaniu i blokowaniu.
 
-A few resources to get you started if this is your first Flutter project:
+## 🔒 Bezpieczeństwo i Polityka Prywatności
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+Prywatność kierowcy jest priorytetem — aplikacja została zaprojektowana tak, aby dane nigdy nie opuszczały urządzenia:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
-=======
-# anti-eres
-Cel aplikacji: > Anti-Eres to specjalistyczny asystent stworzony dla profesjonalnych kierowców taxi/ridesharingowych. Aplikacja na bieżąco monitoruje Twoje statystyki akceptacji i anulowań zleceń bezpośrednio podczas zmiany. Dzięki zastosowaniu lekkiego okna nakładki (overlay), pomaga kontrolować docelowe wskaźniki efektywności bez konieczności ciągłego przełączania się między aplikacjami dla kierowców, co zapewnia maksymalną wydajność i bezpieczniejszą jazdę.
+- **Działanie w 100% lokalnie (Local-Only):** aplikacja **nie nawiązuje** połączeń z zewnętrznymi serwerami. Nie korzysta z Firebase, analityki ani telemetrii.
+- **Zero zbierania danych osobowych:** aplikacja nie odczytuje, nie zapisuje ani nie przekazuje imienia, numeru telefonu, lokalizacji GPS ani danych logowania do kont Uber/Bolt.
+- **Bezpieczne przechowywanie lokalne:** wszystkie statystyki są zapisywane wyłącznie na urządzeniu użytkownika (SharedPreferences). Kopia zapasowa w chmurze jest wyłączona (`allowBackup=false`), aby zapobiec niezamierzonemu wyciekowi danych.
+- **Zasada minimalnych uprawnień:** aplikacja żąda wyłącznie uprawnień niezbędnych do działania — wyświetlania nad innymi aplikacjami (overlay) oraz uruchamiania usługi w tle.
 
-Purpose of the App: > Anti-Eres is a specialized assistant designed for professional ride-share drivers. The app tracks your real-time acceptance and cancellation stats directly during your shift. By using a lightweight overlay window, it helps you manage your target performance metrics seamlessly without needing to switch back and forth between driver apps, ensuring maximum efficiency and safer driving.
->>>>>>> c5a81c7bbed4975b6648fbff18cc4d0db307edd7
+## 🛠️ Jak samodzielnie zbudować aplikację
+
+Poniżej znajduje się instrukcja krok po kroku dla deweloperów, którzy chcą skompilować aplikację ze źródeł.
+
+### 1. Wymagania wstępne
+
+- Flutter SDK (3.x lub nowszy)
+- Android Studio i Java JDK
+
+### 2. Pobieranie kodu
+
+```bash
+git clone https://github.com/emiroys/anti-eres.git
+cd anti-eres
+```
+
+### 3. Konfiguracja pliku środowiskowego (`.env`)
+
+W katalogu głównym projektu utwórz plik `.env` na podstawie szablonu `.env.example`. Wypełnij go własnymi wartościami:
+
+```env
+APP_SIGNATURE=1234567890ABCDEF
+GIST_URL=https://gist.githubusercontent.com/twoj-profil/update.json
+```
+
+### 4. Pobieranie zależności i generowanie kodu
+
+```bash
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs
+```
+
+### 5. Kompilacja pliku APK
+
+```bash
+flutter build apk --release --split-per-abi
+```
+
+Gotowy plik produkcyjny APK znajdziesz w katalogu `build/app/outputs/flutter-apk/`.
