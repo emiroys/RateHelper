@@ -1,0 +1,66 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IDEs (IntelliJ, Cursor, VS Code)
+*.iml
+*.ipr
+*.iws
+.idea/
+.vscode/
+.cursorrules
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Android specifics
+.gradle/
+android/.gradle/
+android/local.properties
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# iOS/macOS specifics
+ios/Pods/
+ios/.symlinks/
+macos/Pods/
+macos/Flutter/ephemeral/
+
+# Binaries (Do not commit heavy app files)
+*.apk
+*.aab
+
+# Symbolication & Obfuscation
+app.*.symbols
+app.*.map.json
+symbols/
+
+# Signing keys — never commit (CRITICAL)
+key.properties
+*.jks
+*.keystore
+
+# Envied secrets & Firebase — never commit (CRITICAL)
+.env
+lib/env.g.dart
+google-services.json
+GoogleService-Info.plist
