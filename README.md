@@ -1,6 +1,6 @@
 # RateHelper 🚖
 
-RateHelper to otwartoźródłowy, lokalny asystent kierowcy zbudowany w technologii Flutter. Aplikacja pomaga kierowcom rideshare (Uber/Bolt) śledzić w czasie rzeczywistym wskaźniki akceptacji i anulowań oraz — dzięki wbudowanemu modułowi kazanç — obliczać **rzeczywisty zysk godzinowy w PLN** po odliczeniu kosztów wynajmu, prowizji, paliwa i podatku.
+RateHelper to otwartoźródłowy, lokalny asystent kierowcy zbudowany w technologii Flutter. Aplikacja pomaga kierowcom rideshare (Uber/Bolt) śledzić w czasie rzeczywistym wskaźniki akceptacji i anulowań oraz — dzięki wbudowanemu modułowi zarobków — obliczać **rzeczywisty zysk godzinowy w PLN** po odliczeniu kosztów wynajmu, prowizji, paliwa i podatku.
 
 Wszystko działa **wyłącznie lokalnie** na urządzeniu. Brak kont, chmury i telemetrii.
 
@@ -10,11 +10,11 @@ Wszystko działa **wyłącznie lokalnie** na urządzeniu. Brak kont, chmury i te
 
 - [Główne funkcje](#-główne-funkcje)
 - [Przepływ aplikacji](#-przepływ-aplikacji)
-- [Ekran główny — liczniki](#ekran-główny--liczniki-statystyk)
-- [Live Overlay](#live-overlay)
-- [Kazanç Takibi — zysk tygodniowy](#kazanç-takibi--śledzenie-zysku)
+- [Ekran główny — liczniki statystyk](#ekran-główny--liczniki-statystyk)
+- [Nakładka na żywo](#nakładka-na-żywo)
+- [Zarobki — śledzenie zysku](#zarobki--śledzenie-zysku)
 - [Bezpieczeństwo i prywatność](#-bezpieczeństwo-i-polityka-prywatności)
-- [Języki](#-języki)
+- [Języki interfejsu](#-języki-interfejsu)
 - [Wymagania](#-wymagania)
 - [Budowanie ze źródeł](#-budowanie-ze-źródeł)
 - [Licencja i kontakt](#-licencja-i-kontakt)
@@ -25,15 +25,15 @@ Wszystko działa **wyłącznie lokalnie** na urządzeniu. Brak kont, chmury i te
 
 | Moduł | Opis |
 |---|---|
-| **Live Overlay** | Pływający widżet (`SYSTEM_ALERT_WINDOW`) nad aplikacjami Uber/Bolt — pokazuje aktualny wskaźnik akceptacji i pozwala szybko zliczać kursy bez przełączania okien |
-| **Liczniki statystyk** | Kabul / Red / Tamamlanan / İptal — duże przyciski, jedno dotknięcie, tryb jazdy |
+| **Nakładka na żywo** | Pływający widżet (`SYSTEM_ALERT_WINDOW`) nad aplikacjami Uber/Bolt — pokazuje aktualny wskaźnik akceptacji i pozwala szybko zliczać kursy bez przełączania okien |
+| **Liczniki statystyk** | Zaakceptowane / Odrzucone / Ukończone / Anulowane — duże przyciski, jedno dotknięcie, tryb jazdy |
 | **Ręczne wpisywanie** | Dotknij lub przytrzymaj wartość licznika, aby wpisać liczbę z klawiatury (przywracanie po reinstalacji) |
-| **Kazanç Takibi** | Tygodniowy kalkulator zysku w PLN — VAT, prowizja, paliwo, wynajem i opłata administracyjna obliczane automatycznie |
+| **Zarobki** | Tygodniowy kalkulator zysku w PLN — VAT, prowizja, paliwo, wynajem i opłata administracyjna obliczane automatycznie |
 | **Wykresy i agregacja** | Widok tygodniowy, miesięczny i roczny ze średnią stawką godzinową |
-| **Tygodniowy reset** | Automatyczny reset w poniedziałek o 04:00 (Europe/Warsaw) z archiwum poprzedniego tygodnia |
+| **Tygodniowy reset** | Automatyczny reset w poniedziałek o 04:00 (strefa Europe/Warsaw) z archiwum poprzedniego tygodnia |
 | **Wskazówka odzysku** | Informacja, ile kolejnych akceptacji potrzeba, aby wrócić powyżej 80% |
-| **Aktualizacje OTA** | Sprawdzanie nowej wersji z GitHub Gist (tylko podpisane APK z oficjalnych Releases) |
-| **Wakelock** | Ekran pozostaje włączony podczas pracy — bez przypadkowego blokowania |
+| **Aktualizacje OTA** | Sprawdzanie nowej wersji z GitHub Gist (tylko podpisane APK z oficjalnych wydań) |
+| **Blokada wygaszania ekranu** | Ekran pozostaje włączony podczas pracy — bez przypadkowego blokowania |
 
 ---
 
@@ -44,89 +44,89 @@ Pierwsze uruchomienie
         │
         ▼
 ┌───────────────────┐
-│  Onboarding       │  1) Uprawnienie „Rysuj nad innymi aplikacjami”
-│  (Kurulum)        │  2) Wyłączenie optymalizacji baterii (instrukcje
-└─────────┬─────────┘     per producent: Samsung, Xiaomi, Huawei…)
+│  Konfiguracja     │  1) Uprawnienie „Wyświetlanie nad innymi aplikacjami”
+│  początkowa       │  2) Wyłączenie optymalizacji baterii (instrukcje
+└─────────┬─────────┘     dla producenta: Samsung, Xiaomi, Huawei…)
           │
           ▼
 ┌───────────────────┐
-│  Ekran główny     │  Karty KABUL ORANI / İPTAL ORANI
-│  (HomeScreen)     │  Liczniki + undo + reset tygodnia
-└─────────┬─────────┘  Dolny pasek: Overlay · Geçmiş · Kazanç · Dil
+│  Ekran główny     │  Karty wskaźnika akceptacji i anulowań
+│                   │  Liczniki + cofnij + reset tygodnia
+└─────────┬─────────┘  Dolny pasek: Nakładka · Historia · Zarobki · Język
           │
     ┌─────┴─────┬──────────────┐
     ▼           ▼              ▼
- Overlay    Historia      Kazanç Takibi
- (pływający) (archiwum)   (zysk PLN)
+ Nakładka    Historia       Zarobki
+ (pływająca) (archiwum)    (zysk PLN)
 ```
 
-### Onboarding
+### Konfiguracja początkowa
 
 Przy pierwszym uruchomieniu aplikacja prowadzi kierowcę przez dwa wymagane uprawnienia Android:
 
-1. **Display over other apps** — bez tego overlay nie pojawi się nad Uber Driver.
-2. **Battery optimization off** — instrukcje dostosowane do marki telefonu (Samsung, Xiaomi, Huawei, OnePlus, inne).
+1. **Wyświetlanie nad innymi aplikacjami** — bez tego nakładka nie pojawi się nad Uber Driver.
+2. **Wyłączenie optymalizacji baterii** — instrukcje dostosowane do marki telefonu (Samsung, Xiaomi, Huawei, OnePlus, inne).
 
-Po zakończeniu onboarding nie pojawia się ponownie (`onboardingComplete` w SharedPreferences).
+Po zakończeniu konfiguracja nie pojawia się ponownie (flaga `onboardingComplete` w SharedPreferences).
 
 ### Ekran główny — liczniki statystyk
 
-- **Kabul Oranı** — `accepted / (accepted + rejected) × 100`; domyślnie 100% przy zerowych danych
-- **İptal Oranı** — `cancelled / (completed + cancelled) × 100`
-- Przyciski **[+]** / **[-]** z haptyką (light / medium impact)
-- **Auto-complete** — opcjonalne automatyczne zwiększanie licznika ukończonych po akceptacji
-- **Undo** — jeden krok wstecz (ostatnia zmiana liczników)
-- **Reset tygodnia** — ręczny lub automatyczny (poniedziałek 04:00 Europe/Warsaw); poprzedni tydzień trafia do archiwum
-- **Geçmiş** — lista zarchiwizowanych tygodni z procentami
-- **Kayıtlar** — dziennik dotknięć overlay (debug/audit)
+- **Wskaźnik akceptacji** — `zaakceptowane / (zaakceptowane + odrzucone) × 100`; domyślnie 100% przy zerowych danych
+- **Wskaźnik anulowań** — `anulowane / (ukończone + anulowane) × 100`
+- Przyciski **[+]** / **[-]** z wibracją haptyczną (lekką / średnią)
+- **Automatyczne ukończenie** — opcjonalne automatyczne zwiększanie licznika ukończonych po akceptacji
+- **Cofnij** — jeden krok wstecz (ostatnia zmiana liczników)
+- **Reset tygodnia** — ręczny lub automatyczny (poniedziałek 04:00, strefa Europe/Warsaw); poprzedni tydzień trafia do archiwum
+- **Historia** — lista zarchiwizowanych tygodni z procentami
+- **Logi** — dziennik dotknięć nakładki (debug / audyt)
 
-### Live Overlay
+### Nakładka na żywo
 
 Kompaktowa pigułka **276×80 dp** unosząca się nad innymi aplikacjami:
 
-- **−** (czerwony) → odrzucone żądanie
-- **+** (zielony) → zaakceptowane żądanie
-- Środek → aktualny **Kabul Oranı** w dużej czcionce DM Sans
+- **−** (czerwony) → odrzucone zlecenie
+- **+** (zielony) → zaakceptowane zlecenie
+- Środek → aktualny **wskaźnik akceptacji** w dużej czcionce DM Sans
 - Przeciąganie natywne (Android `WindowManager`) — nie blokuje dotknięć poza pigułką
-- Synchronizacja z ekranem głównym przez SharedPreferences + `OverlaySync`
+- Synchronizacja z ekranem głównym przez SharedPreferences i `OverlaySync`
 
-Włącz/wyłącz z dolnego paska ekranu głównego.
+Włączanie i wyłączanie z dolnego paska ekranu głównego.
 
-### Kazanç Takibi — śledzenie zysku
+### Zarobki — śledzenie zysku
 
-Nowy ekran (przycisk 💰 **Kazanç** w dolnym pasku) oblicza **rzeczywisty zysk netto** na podstawie danych z ekranu Uber Driver:
+Osobny ekran (przycisk 💰 **Zarobki** w dolnym pasku) oblicza **rzeczywisty zysk netto** na podstawie danych z ekranu Uber Driver:
 
 **Wpisywane ręcznie (pola formularza):**
 
 | Pole | Źródło w Uber |
 |---|---|
-| Net Gelir | Duża liczba u góry ekranu Kazançlar |
-| Pompada Ödenen | Kwota zapłacona na stacji |
-| Alınan Nakit | Gotówka odebrana od pasażerów |
-| Çevrimiçi Süre | Godziny + minuty online |
-| Yolculuk Sayısı | Liczba kursów w tygodniu |
-| Kira İndirimi | Przełącznik — czy obowiązuje zniżka na wynajem |
+| Dochód netto | Duża liczba u góry ekranu Zarobki |
+| Zapłacono na stacji | Kwota zapłacona na stacji paliw |
+| Otrzymana gotówka | Gotówka odebrana od pasażerów |
+| Czas online | Godziny + minuty online |
+| Liczba przejazdów | Liczba kursów w tygodniu |
+| Zniżka na wynajem | Przełącznik — czy obowiązuje obniżona stawka wynajmu |
 
 **Obliczane automatycznie:**
 
 | Składnik | Reguła |
 |---|---|
-| VAT (11,5%) | `netIncome × 0,115` |
-| Komisyon | Tabela progów obrotu (0–999 → 50+1%, …, 3000+ → 0) |
-| Yakıt (10% rabatu) | `pompada × 0,90` |
-| İdari Gider | Stałe **40 PLN** |
-| Kira | **Zawsze pobierana.** Zniżka ON → próg wg liczby kursów (850/650/450/250 PLN); OFF → płaska stawka **850 PLN** |
-| Net Kâr | Net Gelir − wszystkie powyższe |
-| Saatlik Kazanç | Net Kâr ÷ godziny online |
-| Hesaba Yatacak | Net Kâr − Alınan Nakit |
+| VAT (11,5%) | `dochód netto × 0,115` |
+| Prowizja | Tabela progów obrotu (0–999 → 50 PLN + 1%, …, 3000+ → 0) |
+| Paliwo (10% rabatu) | `zapłacono na stacji × 0,90` |
+| Koszt administracyjny | Stałe **40 PLN** |
+| Wynajem | **Zawsze pobierany.** Zniżka włączona → próg wg liczby kursów (850/650/450/250 PLN); wyłączona → płaska stawka **850 PLN** |
+| Zysk netto | Dochód netto − wszystkie powyższe składniki |
+| Stawka godzinowa | Zysk netto ÷ godziny online |
+| Na konto | Zysk netto − otrzymana gotówka |
 
 **Widoki:**
 
-- **Haftalık** — wykres trendu (ostatnie 12 tygodni), selektor tygodnia, karta bohatera ze stawką godzinową, rozbicie kosztów, historia
-- **Aylık** — podsumowanie miesiąca, wykres średniej stawki, karta 🏆 najlepszego tygodnia w wybranym miesiącu
-- **Yıllık** — podsumowanie roku, wykres roczny, lista miesięcy
+- **Tygodniowo** — wykres trendu (ostatnie 12 tygodni), selektor tygodnia, karta ze stawką godzinową, rozbicie kosztów, historia
+- **Miesięcznie** — podsumowanie miesiąca, wykres średniej stawki, karta 🏆 najlepszego tygodnia w wybranym miesiącu
+- **Rocznie** — podsumowanie roku, wykres roczny, lista miesięcy
 
-Dane przechowywane lokalnie (`earnings_history`, max 104 tygodnie = 2 lata).
+Dane przechowywane lokalnie (`earnings_history`, maks. 104 tygodnie = 2 lata).
 
 ---
 
@@ -136,19 +136,19 @@ Prywatność kierowcy jest priorytetem:
 
 - **100% lokalnie** — aplikacja nie łączy się z zewnętrznymi serwerami (poza opcjonalnym sprawdzeniem aktualizacji z GitHub Gist)
 - **Zero danych osobowych** — brak GPS, numeru telefonu, danych logowania Uber/Bolt
-- **SharedPreferences** — wszystkie statystyki i historia kazanç tylko na urządzeniu
-- **Backup wyłączony** — `allowBackup=false` zapobiega przypadkowemu wyciekowi przez kopię zapasową Android
-- **Minimalne uprawnienia** — overlay, foreground service, wakelock, wibracja
-- **Weryfikacja podpisu APK** — w wersji release porównanie z `APP_SIGNATURE` z `.env` (obfuskowane przez `envied`)
-- **Hardened OTA** — manifest tylko z `gist.githubusercontent.com`; APK tylko z `github.com/emiroys/ratehelper/releases/latest/download/app-arm64-v8a-release.apk`
+- **SharedPreferences** — wszystkie statystyki i historia zarobków tylko na urządzeniu
+- **Kopia zapasowa wyłączona** — `allowBackup=false` zapobiega przypadkowemu wyciekowi przez kopię zapasową Android
+- **Minimalne uprawnienia** — nakładka, usługa pierwszoplanowa, blokada wygaszania ekranu, wibracja
+- **Weryfikacja podpisu APK** — w wersji produkcyjnej porównanie z `APP_SIGNATURE` z pliku `.env` (obfuskowane przez `envied`)
+- **Zabezpieczone aktualizacje OTA** — manifest tylko z `gist.githubusercontent.com`; APK tylko z `github.com/emiroys/ratehelper/releases/latest/download/app-arm64-v8a-release.apk`
 
 ---
 
-## 🌍 Języki
+## 🌍 Języki interfejsu
 
-Interfejs użytkownika: **Turecki** (domyślny), **Angielski**, **Polski**.
+Interfejs użytkownika: **turecki** (domyślny), **angielski**, **polski**.
 
-Język wykrywany automatycznie przy pierwszym uruchomieniu; można zmienić z dolnego paska (przycisk **Dil**).
+Język wykrywany automatycznie przy pierwszym uruchomieniu; można zmienić z dolnego paska (przycisk **Język**).
 
 ---
 
@@ -157,8 +157,8 @@ Język wykrywany automatycznie przy pierwszym uruchomieniu; można zmienić z do
 | | |
 |---|---|
 | Platforma | Android (docelowo Samsung Galaxy S24 Ultra, arm64) |
-| Flutter SDK | 3.x+ |
+| Flutter SDK | 3.x lub nowszy |
 | Android Studio | z Java JDK |
-| Architektura APK | `arm64-v8a` (split-per-abi) |
+| Architektura APK | `arm64-v8a` (kompilacja split-per-abi) |
 
 ---
