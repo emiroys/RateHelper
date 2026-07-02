@@ -27,13 +27,13 @@ Wszystko działa **wyłącznie lokalnie** na urządzeniu. Brak kont, chmury i te
 |---|---|
 | **Nakładka na żywo** | Pływający widżet (`SYSTEM_ALERT_WINDOW`) nad aplikacjami Uber/Bolt — pokazuje aktualny wskaźnik akceptacji i pozwala szybko zliczać kursy bez przełączania okien |
 | **Liczniki statystyk** | Zaakceptowane / Odrzucone / Ukończone / Anulowane — duże przyciski, jedno dotknięcie, tryb jazdy |
-| **Ręczne wpisywanie** | Dotknij lub przytrzymaj wartość licznika, aby wpisać liczbę z klawiatury (przywracanie po reinstalacji) |
-| **Zarobki** | Tygodniowy kalkulator zysku w PLN — VAT, prowizja, paliwo, wynajem i opłata administracyjna obliczane automatycznie |
-| **Wykresy i agregacja** | Widok tygodniowy, miesięczny i roczny ze średnią stawką godzinową |
+| **Zarobki i Analiza** | Tygodniowy kalkulator zysku w PLN (VAT, prowizja, paliwo, wynajem, idari). Wykresy i agregacja z widokiem tygodniowym, miesięcznym i rocznym |
+| **Wskaźnik Rentowności** | Obliczanie na żywo *punktu break-even* w oparciu o bieżące koszty (paliwo, wynajem) z wykorzystaniem odwrotnej kalkulacji podatkowej |
+| **Eksport do PDF** | Generowanie profesjonalnego zestawienia księgowego (ryczałt) z wyborem konkretnego miesiąca. Możliwość personalizacji imienia i nazwiska |
+| **Lokalne Przypomnienia** | Automatyczne powiadomienia (Android Alarm) w każdy poniedziałek rano o dodaniu wyników z zeszłego tygodnia |
 | **Tygodniowy reset** | Automatyczny reset w poniedziałek o 04:00 (strefa Europe/Warsaw) z archiwum poprzedniego tygodnia |
 | **Wskazówka odzysku** | Informacja, ile kolejnych akceptacji potrzeba, aby wrócić powyżej 80% |
 | **Aktualizacje OTA** | Sprawdzanie nowej wersji z GitHub Gist (tylko podpisane APK z oficjalnych wydań) |
-| **Blokada wygaszania ekranu** | Ekran pozostaje włączony podczas pracy — bez przypadkowego blokowania |
 
 ---
 
@@ -57,7 +57,7 @@ Pierwsze uruchomienie
     ┌─────┴─────┬──────────────┐
     ▼           ▼              ▼
  Nakładka    Historia       Zarobki
- (pływająca) (archiwum)    (zysk PLN)
+ (pływająca) (archiwum)    (zysk PLN, PDF, Break-even)
 ```
 
 ### Konfiguracja początkowa
@@ -107,6 +107,11 @@ Osobny ekran (przycisk 💰 **Zarobki** w dolnym pasku) oblicza **rzeczywisty zy
 | Liczba przejazdów | Liczba kursów w tygodniu |
 | Zniżka na wynajem | Przełącznik — czy obowiązuje obniżona stawka wynajmu |
 
+**Nowe funkcje Zarobków:**
+* **Wskaźnik Rentowności (Break-even):** Aplikacja na żywo wylicza minimalny dochód netto potrzebny do pokrycia kosztów stałych (uwzględniając nieliniowe prowizje partnera i 11,5% VAT).
+* **Eksport PDF:** Generowanie gotowych do druku raportów finansowych za "Wybrany miesiąc", "Ten miesiąc" lub "Ten rok". Obejmuje nagłówek z edytowalnym imieniem kierowcy.
+* **Cotygodniowe przypomnienie:** Systemowe powiadomienie Android (bez internetu), przypominające o wpisaniu wyników z poprzedniego tygodnia.
+
 **Obliczane automatycznie:**
 
 | Składnik | Reguła |
@@ -138,7 +143,8 @@ Prywatność kierowcy jest priorytetem:
 - **Zero danych osobowych** — brak GPS, numeru telefonu, danych logowania Uber/Bolt
 - **SharedPreferences** — wszystkie statystyki i historia zarobków tylko na urządzeniu
 - **Kopia zapasowa wyłączona** — `allowBackup=false` zapobiega przypadkowemu wyciekowi przez kopię zapasową Android
-- **Minimalne uprawnienia** — nakładka, usługa pierwszoplanowa, blokada wygaszania ekranu, wibracja
+- **Bezpieczny Eksport PDF** — Tymczasowe pliki PDF są trzymane wyłącznie w izolowanym katalogu `cache` i automatycznie czyszczone po zakończeniu udostępniania (brak wycieków dokumentów finansowych).
+- **Zoptymalizowane powiadomienia** — Użyto `inexactAllowWhileIdle` dla alarmów, by oszczędzać baterię bez nadmiernych uprawnień systemowych.
 - **Weryfikacja podpisu APK** — w wersji produkcyjnej porównanie z `APP_SIGNATURE` z pliku `.env` (obfuskowane przez `envied`)
 - **Zabezpieczone aktualizacje OTA** — manifest tylko z `gist.githubusercontent.com`; APK tylko z `github.com/emiroys/ratehelper/releases/latest/download/app-arm64-v8a-release.apk`
 
@@ -160,5 +166,3 @@ Język wykrywany automatycznie przy pierwszym uruchomieniu; można zmienić z do
 | Flutter SDK | 3.x lub nowszy |
 | Android Studio | z Java JDK |
 | Architektura APK | `arm64-v8a` (kompilacja split-per-abi) |
-
----
