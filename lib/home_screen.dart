@@ -22,8 +22,7 @@ import 'log.dart';
 import 'onboarding_screen.dart';
 import 'overlay_sync.dart';
 import 'overlay_widget.dart';
-import 'models/event_model.dart';
-import 'services/event_service.dart';
+import 'radar_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -81,7 +80,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int canceledTrips = 0;
   bool _autoCompleteTrips = false;
   bool _steeringWheelEnabled = false;
-  Future<List<EventModel>>? _eventsFuture;
 
   int? _prevAccepted;
   int? _prevRejected;
@@ -149,7 +147,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _change(key, 1);
       }
     });
-    _eventsFuture = EventService.fetchUpcomingEvents();
     _init();
   }
 
@@ -1251,11 +1248,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ),
 
-              const SizedBox(height: 28),
-              _sectionHeader('YAKLAŞAN ETKİNLİKLER'),
-              const SizedBox(height: 12),
-              _buildUpcomingEventsSection(),
-
               const SizedBox(height: 40),
 
               GestureDetector(
@@ -1371,6 +1363,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             Expanded(
               child: _BottomBarAction(
+                emoji: '📡',
+                label: 'Radar',
+                onTap: _openRadar,
+              ),
+            ),
+            Expanded(
+              child: _BottomBarAction(
                 emoji: '💰',
                 label: S.navEarnings,
                 onTap: _openEarnings,
@@ -1379,6 +1378,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ],
         ),
       ),
+    );
+  }
+
+  void _openRadar() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const RadarScreen()),
     );
   }
 
@@ -1488,267 +1493,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           letterSpacing: 1.5,
           color: Colors.white38,
         ),
-      ),
-    );
-  }
-
-  Widget _buildUpcomingEventsSection() {
-    return FutureBuilder<List<EventModel>>(
-      future: _eventsFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildEventsShimmer();
-        }
-
-        if (snapshot.hasError) {
-          return _buildEventsEmptyState('Etkinlik bilgisi yüklenemedi.');
-        }
-
-        final events = snapshot.data ?? [];
-        if (events.isEmpty) {
-          return _buildEventsEmptyState('Yaklaşan etkinlik bulunmuyor.');
-        }
-
-        return SizedBox(
-          height: 155,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            itemCount: events.length,
-            separatorBuilder: (context, index) => const SizedBox(width: 12),
-            itemBuilder: (context, index) {
-              return _buildEventCard(events[index]);
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildEventCard(EventModel event) {
-    Color surgeColor;
-    String surgeLabel;
-    switch (event.surgeLevel.toLowerCase()) {
-      case 'high':
-        surgeColor = _crimson;
-        surgeLabel = 'Yüksek Yoğunluk';
-        break;
-      case 'medium':
-        surgeColor = _amber;
-        surgeLabel = 'Orta Yoğunluk';
-        break;
-      case 'low':
-      default:
-        surgeColor = _emerald;
-        surgeLabel = 'Düşük Yoğunluk';
-        break;
-    }
-
-    return Container(
-      width: 270,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        border: _cardBorder,
-        borderRadius: _cardRadius,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: surgeColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: surgeColor.withValues(alpha: 0.4), width: 1),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: surgeColor,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      surgeLabel,
-                      style: GoogleFonts.dmSans(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: surgeColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                event.formattedDateTime,
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white54,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            event.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.dmSans(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-              height: 1.25,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              const Icon(
-                Icons.location_on_outlined,
-                size: 14,
-                color: Colors.white38,
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  event.venue,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.dmSans(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white38,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEventsShimmer() {
-    return SizedBox(
-      height: 155,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: 2,
-        separatorBuilder: (context, index) => const SizedBox(width: 12),
-        itemBuilder: (context, index) {
-          return TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0.3, end: 0.7),
-            duration: const Duration(milliseconds: 800),
-            builder: (context, opacity, child) {
-              return Opacity(
-                opacity: opacity,
-                child: Container(
-                  width: 270,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: _cardColor,
-                    border: _cardBorder,
-                    borderRadius: _cardRadius,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            width: 90,
-                            height: 20,
-                            decoration: BoxDecoration(
-                              color: Colors.white12,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          Container(
-                            width: 70,
-                            height: 14,
-                            decoration: BoxDecoration(
-                              color: Colors.white12,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        width: double.infinity,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: Colors.white12,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        width: 180,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: Colors.white12,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        width: 140,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: Colors.white12,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildEventsEmptyState(String message) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        border: _cardBorder,
-        borderRadius: _cardRadius,
-      ),
-      alignment: Alignment.center,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.event_busy_outlined, color: Colors.white38, size: 20),
-          const SizedBox(width: 8),
-          Text(
-            message,
-            style: GoogleFonts.dmSans(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: Colors.white38,
-            ),
-          ),
-        ],
       ),
     );
   }
