@@ -1,14 +1,68 @@
 [
   {
-    "title": "ADCC World Championship 2026",
-    "venue": "Tauron Arena Kraków",
-    "date": "2026-09-12T10:00:00",
+    "title": "Melanie Martinez – HADES: THE SACRIFICE",
+    "venue": "TAURON Arena Kraków",
+    "date": "2026-09-23T16:00:00",
     "surgeLevel": "High"
   },
   {
-    "title": "ADCC World Championship 2026",
-    "venue": "Tauron Arena Kraków",
-    "date": "2026-09-13T10:00:00",
+    "title": "MROZU - Odpowiedni moment tour",
+    "venue": "TAURON Arena Kraków",
+    "date": "2026-10-30T17:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Niall Horan: Dinner Party Live On Tour",
+    "venue": "TAURON Arena Kraków",
+    "date": "2026-11-03T17:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "KoRn",
+    "venue": "TAURON Arena Kraków",
+    "date": "2026-11-17T17:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "IEM Kraków 2027 - CS2 ESL Pro Tour Championship | Thursday",
+    "venue": "TAURON Arena Kraków",
+    "date": "2027-02-04T20:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "IEM Kraków 2027 - CS2 ESL Pro Tour Championship | 4-day | 4-7.02.2027",
+    "venue": "TAURON Arena Kraków",
+    "date": "2027-02-04T20:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "IEM Kraków 2027 - CS2 ESL Pro Tour Championship | Friday",
+    "venue": "TAURON Arena Kraków",
+    "date": "2027-02-05T20:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "IEM Kraków 2027 - CS2 ESL Pro Tour Championship | Saturday",
+    "venue": "TAURON Arena Kraków",
+    "date": "2027-02-06T20:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "IEM Kraków 2027 - CS2 ESL Pro Tour Championship | Sunday",
+    "venue": "TAURON Arena Kraków",
+    "date": "2027-02-07T20:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Thirty Seconds to Mars Presents A Beautiful Lie vs This Is War",
+    "venue": "TAURON Arena Kraków",
+    "date": "2027-04-15T16:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Thirty Seconds to Mars Presents A Beautiful Lie vs This Is War | VIP",
+    "venue": "TAURON Arena Kraków",
+    "date": "2027-04-15T20:00:00",
     "surgeLevel": "High"
   }
 ]
