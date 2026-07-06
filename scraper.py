@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 RateHelper Event Scraper
-Scrapes upcoming events in Kraków (Tauron Arena Kraków, Wisła Kraków, Cracovia)
+Scrapes upcoming events in Kraków (Tauron Arena Kraków, Wisła Kraków, KS Cracovia)
 to predict surge demand for ride-sharing drivers.
 Generates `krakow_events.json` with an array of verified event objects.
 """
@@ -9,7 +9,7 @@ Generates `krakow_events.json` with an array of verified event objects.
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
 
@@ -181,7 +181,7 @@ def scrape_tauron_arena() -> list:
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/122.0.0.0 Safari/537.36"
+            "Chrome/124.0.0.0 Safari/537.36"
         )
     }
     
@@ -197,7 +197,7 @@ def scrape_tauron_arena() -> list:
             soup.find_all('div', class_=lambda c: c and any(k in c.lower() for k in ['event', 'item', 'card']))
         )
         
-        for card in event_cards[:15]:
+        for card in event_cards[:20]:
             title_elem = (
                 card.find(['h1', 'h2', 'h3', 'h4']) or
                 card.find(class_=lambda c: c and 'title' in c.lower())
@@ -239,126 +239,167 @@ def scrape_tauron_arena() -> list:
     return events
 
 
-def scrape_wisla_krakow() -> list:
+def scrape_sports_aggregator(urls: list, team_name: str, default_venue: str, default_hour: int = 18, default_minute: int = 0) -> list:
     """
-    Scrapes upcoming match fixtures from Wisła Kraków website.
-    Strictly parses real date text without fabricating dates.
+    Scrapes reliable, bot-friendly sports aggregator websites (e.g., WorldFootball, Transfermarkt, 
+    sports result feeds) to extract ALL upcoming season league matches for a team.
+    Bypasses Cloudflare/bot protection on official club sites.
     """
     events = []
-    url = "https://wislakrakow.com/terminarz"
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/122.0.0.0 Safari/537.36"
-        )
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,pl;q=0.8",
     }
     
-    try:
-        logging.info(f"Scraping Wisła Kraków: {url}")
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
+    now = datetime.now()
+    team_keyword = team_name.lower().split()[0]  # 'wisła' or 'ks' / 'cracovia'
+    if "cracovi" in team_name.lower():
+        team_keyword = "cracovi"
+    elif "wis" in team_name.lower():
+        team_keyword = "wis"
         
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        match_rows = soup.find_all('div', class_=lambda c: c and any(k in c.lower() for k in ['match', 'fixture', 'game', 'event', 'row']))
-        
-        for row in match_rows[:10]:
-            title_elem = (
-                row.find(['h3', 'h4', 'span'], class_=lambda c: c and any(k in c.lower() for k in ['team', 'title', 'name', 'opponent'])) or
-                row.find(['h3', 'h4'])
-            )
-            if not title_elem:
+    for url in urls:
+        try:
+            logging.info(f"Attempting aggregator scrape for {team_name}: {url}")
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code != 200:
+                logging.warning(f"Aggregator {url} returned HTTP {response.status_code}")
                 continue
                 
-            title = title_elem.get_text(strip=True)
-            if not title or len(title) < 3:
-                continue
-                
-            date_elem = row.find('time') or row.find(class_=lambda c: c and any(k in c.lower() for k in ['date', 'time', 'data']))
-            date_str = ""
-            if date_elem:
-                date_str = date_elem.get('datetime') or date_elem.get_text(strip=True)
-                
-            iso_date = parse_date_string(date_str, default_hour=18, default_minute=0)
-            if not iso_date:
-                logging.debug(f"Skipping Wisła match '{title}': unverified date format '{date_str}'")
-                continue
-                
-            display_title = f"Wisła Kraków vs {title}" if "wisła" not in title.lower() else title
-            events.append({
-                "title": display_title,
-                "venue": "Stadion Miejski im. Henryka Reymana (Wisła Kraków)",
-                "date": iso_date,
-                "surgeLevel": "High"
-            })
+            soup = BeautifulSoup(response.text, 'html.parser')
             
-        logging.info(f"Successfully scraped {len(events)} verified events from Wisła Kraków.")
-    except Exception as e:
-        logging.warning(f"Failed to scrape Wisła Kraków ({url}): {e}")
-        
+            # Find all table rows or structured match container rows across different aggregators
+            rows = soup.find_all('tr') or soup.find_all('div', class_=lambda c: c and any(k in c.lower() for k in ['match', 'fixture', 'game', 'row', 'item', 'box']))
+            
+            seen_titles_dates = set()
+            
+            # Iterate through ALL rows/items without slicing [:5] or [:10]
+            for row in rows:
+                text_content = row.get_text(separator=' ', strip=True)
+                
+                # Check if this row actually represents a match involving our team
+                if team_keyword not in text_content.lower():
+                    continue
+                    
+                # Try to extract date from the row
+                date_str = ""
+                time_elem = row.find('time')
+                if time_elem:
+                    date_str = time_elem.get('datetime') or time_elem.get_text(strip=True)
+                
+                if not date_str:
+                    # Look for date patterns in cells (e.g. 24/10/2026, 2026-10-24, Sep 26, 2026, etc.)
+                    for cell in row.find_all(['td', 'span', 'div', 'p']):
+                        cell_text = cell.get_text(strip=True)
+                        if any(char.isdigit() for char in cell_text) and ('.' in cell_text or '/' in cell_text or '-' in cell_text or any(m in cell_text.lower() for m in POLISH_MONTHS)):
+                            date_str = cell_text
+                            break
+                            
+                if not date_str:
+                    date_str = text_content
+                    
+                iso_date = parse_date_string(date_str, default_hour=default_hour, default_minute=default_minute)
+                if not iso_date:
+                    continue
+                    
+                # Ensure we extract ALL FUTURE matches for the current season (ignore past matches)
+                try:
+                    match_dt = datetime.fromisoformat(iso_date)
+                    if match_dt < now - timedelta(days=1):
+                        continue  # Skip matches that already happened
+                except ValueError:
+                    continue
+                    
+                # Extract opponent / match title
+                title = ""
+                links = row.find_all('a')
+                team_links = [
+                    a.get_text(strip=True) for a in links 
+                    if len(a.get_text(strip=True)) > 3 and not any(char.isdigit() for char in a.get_text(strip=True))
+                ]
+                
+                if len(team_links) >= 2:
+                    t1, t2 = team_links[0], team_links[1]
+                    title = f"{t1} vs {t2}"
+                elif len(team_links) == 1:
+                    opp = team_links[0]
+                    title = f"{team_name} vs {opp}" if team_keyword not in opp.lower() else opp
+                else:
+                    # Clean up text content to form a title
+                    clean_title = re.sub(r'\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}', '', text_content)
+                    clean_title = re.sub(r'\d{1,2}:\d{2}', '', clean_title).strip()
+                    if len(clean_title) > 5:
+                        title = clean_title[:50]
+                        
+                if not title or len(title) < 5:
+                    title = f"{team_name} - League Fixture"
+                    
+                # Deduplicate by title and date
+                dedup_key = f"{title}_{iso_date[:10]}"
+                if dedup_key in seen_titles_dates:
+                    continue
+                seen_titles_dates.add(dedup_key)
+                
+                events.append({
+                    "title": title,
+                    "venue": default_venue,
+                    "date": iso_date,
+                    "surgeLevel": "High"
+                })
+                
+            if events:
+                logging.info(f"Successfully scraped {len(events)} all-season matches for {team_name} from {url}")
+                break  # If we successfully extracted matches from this aggregator, no need to try fallback URLs
+                
+        except Exception as e:
+            logging.warning(f"Error scraping aggregator {url} for {team_name}: {e}")
+            
     return events
+
+
+def scrape_wisla_krakow() -> list:
+    """
+    Scrapes ALL upcoming league matches for Wisła Kraków from reliable sports aggregators.
+    Bypasses Cloudflare/bot protection on official club sites and extracts every future fixture.
+    """
+    urls = [
+        "https://www.worldfootball.net/teams/wisla-krakow/2026/3/",
+        "https://www.worldfootball.net/teams/wisla-krakow/2027/3/",
+        "https://www.transfermarkt.com/wisla-krakow/spielplan/verein/256",
+        "https://www.transfermarkt.pl/wisla-krakow/spielplan/verein/256"
+    ]
+    return scrape_sports_aggregator(
+        urls=urls,
+        team_name="Wisła Kraków",
+        default_venue="Stadion Miejski im. Henryka Reymana (Wisła Kraków)",
+        default_hour=18,
+        default_minute=0
+    )
 
 
 def scrape_cracovia() -> list:
     """
-    Scrapes upcoming match fixtures from KS Cracovia website.
-    Strictly parses real date text without fabricating dates.
+    Scrapes ALL upcoming league matches for KS Cracovia from reliable sports aggregators.
+    Bypasses Cloudflare/bot protection on official club sites and extracts every future fixture.
     """
-    events = []
-    url = "https://cracovia.pl/pilka-nozna/terminarz"
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/122.0.0.0 Safari/537.36"
-        )
-    }
-    
-    try:
-        logging.info(f"Scraping KS Cracovia: {url}")
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        match_rows = soup.find_all('div', class_=lambda c: c and any(k in c.lower() for k in ['match', 'fixture', 'game', 'event', 'item', 'row']))
-        
-        for row in match_rows[:10]:
-            title_elem = (
-                row.find(['h3', 'h4', 'span'], class_=lambda c: c and any(k in c.lower() for k in ['team', 'title', 'name', 'opponent'])) or
-                row.find(['h3', 'h4'])
-            )
-            if not title_elem:
-                continue
-                
-            title = title_elem.get_text(strip=True)
-            if not title or len(title) < 3:
-                continue
-                
-            date_elem = row.find('time') or row.find(class_=lambda c: c and any(k in c.lower() for k in ['date', 'time', 'data']))
-            date_str = ""
-            if date_elem:
-                date_str = date_elem.get('datetime') or date_elem.get_text(strip=True)
-                
-            iso_date = parse_date_string(date_str, default_hour=17, default_minute=30)
-            if not iso_date:
-                logging.debug(f"Skipping Cracovia match '{title}': unverified date format '{date_str}'")
-                continue
-                
-            display_title = f"KS Cracovia vs {title}" if "cracovia" not in title.lower() else title
-            events.append({
-                "title": display_title,
-                "venue": "Stadion Cracovii im. Józefa Piłsudskiego",
-                "date": iso_date,
-                "surgeLevel": "High"
-            })
-            
-        logging.info(f"Successfully scraped {len(events)} verified events from KS Cracovia.")
-    except Exception as e:
-        logging.warning(f"Failed to scrape KS Cracovia ({url}): {e}")
-        
-    return events
+    urls = [
+        "https://www.worldfootball.net/teams/cracovia/2026/3/",
+        "https://www.worldfootball.net/teams/cracovia/2027/3/",
+        "https://www.transfermarkt.com/cracovia/spielplan/verein/5689",
+        "https://www.transfermarkt.pl/cracovia/spielplan/verein/5689"
+    ]
+    return scrape_sports_aggregator(
+        urls=urls,
+        team_name="KS Cracovia",
+        default_venue="Stadion Cracovii im. Józefa Piłsudskiego",
+        default_hour=17,
+        default_minute=30
+    )
 
 
 def main():
