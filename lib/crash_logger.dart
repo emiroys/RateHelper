@@ -6,14 +6,14 @@ import 'package:path_provider/path_provider.dart';
 
 /// Writes uncaught Flutter / Dart errors to a plain-text file inside
 /// the app's INTERNAL documents directory. Internal storage is fully
-/// sandboxed by the Android kernel: only Anti-Eres (running under its
+/// sandboxed by the Android kernel: only RateHelper (running under its
 /// own UID) and root can read the file. No other app, regardless of
 /// permissions, can access it.
 ///
 /// Resolved at runtime via `path_provider.getApplicationDocumentsDirectory()`
 /// which maps to `/data/data/<applicationId>/app_flutter/crash.log`.
 /// This path is NOT enumerable from the system file picker — to read
-/// it the user taps "Çökme Kayıtları" inside Anti-Eres and uses the
+/// it the user taps "Çökme Kayıtları" inside RateHelper and uses the
 /// in-app "KOPYALA" button to share via WhatsApp.
 ///
 /// Bounded at 64 KB; older content is dropped FIFO.

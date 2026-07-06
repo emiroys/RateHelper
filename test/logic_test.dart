@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rate_helper/l10n.dart';
 
 // Pure logic extracted for testing — mirrors _HomeScreenState getters and helpers.
 
@@ -197,6 +198,26 @@ void main() {
         expect(result.hour, 4);
         expect(result.minute, 0);
       }
+    });
+  });
+
+  group('S.formatPercent locale percentage placement', () {
+    test('Turkish uses leading percent sign', () {
+      S.setLang(AppLang.tr);
+      expect(S.formatPercent('100'), '%100');
+      expect(S.formatPercent('85.5'), '%85.5');
+    });
+
+    test('English uses trailing percent sign', () {
+      S.setLang(AppLang.en);
+      expect(S.formatPercent('100'), '100%');
+      expect(S.formatPercent('85.5'), '85.5%');
+    });
+
+    test('Polish uses trailing percent sign', () {
+      S.setLang(AppLang.pl);
+      expect(S.formatPercent('100'), '100%');
+      expect(S.formatPercent('85.5'), '85.5%');
     });
   });
 }

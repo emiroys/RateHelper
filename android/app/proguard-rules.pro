@@ -1,5 +1,5 @@
 # ==============================================================================
-# UberTakip — R8 / ProGuard rules (Release builds)
+# RateHelper — R8 / ProGuard rules (Release builds)
 # Target: Android 14 (API 34), One UI 6.1, Samsung S24 Ultra
 # ==============================================================================
 
@@ -99,10 +99,25 @@
 -dontwarn io.flutter.plugins.pathprovider.**
 
 # ------------------------------------------------------------------------------
-# Anti-Eres own MethodChannel host (MainActivity battery/manufacturer bridge).
+# flutter_local_notifications — the weekly Monday reminder. The plugin
+# serializes scheduled-notification state with Gson (reflection), so its model
+# classes and Gson's TypeToken machinery must survive R8, otherwise scheduled
+# notifications silently fail to persist / re-fire after reboot.
+# ------------------------------------------------------------------------------
+-keep class com.dexterous.** { *; }
+-keep class com.google.gson.** { *; }
+-keep class * extends com.google.gson.reflect.TypeToken { *; }
+-keepclassmembers class * {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
+-dontwarn com.dexterous.**
+-dontwarn com.google.gson.**
+
+# ------------------------------------------------------------------------------
+# RateHelper own MethodChannel host (MainActivity battery/manufacturer bridge).
 # R8 would otherwise strip the channel handler because it's wired by lambda.
 # ------------------------------------------------------------------------------
--keep class com.antieres.app.MainActivity { *; }
+-keep class com.ratehelper.app.MainActivity { *; }
 
 # ------------------------------------------------------------------------------
 # AndroidX core (lifecycle, notifications, NotificationCompat for FGS)

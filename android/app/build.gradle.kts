@@ -31,21 +31,23 @@ if (hasReleaseKeystore) {
 }
 
 android {
-    // Application package identity. Renamed from com.ubertakip.ubertakip
-    // → com.antieres.app on 2026-05-22. Android treats the previous
-    // applicationId as an entirely separate app; existing installs MUST
-    // be uninstalled by the user before the new APK can be installed.
-    namespace = "com.antieres.app"
+    // Application package identity (com.ratehelper.app). Android treats a changed
+    // applicationId as an entirely separate app; existing installs MUST be
+    // uninstalled by the user before the new APK can be installed.
+    namespace = "com.ratehelper.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // Required by flutter_local_notifications, which uses java.time APIs
+        // that need core library desugaring to run below API 26 language level.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
     defaultConfig {
-        applicationId = "com.antieres.app"
+        applicationId = "com.ratehelper.app"
         // API 26+: covers ~99% of the active Android install base in 2026
         // and is the minimum for FOREGROUND_SERVICE_SPECIAL_USE fallbacks.
         minSdk = 26
@@ -129,4 +131,8 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

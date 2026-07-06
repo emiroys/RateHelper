@@ -6,6 +6,7 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'l10n.dart';
 import 'log.dart';
 import 'overlay_sync.dart';
 
@@ -60,13 +61,13 @@ class _OverlayWidgetState extends State<OverlayWidget> {
 
   String _formatAcceptRate(double rate) {
     if (_accepted == 0 && _rejected == 0) {
-      return '%100';
+      return S.formatPercent('100');
     }
     final rounded = (rate * 10).round() / 10;
     if (rounded == rounded.roundToDouble()) {
-      return '%${rounded.toInt()}';
+      return S.formatPercent(rounded.toInt().toString());
     }
-    return '%${rounded.toStringAsFixed(1)}';
+    return S.formatPercent(rounded.toStringAsFixed(1));
   }
 
   @override
@@ -76,11 +77,19 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_syncNativeWindowSize());
     });
-    _syncSub = FlutterOverlayWindow.overlayListener.listen((event) {
-      if (OverlaySync.shouldReloadCounters(event)) {
-        unawaited(_loadCounts());
-      }
-    });
+    try {
+      _syncSub = FlutterOverlayWindow.overlayListener.listen((event) {
+        if (OverlaySync.shouldReloadCounters(event)) {
+          unawaited(_loadCounts());
+        } else if (event is Map && event['action'] == 'media_key_increment') {
+          final keyStr = event['key'];
+          final key = keyStr == 'accepted' ? _keyAccepted : _keyRejected;
+          unawaited(_increment(key));
+        }
+      });
+    } catch (e, s) {
+      loge('overlayListener listen failed', name: 'overlay', error: e, stack: s);
+    }
   }
 
   Future<void> _syncNativeWindowSize() async {
@@ -102,6 +111,7 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       _prefs = prefs;
       await prefs.reload();
       if (!mounted) return;
+      _updateLang(prefs);
       final accepted = prefs.getInt(_keyAccepted) ?? 0;
       final rejected = prefs.getInt(_keyRejected) ?? 0;
       setState(() {
@@ -125,6 +135,7 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       final prefs = await _getPrefs();
       await prefs.reload();
       if (!mounted || _incrementInFlight) return;
+      _updateLang(prefs);
       final accepted = prefs.getInt(_keyAccepted) ?? 0;
       final rejected = prefs.getInt(_keyRejected) ?? 0;
       if (accepted == _accepted && rejected == _rejected) return;
@@ -134,6 +145,17 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       });
     } catch (e, s) {
       loge('overlay load failed', name: 'overlay', error: e, stack: s);
+    }
+  }
+
+  void _updateLang(SharedPreferences prefs) {
+    if (prefs.containsKey('appLanguage')) {
+      final langStr = prefs.getString('appLanguage')!;
+      final lang = AppLang.values.firstWhere(
+        (l) => l.name == langStr,
+        orElse: () => AppLang.en,
+      );
+      S.setLang(lang);
     }
   }
 
@@ -182,24 +204,21 @@ class _OverlayWidgetState extends State<OverlayWidget> {
 
     logd('overlay tap', name: 'overlay');
 
+    var nextAccepted = _accepted;
+    var nextRejected = _rejected;
+    if (accepted) {
+      nextAccepted = (nextAccepted + 1).clamp(0, 99999);
+    } else {
+      nextRejected = (nextRejected + 1).clamp(0, 99999);
+    }
+
+    setState(() {
+      _accepted = nextAccepted;
+      _rejected = nextRejected;
+    });
+
     try {
       final prefs = await _getPrefs();
-      await prefs.reload();
-
-      var nextAccepted = prefs.getInt(_keyAccepted) ?? 0;
-      var nextRejected = prefs.getInt(_keyRejected) ?? 0;
-      if (accepted) {
-        nextAccepted = (nextAccepted + 1).clamp(0, 99999);
-      } else {
-        nextRejected = (nextRejected + 1).clamp(0, 99999);
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _accepted = nextAccepted;
-        _rejected = nextRejected;
-      });
-
       await _appendTapHistory(
         prefs,
         accepted ? 'accepted' : 'rejected',
@@ -215,6 +234,7 @@ class _OverlayWidgetState extends State<OverlayWidget> {
           (completed + 1).clamp(0, 99999),
         );
       }
+      unawaited(OverlaySync.notifyCountersChanged());
     } catch (e, s) {
       loge('overlay write failed', name: 'overlay', error: e, stack: s);
       await _loadCounts();
@@ -288,21 +308,23 @@ class _CircleBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final iconSize = size * 0.5;
-    return Material(
-      color: color.withValues(alpha: 0.20),
-      shape: CircleBorder(
-        side: BorderSide(color: color.withValues(alpha: 0.55), width: 1.5),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        splashColor: color.withValues(alpha: 0.35),
-        highlightColor: color.withValues(alpha: 0.15),
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: Center(
-            child: Icon(icon, color: Colors.white, size: iconSize),
+    return RepaintBoundary(
+      child: Material(
+        color: color.withValues(alpha: 0.20),
+        shape: CircleBorder(
+          side: BorderSide(color: color.withValues(alpha: 0.55), width: 1.5),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          splashColor: color.withValues(alpha: 0.35),
+          highlightColor: color.withValues(alpha: 0.15),
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Center(
+              child: Icon(icon, color: Colors.white, size: iconSize),
+            ),
           ),
         ),
       ),

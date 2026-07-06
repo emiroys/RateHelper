@@ -1,4 +1,4 @@
-# GitHub Release Checklist — Anti-Eres APK Update
+# GitHub Release Checklist — RateHelper APK Update
 
 Use this every time you ship a new version. A 404 on **İndir** means one of these steps was skipped or mismatched.
 
@@ -22,10 +22,10 @@ Rebuild after bumping so the APK embeds the new version.
 
 ## 3. Create or edit the GitHub Release
 
-1. Open https://github.com/emiroys/anti-eres/releases
+1. Open https://github.com/emiroys/ratehelper/releases
 2. **Draft a new release** (or edit the latest published release).
 3. **Tag:** `v1.0.2` (must match semver; `v` prefix is OK on GitHub).
-4. **Title:** e.g. `Anti-Eres 1.0.2`
+4. **Title:** e.g. `RateHelper 1.0.2`
 5. **Status:** must be **Published** — drafts do not serve `/releases/latest/download/...`.
 
 ## 4. Upload asset — filename must match EXACTLY
@@ -40,14 +40,14 @@ Rebuild after bumping so the APK embeds the new version.
 1. Scroll to **Assets**.
 2. Confirm a row named exactly `app-arm64-v8a-release.apk` (not renamed, not inside a zip).
 3. Right-click → Copy link. It should look like:
-   `https://github.com/emiroys/anti-eres/releases/download/v1.0.2/app-arm64-v8a-release.apk`
+   `https://github.com/emiroys/ratehelper/releases/download/v1.0.2/app-arm64-v8a-release.apk`
 
 ## 5. Test the canonical download URL
 
 Open in browser (or `curl -I`):
 
 ```
-https://github.com/emiroys/anti-eres/releases/latest/download/app-arm64-v8a-release.apk
+https://github.com/emiroys/ratehelper/releases/latest/download/app-arm64-v8a-release.apk
 ```
 
 - **200** + `Content-Type: application/vnd.android.package-archive` → OK
@@ -62,7 +62,7 @@ Copy contents from `release/update.json` in this repo to the Gist:
 ```json
 {
   "latest": "1.0.2",
-  "apk_url": "https://github.com/emiroys/anti-eres/releases/latest/download/app-arm64-v8a-release.apk"
+  "apk_url": "https://github.com/emiroys/ratehelper/releases/latest/download/app-arm64-v8a-release.apk"
 }
 ```
 
@@ -84,7 +84,7 @@ Rules:
 | Symptom | Fix |
 |---|---|
 | Release is draft | Click **Publish release** |
-| Asset named `anti-eres.apk` or `app-release.apk` | Re-upload as `app-arm64-v8a-release.apk` |
+| Asset named `ratehelper.apk` or `app-release.apk` | Re-upload as `app-arm64-v8a-release.apk` |
 | Only universal APK uploaded | Upload the arm64 split from `--split-per-abi` |
 | Tag `1.0.2` but URL uses `/download/v1.0.1/` | Use `/releases/latest/download/...` or match tag to release |
 | Gist `latest` > installed version but no release yet | Publish release **before** updating Gist |

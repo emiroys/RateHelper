@@ -9,7 +9,7 @@ import 'log.dart';
 const _kCardColor = Color(0xFF1A1A1A);
 const _kEmerald = Color(0xFF10B981);
 const _kAmber = Color(0xFFF59E0B);
-const _kSysChannel = MethodChannel('com.antieres.app/system');
+const _kSysChannel = MethodChannel('com.ratehelper.app/system');
 
 enum DeviceBrand { samsung, xiaomi, huawei, oneplus, other }
 

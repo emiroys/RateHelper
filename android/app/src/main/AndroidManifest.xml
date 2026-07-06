@@ -7,6 +7,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
+    <!-- Weekly "log last week's earnings" reminder (flutter_local_notifications).
+         RECEIVE_BOOT_COMPLETED re-arms the scheduled alarm after a reboot.
+         The reminder is scheduled with AndroidScheduleMode.inexactAllowWhileIdle
+         (a weekly nudge needs no second-precision), so the SCHEDULE_EXACT_ALARM /
+         USE_EXACT_ALARM permissions are intentionally NOT declared — they would
+         only add battery cost and an Android 12+ runtime prompt for no benefit. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
     <!-- Self-update manifest fetch on app launch. -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
@@ -22,7 +30,7 @@
         android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
 
     <application
-        android:label="Anti-Eres"
+        android:label="RateHelper"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
@@ -59,6 +67,17 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="floating_driver_stats_overlay_required_while_app_is_backgrounded" />
+        </service>
+        <service
+            android:name=".MediaKeyAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
         </service>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

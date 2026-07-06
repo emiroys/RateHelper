@@ -15,11 +15,15 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'crash_logger.dart';
+import 'earnings_screen.dart';
 import 'env.dart';
 import 'l10n.dart';
+import 'log.dart';
 import 'onboarding_screen.dart';
 import 'overlay_sync.dart';
 import 'overlay_widget.dart';
+import 'models/event_model.dart';
+import 'services/event_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -34,6 +38,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _keyCompleted = 'completedTrips';
   static const _keyCanceled = 'canceledTrips';
   static const _keyAutoComplete = 'autoCompleteTrips';
+  static const _keySteeringWheel = 'steeringWheelEnabled';
+  static const _kSysChannel = MethodChannel('com.ratehelper.app/system');
   static const _keyLastReset = 'lastResetTimestamp';
   static const _keyArchive = 'weekly_archive';
   static const _keyTapHistory = 'tapHistory';
@@ -52,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// browser. A compromised Gist that swaps `apk_url` for a malicious
   /// site is silently ignored — the user never sees a download prompt.
   static const _allowedApkUrlPrefix =
-      'https://github.com/emiroys/anti-eres/releases/';
+      'https://github.com/emiroys/ratehelper/releases/';
 
   static final _warsaw = tz.getLocation('Europe/Warsaw');
 
@@ -74,15 +80,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int completedTrips = 0;
   int canceledTrips = 0;
   bool _autoCompleteTrips = false;
+  bool _steeringWheelEnabled = false;
+  Future<List<EventModel>>? _eventsFuture;
 
   int? _prevAccepted;
   int? _prevRejected;
   int? _prevCompleted;
   int? _prevCanceled;
 
+  int _baselineAccepted = 0;
+  int _baselineRejected = 0;
+  int _baselineCompleted = 0;
+  int _baselineCanceled = 0;
+
+  void _syncBaseline() {
+    _baselineAccepted = acceptedRequests;
+    _baselineRejected = rejectedRequests;
+    _baselineCompleted = completedTrips;
+    _baselineCanceled = canceledTrips;
+  }
+
   Timer? _saveDebounce;
   bool _isLoadingOrResetting = false;
   bool _overlayActive = false;
+  StreamSubscription<dynamic>? _overlayListenerSub;
 
   bool get _canUndo => _prevAccepted != null;
 
@@ -112,6 +133,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
+    try {
+      _overlayListenerSub = FlutterOverlayWindow.overlayListener.listen((event) {
+        if (OverlaySync.shouldReloadCounters(event)) {
+          _reloadAndSync();
+        }
+      });
+    } catch (e, s) {
+      loge('overlayListener listen failed in home screen', name: 'home', error: e, stack: s);
+    }
+    _kSysChannel.setMethodCallHandler((call) async {
+      if (call.method == 'onMediaKeyIncrement') {
+        final keyStr = call.arguments as String?;
+        final key = keyStr == 'accepted' ? _keyAccepted : _keyRejected;
+        _change(key, 1);
+      }
+    });
+    _eventsFuture = EventService.fetchUpcomingEvents();
     _init();
   }
 
@@ -344,6 +382,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _overlayListenerSub?.cancel();
     _saveDebounce?.cancel();
     _flushSave();
     WakelockPlus.disable();
@@ -450,6 +489,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           completedTrips = prefs.getInt(_keyCompleted) ?? 0;
           canceledTrips = prefs.getInt(_keyCanceled) ?? 0;
           _autoCompleteTrips = prefs.getBool(_keyAutoComplete) ?? false;
+          _steeringWheelEnabled = prefs.getBool(_keySteeringWheel) ?? false;
+          _syncBaseline();
         });
         unawaited(OverlaySync.notifyCountersChanged());
       }
@@ -479,6 +520,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       completedTrips = 0;
       canceledTrips = 0;
       _clearUndo();
+      _syncBaseline();
     });
     unawaited(OverlaySync.notifyCountersChanged());
   }
@@ -511,11 +553,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _saveDataNow() async {
     final prefs = await _getPrefs();
-    await prefs.setInt(_keyAccepted, acceptedRequests);
-    await prefs.setInt(_keyRejected, rejectedRequests);
-    await prefs.setInt(_keyCompleted, completedTrips);
-    await prefs.setInt(_keyCanceled, canceledTrips);
+    await prefs.reload();
+
+    final diskAccepted = prefs.getInt(_keyAccepted) ?? 0;
+    final diskRejected = prefs.getInt(_keyRejected) ?? 0;
+    final diskCompleted = prefs.getInt(_keyCompleted) ?? 0;
+    final diskCanceled = prefs.getInt(_keyCanceled) ?? 0;
+
+    final newAccepted = (diskAccepted + (acceptedRequests - _baselineAccepted)).clamp(0, 99999);
+    final newRejected = (diskRejected + (rejectedRequests - _baselineRejected)).clamp(0, 99999);
+    final newCompleted = (diskCompleted + (completedTrips - _baselineCompleted)).clamp(0, 99999);
+    final newCanceled = (diskCanceled + (canceledTrips - _baselineCanceled)).clamp(0, 99999);
+
+    if (mounted) {
+      setState(() {
+        acceptedRequests = newAccepted;
+        rejectedRequests = newRejected;
+        completedTrips = newCompleted;
+        canceledTrips = newCanceled;
+        _syncBaseline();
+      });
+    } else {
+      acceptedRequests = newAccepted;
+      rejectedRequests = newRejected;
+      completedTrips = newCompleted;
+      canceledTrips = newCanceled;
+      _syncBaseline();
+    }
+
+    await prefs.setInt(_keyAccepted, newAccepted);
+    await prefs.setInt(_keyRejected, newRejected);
+    await prefs.setInt(_keyCompleted, newCompleted);
+    await prefs.setInt(_keyCanceled, newCanceled);
     await prefs.setBool(_keyAutoComplete, _autoCompleteTrips);
+    await prefs.setBool(_keySteeringWheel, _steeringWheelEnabled);
     unawaited(OverlaySync.notifyCountersChanged());
   }
 
@@ -747,7 +818,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       enableDrag: true,
       positionGravity: PositionGravity.none,
       startPosition: const OverlayPosition(0, 60),
-      overlayTitle: 'Anti-Eres',
+      overlayTitle: 'RateHelper',
     );
 
     await OverlaySync.notifyCountersChanged();
@@ -992,7 +1063,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             const SizedBox(width: 10),
             Text(
-              'Anti-Eres',
+              'RateHelper',
               style: GoogleFonts.dmSans(
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
@@ -1078,7 +1149,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       flex: 1,
                       child: _buildRateCard(
                         label: S.acceptRate,
-                        value: '%${acceptanceRate.toStringAsFixed(2)}',
+                        value: S.formatPercent(acceptanceRate.toStringAsFixed(2)),
                         color: _acceptRateColor,
                       ),
                     ),
@@ -1087,7 +1158,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       flex: 1,
                       child: _buildRateCard(
                         label: S.cancelRate,
-                        value: '%${cancellationRate.toStringAsFixed(2)}',
+                        value: S.formatPercent(cancellationRate.toStringAsFixed(2)),
                         color: cancelColor,
                       ),
                     ),
@@ -1156,6 +1227,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               const SizedBox(height: 12),
               _buildAutoCompleteSwitch(),
               const SizedBox(height: 10),
+              _buildSteeringWheelSwitch(),
+              const SizedBox(height: 10),
               _buildCounterRow(
                 label: S.completed,
                 value: completedTrips,
@@ -1177,6 +1250,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   onSave: (value) => _setCounter(_keyCanceled, value),
                 ),
               ),
+
+              const SizedBox(height: 28),
+              _sectionHeader('YAKLAŞAN ETKİNLİKLER'),
+              const SizedBox(height: 12),
+              _buildUpcomingEventsSection(),
 
               const SizedBox(height: 40),
 
@@ -1291,9 +1369,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 onTap: _showHistory,
               ),
             ),
+            Expanded(
+              child: _BottomBarAction(
+                emoji: '💰',
+                label: S.navEarnings,
+                onTap: _openEarnings,
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  void _openEarnings() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const EarningsScreen()),
     );
   }
 
@@ -1401,6 +1492,267 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildUpcomingEventsSection() {
+    return FutureBuilder<List<EventModel>>(
+      future: _eventsFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _buildEventsShimmer();
+        }
+
+        if (snapshot.hasError) {
+          return _buildEventsEmptyState('Etkinlik bilgisi yüklenemedi.');
+        }
+
+        final events = snapshot.data ?? [];
+        if (events.isEmpty) {
+          return _buildEventsEmptyState('Yaklaşan etkinlik bulunmuyor.');
+        }
+
+        return SizedBox(
+          height: 155,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: events.length,
+            separatorBuilder: (context, index) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              return _buildEventCard(events[index]);
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEventCard(EventModel event) {
+    Color surgeColor;
+    String surgeLabel;
+    switch (event.surgeLevel.toLowerCase()) {
+      case 'high':
+        surgeColor = _crimson;
+        surgeLabel = 'Yüksek Yoğunluk';
+        break;
+      case 'medium':
+        surgeColor = _amber;
+        surgeLabel = 'Orta Yoğunluk';
+        break;
+      case 'low':
+      default:
+        surgeColor = _emerald;
+        surgeLabel = 'Düşük Yoğunluk';
+        break;
+    }
+
+    return Container(
+      width: 270,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _cardColor,
+        border: _cardBorder,
+        borderRadius: _cardRadius,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: surgeColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: surgeColor.withValues(alpha: 0.4), width: 1),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: surgeColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      surgeLabel,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: surgeColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                event.formattedDateTime,
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white54,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            event.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.dmSans(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Icon(
+                Icons.location_on_outlined,
+                size: 14,
+                color: Colors.white38,
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  event.venue,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white38,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEventsShimmer() {
+    return SizedBox(
+      height: 155,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: 2,
+        separatorBuilder: (context, index) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          return TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.3, end: 0.7),
+            duration: const Duration(milliseconds: 800),
+            builder: (context, opacity, child) {
+              return Opacity(
+                opacity: opacity,
+                child: Container(
+                  width: 270,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _cardColor,
+                    border: _cardBorder,
+                    borderRadius: _cardRadius,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            width: 90,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: Colors.white12,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          Container(
+                            width: 70,
+                            height: 14,
+                            decoration: BoxDecoration(
+                              color: Colors.white12,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: Colors.white12,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        width: 180,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: Colors.white12,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        width: 140,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: Colors.white12,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildEventsEmptyState(String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      decoration: BoxDecoration(
+        color: _cardColor,
+        border: _cardBorder,
+        borderRadius: _cardRadius,
+      ),
+      alignment: Alignment.center,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.event_busy_outlined, color: Colors.white38, size: 20),
+          const SizedBox(width: 8),
+          Text(
+            message,
+            style: GoogleFonts.dmSans(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Colors.white38,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAutoCompleteSwitch() {
     return Container(
       decoration: BoxDecoration(
@@ -1430,6 +1782,77 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
       ),
     );
+  }
+
+  Widget _buildSteeringWheelSwitch() {
+    return Container(
+      decoration: BoxDecoration(
+        color: _cardColor,
+        border: _cardBorder,
+        borderRadius: _cardRadius,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              S.steeringWheelCounter,
+              style: GoogleFonts.dmSans(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.white70,
+              ),
+            ),
+          ),
+          Switch(
+            value: _steeringWheelEnabled,
+            onChanged: _setSteeringWheelCounter,
+            activeThumbColor: _emerald,
+            activeTrackColor: _emerald.withValues(alpha: 0.45),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _setSteeringWheelCounter(bool enabled) async {
+    if (enabled) {
+      final bool isServiceActive = await _kSysChannel.invokeMethod('isAccessibilityServiceEnabled') ?? false;
+      if (!isServiceActive) {
+        if (!mounted) return;
+        final bool? open = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: const Color(0xFF1E2430),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Text(
+              S.steeringWheelDialogTitle,
+              style: GoogleFonts.dmSans(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+            content: Text(
+              S.steeringWheelDialogDesc,
+              style: GoogleFonts.dmSans(color: Colors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(S.cancel, style: GoogleFonts.dmSans(color: Colors.white54)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(S.openSettings, style: GoogleFonts.dmSans(color: _emerald, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+        if (open == true) {
+          await _kSysChannel.invokeMethod('openAccessibilitySettings');
+        }
+      }
+    }
+    setState(() => _steeringWheelEnabled = enabled);
+    final prefs = await _getPrefs();
+    await prefs.setBool(_keySteeringWheel, enabled);
   }
 
   Widget _buildCounterRow({
@@ -1847,8 +2270,14 @@ class _HistorySheetState extends State<_HistorySheet>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildTapLogTab(),
-                  _buildWeeklyTab(),
+                  _KeepAliveTabView(
+                    key: const ValueKey('tab_tap_log'),
+                    child: _buildTapLogTab(),
+                  ),
+                  _KeepAliveTabView(
+                    key: const ValueKey('tab_weekly'),
+                    child: _buildWeeklyTab(),
+                  ),
                 ],
               ),
             ),
@@ -2061,5 +2490,29 @@ class _LangOption extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _KeepAliveTabView extends StatefulWidget {
+  const _KeepAliveTabView({
+    required this.child,
+    super.key,
+  });
+
+  final Widget child;
+
+  @override
+  State<_KeepAliveTabView> createState() => _KeepAliveTabViewState();
+}
+
+class _KeepAliveTabViewState extends State<_KeepAliveTabView>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
   }
 }

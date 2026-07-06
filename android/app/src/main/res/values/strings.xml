@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_description">RateHelper, araç direksiyonunuzdaki Medya / Sonraki Şarkı tuşuna basılı tutarak (800ms) kabul edilen veya reddedilen seferlerinizi güvenle sayabilmeniz için arka planda tuş olaylarını algılar. Kısa basımlarda müzik oynatıcınız (Spotify, YouTube Music vb.) normal çalışmaya devam eder.</string>
+</resources>

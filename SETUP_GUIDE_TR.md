@@ -1,6 +1,6 @@
-# Anti-Eres — Kurulum Rehberi
+# RateHelper — Kurulum Rehberi
 
-Bu kısa rehber, telefonuna Anti-Eres APK’sını yüklediğinde **iki Android iznini** açmana yardım eder. Bunlar olmadan uygulama Uber Driver’ın üstünde **görünmez** veya vardiya sırasında **arka planda öldürülür**.
+Bu kısa rehber, telefonuna RateHelper APK’sını yüklediğinde **iki Android iznini** açmana yardım eder. Bunlar olmadan uygulama Uber Driver’ın üstünde **görünmez** veya vardiya sırasında **arka planda öldürülür**.
 
 > Tahmini süre: 60 saniye.
 
@@ -8,7 +8,7 @@ Bu kısa rehber, telefonuna Anti-Eres APK’sını yüklediğinde **iki Android 
 
 ## 1) APK’yı yükle
 
-1. Sana gönderilen `anti-eres.apk` dosyasını telefonuna kopyala (WhatsApp, USB, e-posta — fark etmez).
+1. Sana gönderilen `ratehelper.apk` dosyasını telefonuna kopyala (WhatsApp, USB, e-posta — fark etmez).
 2. Dosyaya dokun. Telefon "Bilinmeyen kaynaklardan yükleme" izni isteyecektir → **İzin Ver** → tekrar APK’ya dön → **Yükle**.
 3. İlk açılışta uygulama seni otomatik olarak **Kurulum** ekranına götürür.
 
@@ -18,9 +18,9 @@ Bu kısa rehber, telefonuna Anti-Eres APK’sını yüklediğinde **iki Android 
 
 Kurulum ekranında **"İZNİ AÇ"** butonuna bas. Android’in sistem ayarları açılır.
 
-- Listede **Anti-Eres** uygulamasını bul.
+- Listede **RateHelper** uygulamasını bul.
 - Yanındaki anahtarı **AÇIK** konuma getir.
-- Geri tuşu ile Anti-Eres’e dön.
+- Geri tuşu ile RateHelper’e dön.
 
 Adım kartında yeşil bir ✓ göründüyse bu adımı tamamladın.
 
@@ -32,32 +32,32 @@ Bu adım telefonun markasına göre değişir. Doğru markayı seç, ardından u
 
 ### Samsung (One UI)
 
-`Ayarlar` → `Cihaz bakımı` → `Pil` → `Arka plan kullanım sınırları` → `Asla uyutulmayacak uygulamalar` → **+** → listeden **Anti-Eres**’i seç.
+`Ayarlar` → `Cihaz bakımı` → `Pil` → `Arka plan kullanım sınırları` → `Asla uyutulmayacak uygulamalar` → **+** → listeden **RateHelper**’i seç.
 
 ### Xiaomi / Redmi / POCO (MIUI / HyperOS)
 
 İki yer var, ikisini de yap:
 
-1. `Ayarlar` → `Uygulamalar` → `Anti-Eres` → `Pil tasarrufu` → **Kısıtlama yok**.
+1. `Ayarlar` → `Uygulamalar` → `RateHelper` → `Pil tasarrufu` → **Kısıtlama yok**.
 2. Aynı sayfada `Otomatik başlatma` → **AÇIK**.
 
 ### Huawei / Honor (EMUI)
 
-`Ayarlar` → `Uygulamalar` → `Anti-Eres` → `Pil` → `Uygulama başlatma` → **Otomatik yönet** seçeneğini KAPAT → ardından açılan üç anahtarı (`Otomatik başlat`, `İkincil başlatma`, `Arka planda çalışma`) hepsini **AÇ**.
+`Ayarlar` → `Uygulamalar` → `RateHelper` → `Pil` → `Uygulama başlatma` → **Otomatik yönet** seçeneğini KAPAT → ardından açılan üç anahtarı (`Otomatik başlat`, `İkincil başlatma`, `Arka planda çalışma`) hepsini **AÇ**.
 
 ### OnePlus / Oppo / Realme (OxygenOS / ColorOS)
 
-`Ayarlar` → `Pil` → `Pil optimizasyonu` → **Anti-Eres** → **Optimize etme**.
+`Ayarlar` → `Pil` → `Pil optimizasyonu` → **RateHelper** → **Optimize etme**.
 
-Bonus: Son uygulamalar (Recents) ekranını aç, Anti-Eres kartının üst kısmındaki kilit ikonuna dokun. Bu kart artık temizlemede silinmeyecek.
+Bonus: Son uygulamalar (Recents) ekranını aç, RateHelper kartının üst kısmındaki kilit ikonuna dokun. Bu kart artık temizlemede silinmeyecek.
 
 ### Diğer markalar
 
-Telefonun `Ayarlar` → `Pil` veya `Uygulamalar` altında **Anti-Eres**’i ara, pil optimizasyonunu **KAPAT** veya **"Kısıtlanmamış"** olarak işaretle.
+Telefonun `Ayarlar` → `Pil` veya `Uygulamalar` altında **RateHelper**’i ara, pil optimizasyonunu **KAPAT** veya **"Kısıtlanmamış"** olarak işaretle.
 
 ---
 
-## 4) "BİTİR" → Anti-Eres’i başlat
+## 4) "BİTİR" → RateHelper’i başlat
 
 1. Ana ekrandaki üst-sağ köşedeki **Picture-in-picture** ikonuna bas: ekrana siyah/yuvarlak butonlar gelecek.
 2. **Yeşil ➕** = Kabul edilen yolculuk. **Kırmızı ➖** = Reddedilen istek.
@@ -69,7 +69,7 @@ Telefonun `Ayarlar` → `Pil` veya `Uygulamalar` altında **Anti-Eres**’i ara,
 
 Uygulama beklenmedik şekilde kapanırsa:
 
-1. Anti-Eres’i tekrar aç.
+1. RateHelper’i tekrar aç.
 2. Sağ üstteki üç-nokta menü → **Çökme Kayıtları**.
 3. **KOPYALA** butonuna bas. Yapıştırdığını WhatsApp üzerinden bana gönder.
 
