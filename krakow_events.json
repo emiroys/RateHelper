@@ -1,0 +1,32 @@
+[
+  {
+    "title": "Dawid Podsiadło - Stadium Tour Concert",
+    "venue": "Tauron Arena Kraków",
+    "date": "2026-07-08T20:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Wisła Kraków vs. KS Cracovia - Derby Match",
+    "venue": "Stadion Miejski im. Henryka Reymana (Wisła Kraków)",
+    "date": "2026-07-11T18:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Kraków Tech & AI Summit 2026",
+    "venue": "ICE Kraków Congress Centre",
+    "date": "2026-07-13T09:00:00",
+    "surgeLevel": "Medium"
+  },
+  {
+    "title": "International Food & Wine Festival",
+    "venue": "Tauron Arena Kraków",
+    "date": "2026-07-16T12:00:00",
+    "surgeLevel": "Medium"
+  },
+  {
+    "title": "Local Indie Band Showcase",
+    "venue": "Klub Studio",
+    "date": "2026-07-18T21:00:00",
+    "surgeLevel": "Low"
+  }
+]
