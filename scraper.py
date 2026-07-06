@@ -4,13 +4,14 @@ RateHelper Event Scraper
 Scrapes upcoming events in Kraków (Tauron Arena Kraków, Wisła Kraków, KS Cracovia)
 to predict surge demand for ride-sharing drivers.
 Generates `krakow_events.json` with an array of verified event objects.
+Uses cloudscraper to bypass Cloudflare and anti-bot protections.
 """
 
 import json
 import logging
 import re
 from datetime import datetime, timedelta
-import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 
 # Configure logging
@@ -21,66 +22,127 @@ logging.basicConfig(
 
 OUTPUT_FILE = "krakow_events.json"
 
-POLISH_MONTHS = {
-    'stycznia': 1, 'styczen': 1, 'styczeń': 1, 'jan': 1, 'january': 1,
-    'lutego': 2, 'luty': 2, 'feb': 2, 'february': 2,
-    'marca': 3, 'marzec': 3, 'mar': 3, 'march': 3,
-    'kwietnia': 4, 'kwiecien': 4, 'kwiecień': 4, 'apr': 4, 'april': 4,
-    'maja': 5, 'maj': 5, 'may': 5,
-    'czerwca': 6, 'czerwiec': 6, 'jun': 6, 'june': 6,
-    'lipca': 7, 'lipiec': 7, 'jul': 7, 'july': 7,
-    'sierpnia': 8, 'sierpien': 8, 'sierpień': 8, 'aug': 8, 'august': 8,
-    'wrzesnia': 9, 'września': 9, 'wrzesien': 9, 'wrzesień': 9, 'sep': 9, 'september': 9,
-    'pazdziernika': 10, 'października': 10, 'pazdziernik': 10, 'październik': 10, 'oct': 10, 'october': 10,
-    'listopada': 11, 'listopad': 11, 'nov': 11, 'november': 11,
-    'grudnia': 12, 'grudzien': 12, 'grudzień': 12, 'dec': 12, 'december': 12
+MONTHS_MAP = {
+    'jan': 1, 'january': 1, 'styczen': 1, 'styczeń': 1, 'stycznia': 1, 'sty': 1,
+    'feb': 2, 'february': 2, 'luty': 2, 'lutego': 2, 'lut': 2,
+    'mar': 3, 'march': 3, 'marzec': 3, 'marca': 3,
+    'apr': 4, 'april': 4, 'kwiecien': 4, 'kwiecień': 4, 'kwietnia': 4, 'kwi': 4,
+    'may': 5, 'maj': 5, 'maja': 5,
+    'jun': 6, 'june': 6, 'czerwiec': 6, 'czerwca': 6, 'cze': 6,
+    'jul': 7, 'july': 7, 'lipiec': 7, 'lipca': 7, 'lip': 7,
+    'aug': 8, 'august': 8, 'sierpien': 8, 'sierpień': 8, 'sierpnia': 8, 'sie': 8,
+    'sep': 9, 'september': 9, 'wrzesien': 9, 'wrzesień': 9, 'wrzesnia': 9, 'września': 9, 'wrz': 9,
+    'oct': 10, 'october': 10, 'pazdziernik': 10, 'październik': 10, 'pazdziernika': 10, 'października': 10, 'paz': 10, 'paź': 10,
+    'nov': 11, 'november': 11, 'listopad': 11, 'listopada': 11, 'lis': 11,
+    'dec': 12, 'december': 12, 'grudzien': 12, 'grudzień': 12, 'grudnia': 12, 'gru': 12
 }
+
+
+def create_scraper_session():
+    """
+    Creates a Cloudflare-bypassing browser session mimicking Desktop Chrome on Windows.
+    """
+    return cloudscraper.create_scraper(
+        browser={
+            'browser': 'chrome',
+            'platform': 'windows',
+            'desktop': True
+        }
+    )
 
 
 def parse_date_string(date_str: str, default_hour: int = 19, default_minute: int = 0) -> str:
     """
-    Parses Polish and standard international date strings into an ISO 8601 string.
-    Returns empty string "" if the date cannot be reliably parsed.
-    NEVER fabricates or hallucinates fallback dates for unparsed live data.
+    Parses Polish and European standard date strings into an ISO 8601 string.
+    Strictly enforces European DD.MM.YYYY / DD/MM/YYYY formatting where the first digit
+    is ALWAYS the Day and the second digit is the Month.
+    NEVER fabricates or hallucinates dates.
     """
     if not date_str:
         return ""
         
     cleaned = date_str.strip()
     
-    # Check for direct ISO format or standard numeric timestamps
+    # 1. STRICT EUROPEAN NUMERIC PRIORITY (Day before Month ALWAYS)
+    # %d.%m.%Y, %d-%m-%Y, and %d/%m/%Y take absolute priority over any other format
     numeric_formats = (
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%d %H:%M",
+        "%d.%m.%Y %H:%M:%S",
+        "%d-%m-%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M:%S",
         "%d.%m.%Y %H:%M",
         "%d-%m-%Y %H:%M",
         "%d/%m/%Y %H:%M",
-        "%Y-%m-%d",
         "%d.%m.%Y",
         "%d-%m-%Y",
         "%d/%m/%Y",
+        "%d.%m.%y %H:%M",
+        "%d-%m-%y %H:%M",
+        "%d/%m/%y %H:%M",
+        "%d.%m.%y",
+        "%d-%m-%y",
+        "%d/%m/%y",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
         "%Y.%m.%d"
     )
     
-    for fmt in numeric_formats:
+    # 2. Check for short European DD.MM or DD/MM or DD-MM without year (e.g., "11.07." or "05/08")
+    short_eu_match = re.match(r'^(\d{1,2})[\.\/\-](\d{1,2})\.?(?:\s+(\d{1,2}):(\d{2}))?$', cleaned)
+    if short_eu_match:
         try:
-            dt = datetime.strptime(cleaned[:19], fmt)
-            if dt.hour == 0 and dt.minute == 0 and "%H" not in fmt:
-                dt = dt.replace(hour=default_hour, minute=default_minute)
-            return dt.isoformat()
+            day = int(short_eu_match.group(1))
+            month = int(short_eu_match.group(2))
+            if 1 <= day <= 31 and 1 <= month <= 12:
+                now_dt = datetime.now()
+                year = now_dt.year
+                if month < now_dt.month - 2:
+                    year += 1
+                hour = int(short_eu_match.group(3)) if short_eu_match.group(3) else default_hour
+                minute = int(short_eu_match.group(4)) if short_eu_match.group(4) else default_minute
+                dt = datetime(year, month, day, hour, minute)
+                return dt.isoformat()
         except ValueError:
-            continue
+            pass
+
+    # 3. Check for embedded European DD.MM.YYYY inside strings (e.g. "Sobota, 11.07.2026 r., 18:00")
+    eu_embedded_match = re.search(r'\b(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](202\d|\d{2})\b', cleaned)
+    if eu_embedded_match:
+        try:
+            day = int(eu_embedded_match.group(1))
+            month = int(eu_embedded_match.group(2))
+            year_str = eu_embedded_match.group(3)
+            year = int(year_str) if len(year_str) == 4 else int("20" + year_str)
+            if 1 <= day <= 31 and 1 <= month <= 12:
+                time_match = re.search(r'\b(\d{1,2}):(\d{2})\b', cleaned)
+                hour = int(time_match.group(1)) if time_match else default_hour
+                minute = int(time_match.group(2)) if time_match else default_minute
+                dt = datetime(year, month, day, hour, minute)
+                return dt.isoformat()
+        except ValueError:
+            pass
+    
+    # 4. Standard numeric formats loop
+    for fmt in numeric_formats:
+        for sub_str in (cleaned, cleaned[:19], cleaned[:10]):
+            try:
+                dt = datetime.strptime(sub_str, fmt)
+                if dt.hour == 0 and dt.minute == 0 and "%H" not in fmt:
+                    dt = dt.replace(hour=default_hour, minute=default_minute)
+                return dt.isoformat()
+            except ValueError:
+                continue
             
-    # Check for Polish text formats (e.g. "07 listopada 2026, 18:00" or "7 listopada 2026")
+    # 5. Check for text formats (e.g. "Jul 20, 2026, 6:00 PM" or "7 listopada 2026")
     lower_str = cleaned.lower()
     day_match = re.search(r'\b(\d{1,2})\b', lower_str)
     year_match = re.search(r'\b(202[6-9])\b', lower_str)
     time_match = re.search(r'\b(\d{1,2}):(\d{2})\b', lower_str)
     
     month_num = None
-    for word, m_num in POLISH_MONTHS.items():
-        if word in lower_str:
+    for word, m_num in MONTHS_MAP.items():
+        if re.search(rf'\b{word}\b', lower_str):
             month_num = m_num
             break
             
@@ -88,61 +150,22 @@ def parse_date_string(date_str: str, default_hour: int = 19, default_minute: int
         try:
             day = int(day_match.group(1))
             year = int(year_match.group(1))
-            hour = int(time_match.group(1)) if time_match else default_hour
-            minute = int(time_match.group(2)) if time_match else default_minute
+            hour = default_hour
+            minute = default_minute
+            if time_match:
+                hour = int(time_match.group(1))
+                minute = int(time_match.group(2))
+                if "pm" in lower_str or "p.m." in lower_str:
+                    if hour < 12:
+                        hour += 12
+                elif ("am" in lower_str or "a.m." in lower_str) and hour == 12:
+                    hour = 0
             dt = datetime(year, month_num, day, hour, minute)
             return dt.isoformat()
         except ValueError:
             pass
             
     return ""
-
-
-def get_dummy_events() -> list:
-    """
-    Fallback data used when live web scraping fails or websites are unreachable.
-    Reflects REAL, known official upcoming fixtures and major events in Kraków.
-    NO FAKE OR HABITUAL JULY DATES.
-    """
-    logging.info("Using verified real schedule fallback data for Kraków events.")
-    return [
-        {
-            "title": "Dawid Podsiadło - Stadium Tour Concert",
-            "venue": "Tauron Arena Kraków",
-            "date": "2026-09-26T20:00:00",
-            "surgeLevel": "High"
-        },
-        {
-            "title": "KS Cracovia vs. Legia Warszawa - Ekstraklasa Match",
-            "venue": "Stadion Cracovii im. Józefa Piłsudskiego",
-            "date": "2026-10-18T17:30:00",
-            "surgeLevel": "High"
-        },
-        {
-            "title": "Kraków Tech & AI Summit 2026",
-            "venue": "ICE Kraków Congress Centre",
-            "date": "2026-10-22T09:00:00",
-            "surgeLevel": "Medium"
-        },
-        {
-            "title": "Wisła Kraków vs. KS Cracovia - Derby Match (Święta Wojna)",
-            "venue": "Stadion Miejski im. Henryka Reymana (Wisła Kraków)",
-            "date": "2026-11-07T18:00:00",
-            "surgeLevel": "High"
-        },
-        {
-            "title": "International Food & Wine Festival",
-            "venue": "Tauron Arena Kraków",
-            "date": "2026-11-14T12:00:00",
-            "surgeLevel": "Medium"
-        },
-        {
-            "title": "Andrea Bocelli - World Tour Concert",
-            "venue": "Tauron Arena Kraków",
-            "date": "2026-11-21T19:30:00",
-            "surgeLevel": "High"
-        }
-    ]
 
 
 def estimate_surge_level(title: str, venue: str) -> str:
@@ -156,7 +179,7 @@ def estimate_surge_level(title: str, venue: str) -> str:
     high_keywords = [
         'concert', 'koncert', 'derby', 'match', 'mecz', 'festiwal', 'festival',
         'tour', 'championship', 'mistrzostwa', 'podsiadło', 'metallica', 'bocelli',
-        'legia', 'cracovia', 'wisła', 'lech'
+        'legia', 'cracovia', 'wisła', 'lech', 'arka', 'ruch', 'górnik', 'widzew'
     ]
     medium_keywords = [
         'targi', 'fair', 'exhibition', 'wystawa', 'summit', 'konferencja',
@@ -172,22 +195,16 @@ def estimate_surge_level(title: str, venue: str) -> str:
 
 def scrape_tauron_arena() -> list:
     """
-    Scrapes events from Tauron Arena Kraków website.
+    Scrapes events from Tauron Arena Kraków website using cloudscraper.
     Strictly parses real date text; skips items whose dates cannot be verified.
     """
     events = []
     url = "https://www.tauronarenakrakow.pl/en/events/"
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        )
-    }
+    scraper = create_scraper_session()
     
     try:
         logging.info(f"Scraping Tauron Arena Kraków: {url}")
-        response = requests.get(url, headers=headers, timeout=10)
+        response = scraper.get(url, timeout=15)
         response.raise_for_status()
         
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -220,7 +237,6 @@ def scrape_tauron_arena() -> list:
                 
             iso_date = parse_date_string(date_str, default_hour=20, default_minute=0)
             
-            # STRICT REQUIREMENT: If we cannot verify the real date, do not invent one
             if not iso_date:
                 logging.debug(f"Skipping Tauron Arena event '{title}': unverified date format '{date_str}'")
                 continue
@@ -234,29 +250,22 @@ def scrape_tauron_arena() -> list:
             
         logging.info(f"Successfully scraped {len(events)} verified events from Tauron Arena.")
     except Exception as e:
-        logging.warning(f"Failed to scrape Tauron Arena Kraków ({url}): {e}")
+        logging.error(f"Failed to scrape Tauron Arena Kraków ({url}): {e}")
         
     return events
 
 
 def scrape_sports_aggregator(urls: list, team_name: str, default_venue: str, default_hour: int = 18, default_minute: int = 0) -> list:
     """
-    Scrapes reliable, bot-friendly sports aggregator websites (e.g., WorldFootball, Transfermarkt, 
-    sports result feeds) to extract ALL upcoming season league matches for a team.
-    Bypasses Cloudflare/bot protection on official club sites.
+    Scrapes reliable global sports aggregator websites (e.g., Transfermarkt, WorldFootball)
+    using cloudscraper to bypass Cloudflare/bot protection.
+    Extracts ALL upcoming season league matches starting from the current month (July).
     """
     events = []
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        ),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,pl;q=0.8",
-    }
-    
+    scraper = create_scraper_session()
     now = datetime.now()
+    
+    # Start filtering from current month/day (e.g. July onwards)
     team_keyword = team_name.lower().split()[0]  # 'wisła' or 'ks' / 'cracovia'
     if "cracovi" in team_name.lower():
         team_keyword = "cracovi"
@@ -265,8 +274,8 @@ def scrape_sports_aggregator(urls: list, team_name: str, default_venue: str, def
         
     for url in urls:
         try:
-            logging.info(f"Attempting aggregator scrape for {team_name}: {url}")
-            response = requests.get(url, headers=headers, timeout=15)
+            logging.info(f"Attempting aggregator scrape for {team_name} via cloudscraper: {url}")
+            response = scraper.get(url, timeout=20)
             if response.status_code != 200:
                 logging.warning(f"Aggregator {url} returned HTTP {response.status_code}")
                 continue
@@ -274,15 +283,15 @@ def scrape_sports_aggregator(urls: list, team_name: str, default_venue: str, def
             soup = BeautifulSoup(response.text, 'html.parser')
             
             # Find all table rows or structured match container rows across different aggregators
-            rows = soup.find_all('tr') or soup.find_all('div', class_=lambda c: c and any(k in c.lower() for k in ['match', 'fixture', 'game', 'row', 'item', 'box']))
+            rows = soup.find_all('tr') or soup.find_all('div', class_=lambda c: c and any(k in c.lower() for k in ['match', 'fixture', 'game', 'row', 'item', 'box', 'table-row']))
             
             seen_titles_dates = set()
             
-            # Iterate through ALL rows/items without slicing [:5] or [:10]
+            # Iterate through ALL rows without artificial slicing
             for row in rows:
                 text_content = row.get_text(separator=' ', strip=True)
                 
-                # Check if this row actually represents a match involving our team
+                # Check if this row represents a match involving our team
                 if team_keyword not in text_content.lower():
                     continue
                     
@@ -293,10 +302,10 @@ def scrape_sports_aggregator(urls: list, team_name: str, default_venue: str, def
                     date_str = time_elem.get('datetime') or time_elem.get_text(strip=True)
                 
                 if not date_str:
-                    # Look for date patterns in cells (e.g. 24/10/2026, 2026-10-24, Sep 26, 2026, etc.)
+                    # Look for date patterns in cells (e.g. Jul 20, 2026, 20.07.2026, 2026-07-20)
                     for cell in row.find_all(['td', 'span', 'div', 'p']):
                         cell_text = cell.get_text(strip=True)
-                        if any(char.isdigit() for char in cell_text) and ('.' in cell_text or '/' in cell_text or '-' in cell_text or any(m in cell_text.lower() for m in POLISH_MONTHS)):
+                        if any(char.isdigit() for char in cell_text) and ('.' in cell_text or '/' in cell_text or '-' in cell_text or any(m in cell_text.lower() for m in MONTHS_MAP)):
                             date_str = cell_text
                             break
                             
@@ -307,7 +316,7 @@ def scrape_sports_aggregator(urls: list, team_name: str, default_venue: str, def
                 if not iso_date:
                     continue
                     
-                # Ensure we extract ALL FUTURE matches for the current season (ignore past matches)
+                # Ensure we extract ALL FUTURE matches starting from current month (July)
                 try:
                     match_dt = datetime.fromisoformat(iso_date)
                     if match_dt < now - timedelta(days=1):
@@ -357,21 +366,23 @@ def scrape_sports_aggregator(urls: list, team_name: str, default_venue: str, def
                 break  # If we successfully extracted matches from this aggregator, no need to try fallback URLs
                 
         except Exception as e:
-            logging.warning(f"Error scraping aggregator {url} for {team_name}: {e}")
+            logging.error(f"Error scraping aggregator {url} for {team_name}: {e}")
             
     return events
 
 
 def scrape_wisla_krakow() -> list:
     """
-    Scrapes ALL upcoming league matches for Wisła Kraków from reliable sports aggregators.
-    Bypasses Cloudflare/bot protection on official club sites and extracts every future fixture.
+    Scrapes ALL upcoming league matches for Wisła Kraków from accessible global sports sites
+    (Transfermarkt & WorldFootball), starting from the current month (July).
+    Uses cloudscraper to bypass Cloudflare/Anti-bot protections.
     """
     urls = [
-        "https://www.worldfootball.net/teams/wisla-krakow/2026/3/",
-        "https://www.worldfootball.net/teams/wisla-krakow/2027/3/",
+        "https://www.transfermarkt.com/wisla-krakow/spielplan/verein/256/saison_id/2026",
+        "https://www.transfermarkt.pl/wisla-krakow/spielplan/verein/256/saison_id/2026",
         "https://www.transfermarkt.com/wisla-krakow/spielplan/verein/256",
-        "https://www.transfermarkt.pl/wisla-krakow/spielplan/verein/256"
+        "https://www.worldfootball.net/teams/wisla-krakow/2027/3/",
+        "https://www.worldfootball.net/teams/wisla-krakow/2026/3/"
     ]
     return scrape_sports_aggregator(
         urls=urls,
@@ -384,14 +395,16 @@ def scrape_wisla_krakow() -> list:
 
 def scrape_cracovia() -> list:
     """
-    Scrapes ALL upcoming league matches for KS Cracovia from reliable sports aggregators.
-    Bypasses Cloudflare/bot protection on official club sites and extracts every future fixture.
+    Scrapes ALL upcoming league matches for KS Cracovia from accessible global sports sites
+    (Transfermarkt & WorldFootball), starting from the current month (July).
+    Uses cloudscraper to bypass Cloudflare/Anti-bot protections.
     """
     urls = [
-        "https://www.worldfootball.net/teams/cracovia/2026/3/",
-        "https://www.worldfootball.net/teams/cracovia/2027/3/",
+        "https://www.transfermarkt.com/cracovia/spielplan/verein/5689/saison_id/2026",
+        "https://www.transfermarkt.pl/cracovia/spielplan/verein/5689/saison_id/2026",
         "https://www.transfermarkt.com/cracovia/spielplan/verein/5689",
-        "https://www.transfermarkt.pl/cracovia/spielplan/verein/5689"
+        "https://www.worldfootball.net/teams/cracovia/2027/3/",
+        "https://www.worldfootball.net/teams/cracovia/2026/3/"
     ]
     return scrape_sports_aggregator(
         urls=urls,
@@ -403,18 +416,27 @@ def scrape_cracovia() -> list:
 
 
 def main():
-    logging.info("Starting RateHelper Kraków Event Scraper...")
+    logging.info("Starting RateHelper Kraków Event Scraper with cloudscraper...")
     events = []
     
     # Attempt live web scraping across all major Kraków venues/teams
-    events.extend(scrape_tauron_arena())
-    events.extend(scrape_wisla_krakow())
-    events.extend(scrape_cracovia())
-    
-    # Fallback to verified dummy schedule if live scraping yielded no events
+    try:
+        events.extend(scrape_tauron_arena())
+    except Exception as e:
+        logging.error(f"Error executing Tauron Arena scraper: {e}")
+        
+    try:
+        events.extend(scrape_wisla_krakow())
+    except Exception as e:
+        logging.error(f"Error executing Wisła Kraków scraper: {e}")
+        
+    try:
+        events.extend(scrape_cracovia())
+    except Exception as e:
+        logging.error(f"Error executing KS Cracovia scraper: {e}")
+        
     if not events:
-        logging.warning("No live events scraped or web requests failed. Switching to verified real schedule fallback.")
-        events = get_dummy_events()
+        logging.warning("No live events scraped. Returning empty array [] without fallback data.")
     else:
         logging.info(f"Total verified live events scraped: {len(events)}")
         
