@@ -24,17 +24,22 @@ migrate_working_dir/
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+**/.dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-/build/
+build/
+**/build/
 /coverage/
 
 # Android specifics
 .gradle/
-android/.gradle/
-android/local.properties
+**/.gradle/
+**/local.properties
+**/captures/
+**/output.json
+*.dex
 /android/app/debug
 /android/app/profile
 /android/app/release
@@ -56,12 +61,28 @@ symbols/
 
 # Signing keys — never commit (CRITICAL)
 key.properties
+**/key.properties
 *.jks
+**/*.jks
 *.keystore
+**/*.keystore
+*.p12
+**/*.p12
+*.pfx
+**/*.pfx
+*.pem
+**/*.pem
 
 # Envied secrets & Firebase — never commit (CRITICAL)
 .env
-lib/env.g.dart
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+**/env.g.dart
 google-services.json
+**/google-services.json
 GoogleService-Info.plist
+**/GoogleService-Info.plist
 agent-learnings.md
