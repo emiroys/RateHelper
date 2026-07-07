@@ -214,7 +214,7 @@ class EarningsPdfExport {
       S.pdfColRental,
       S.pdfColFuel,
       S.pdfColVat,
-      S.pdfColCommission,
+      S.pdfColSettlementFee,
       S.pdfColNetProfit,
       S.pdfColHourly,
     ];
@@ -227,7 +227,7 @@ class EarningsPdfExport {
           formatPln(w.rentalFee),
           formatPln(w.fuelAfterDiscount),
           formatPln(w.vat),
-          formatPln(w.commission),
+          formatPln(w.settlementFee),
           formatPln(w.netProfit),
           formatPln(w.hourlyRate),
         ],

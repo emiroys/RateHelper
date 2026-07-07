@@ -1,10 +1,14 @@
 import 'dart:convert';
 
 /// Flat VAT rate applied directly to [WeekEarning.netIncome]. This constant
-/// 11.5% deduction approximates the operator's real bank deposits closely
+/// 12% deduction approximates the operator's real bank deposits closely
 /// without reconstructing any per-line tax logic.
 // ignore: constant_identifier_names
-const double FLAT_VAT_RATE = 0.115;
+const double FLAT_VAT_RATE = 0.12;
+
+/// Flat settlement fee rate applied directly to [WeekEarning.netIncome] (3%).
+// ignore: constant_identifier_names
+const double SETTLEMENT_FEE_RATE = 0.03;
 
 /// Partner fuel discount applied at the pump (10% off pump price).
 // ignore: constant_identifier_names
@@ -26,13 +30,29 @@ double round2(double value) =>
 double computeFuelAfterDiscount(double fuelPumpPaid) =>
     round2(fuelPumpPaid * (1 - FUEL_PARTNER_DISCOUNT));
 
-/// A rental-fee bracket keyed purely on weekly trip count.
-/// "Corolla exclusive with a fixed fee" price list (PLN).
+enum DriverMode {
+  solo,
+  paired;
+
+  static const key = 'driver_mode';
+  static const askedKey = 'driver_mode_asked';
+}
+
+/// Global active driver mode, backed by SharedPreferences.
+DriverMode activeDriverMode = DriverMode.solo;
+
+DriverMode get driverMode => activeDriverMode;
+
+/// A rental-fee bracket keyed on weekly trip count, acceptance rate, and
+/// cancellation rate requirements.
 class RentalTier {
   const RentalTier({
     required this.minTrips,
     required this.maxTrips,
-    required this.fee,
+    required this.feePerDriver,
+    required this.totalCarFee,
+    required this.minAcceptRate,
+    required this.maxCancelRate,
   });
 
   /// Inclusive lower bound of the trip bracket.
@@ -41,82 +61,90 @@ class RentalTier {
   /// Inclusive upper bound of the trip bracket.
   final int maxTrips;
 
-  /// Expected weekly rental fee (PLN) for this bracket.
-  final double fee;
+  /// Expected weekly rental fee per driver (PLN) for this bracket.
+  final double feePerDriver;
+
+  /// Total weekly rental fee for the car (PLN) for this bracket.
+  final double totalCarFee;
+
+  /// Minimum required acceptance rate (%), or null if no requirement.
+  final double? minAcceptRate;
+
+  /// Maximum allowed cancellation rate (%).
+  final double maxCancelRate;
+
+  /// For backward compatibility:
+  double get fee => feePerDriver;
 
   bool contains(int trips) => trips >= minTrips && trips <= maxTrips;
+
+  /// Whether the reported rates satisfy this tier's acceptance and cancellation requirements.
+  bool meetsRequirements(double? acceptanceRate, double? cancellationRate) {
+    if (minAcceptRate != null) {
+      if (acceptanceRate == null || acceptanceRate < minAcceptRate!) {
+        return false;
+      }
+    }
+    if (maxCancelRate < 100) {
+      if (cancellationRate == null || cancellationRate > maxCancelRate) {
+        return false;
+      }
+    }
+    return true;
+  }
 }
 
-/// Corolla fixed-fee brackets, keyed on trip count alone.
+/// New ERES rental fee schedule (PLN), keyed on trip count and rates.
 // ignore: constant_identifier_names
 const List<RentalTier> RENTAL_TIERS = [
-  RentalTier(minTrips: 0, maxTrips: 120, fee: 850),
-  RentalTier(minTrips: 121, maxTrips: 160, fee: 650),
-  RentalTier(minTrips: 161, maxTrips: 199, fee: 450),
-  RentalTier(minTrips: 200, maxTrips: 999999, fee: 250),
+  RentalTier(minTrips: 0,   maxTrips: 99,  feePerDriver: 900, totalCarFee: 900, minAcceptRate: null, maxCancelRate: 999), // no requirement tier
+  RentalTier(minTrips: 100, maxTrips: 149, feePerDriver: 700, totalCarFee: 700, minAcceptRate: 80,   maxCancelRate: 5),
+  RentalTier(minTrips: 150, maxTrips: 199, feePerDriver: 500, totalCarFee: 500, minAcceptRate: 70,   maxCancelRate: 5),
+  RentalTier(minTrips: 200, maxTrips: 249, feePerDriver: 300, totalCarFee: 300, minAcceptRate: 60,   maxCancelRate: 5),
+  RentalTier(minTrips: 250, maxTrips: 999999, feePerDriver: 100, totalCarFee: 100, minAcceptRate: 50, maxCancelRate: 5),
 ];
 
-/// Expected rental bracket for [tripCount].
-///
-/// Trade-off: acceptance rate is intentionally NOT considered. We assume the
-/// driver already qualifies for the tier's accept-rate requirement if they've
-/// enabled the rental discount toggle (Uber wouldn't have granted the discount
-/// otherwise), so trip count alone determines the tier.
-RentalTier expectedRentalTier(int tripCount) {
-  if (tripCount <= 120) return RENTAL_TIERS[0];
-  if (tripCount <= 160) return RENTAL_TIERS[1];
-  if (tripCount <= 199) return RENTAL_TIERS[2];
-  return RENTAL_TIERS[3];
+/// New ERES rental fee schedule (PLN) for paired drivers (2 drivers sharing a car).
+// ignore: constant_identifier_names
+const List<RentalTier> RENTAL_TIERS_PAIRED = [
+  RentalTier(minTrips: 0,   maxTrips: 119, feePerDriver: 450, totalCarFee: 900, minAcceptRate: null, maxCancelRate: 999),
+  RentalTier(minTrips: 120, maxTrips: 169, feePerDriver: 350, totalCarFee: 700, minAcceptRate: 80,   maxCancelRate: 5),
+  RentalTier(minTrips: 170, maxTrips: 219, feePerDriver: 250, totalCarFee: 500, minAcceptRate: 70,   maxCancelRate: 5),
+  RentalTier(minTrips: 220, maxTrips: 269, feePerDriver: 150, totalCarFee: 300, minAcceptRate: 60,   maxCancelRate: 5),
+  RentalTier(minTrips: 270, maxTrips: 999999, feePerDriver: 50, totalCarFee: 100, minAcceptRate: 50, maxCancelRate: 5),
+];
+
+/// Expected rental bracket for [tripCount], [acceptanceRate], and [cancellationRate].
+RentalTier expectedRentalTier(int tripCount, [double? acceptanceRate, double? cancellationRate, List<RentalTier>? tiers]) {
+  final activeTiers = tiers ?? (driverMode == DriverMode.paired ? RENTAL_TIERS_PAIRED : RENTAL_TIERS);
+  final trips = tripCount < 0 ? 0 : tripCount;
+  var initialIndex = 0;
+  for (var i = activeTiers.length - 1; i >= 0; i--) {
+    if (trips >= activeTiers[i].minTrips) {
+      initialIndex = i;
+      break;
+    }
+  }
+
+  for (var i = initialIndex; i >= 0; i--) {
+    final tier = activeTiers[i];
+    if (tier.meetsRequirements(acceptanceRate, cancellationRate)) {
+      return tier;
+    }
+  }
+
+  return activeTiers[0];
 }
 
-/// Expected weekly rental fee (PLN) for [tripCount]. Negative trip counts are
-/// treated as the lowest bracket (0-120); callers clamp trips to >= 0.
-double expectedRentalFee(int tripCount) => expectedRentalTier(tripCount).fee;
+/// Expected weekly rental fee (PLN) for [tripCount], [acceptanceRate], and
+/// [cancellationRate]. Negative trip counts are treated as 0.
+double expectedRentalFee(int tripCount, [double? acceptanceRate, double? cancellationRate, List<RentalTier>? tiers]) =>
+    expectedRentalTier(tripCount, acceptanceRate, cancellationRate, tiers).feePerDriver;
 
-/// Human-readable trip bracket for [tier], e.g. `121-160` or `200+` for the
+/// Human-readable trip bracket for [tier], e.g. `100-149` or `250+` for the
 /// open-ended top tier.
 String rentalTierRangeLabel(RentalTier tier) =>
     tier.maxTrips >= 999999 ? '${tier.minTrips}+' : '${tier.minTrips}-${tier.maxTrips}';
-
-/// A commission bracket keyed on weekly turnover (net income, PLN).
-class CommissionTier {
-  const CommissionTier({
-    required this.min,
-    required this.max,
-    required this.base,
-    required this.percent,
-  });
-
-  /// Inclusive lower turnover bound (PLN).
-  final double min;
-
-  /// Exclusive upper turnover bound (PLN), or [double.infinity] for top tier.
-  final double max;
-
-  /// Flat base commission (PLN) for this bracket.
-  final double base;
-
-  /// Percentage of turnover added on top of [base].
-  final double percent;
-}
-
-/// Official weekly turnover commission schedule (PLN).
-// ignore: constant_identifier_names
-const List<CommissionTier> COMMISSION_TIERS = [
-  CommissionTier(min: 0, max: 1000, base: 50, percent: 1),
-  CommissionTier(min: 1000, max: 2000, base: 25, percent: 1),
-  CommissionTier(min: 2000, max: 3000, base: 0, percent: 1),
-  CommissionTier(min: 3000, max: double.infinity, base: 0, percent: 0),
-];
-
-/// Commission (PLN) for [turnover] looked up from [COMMISSION_TIERS].
-double computeFromTier(double turnover) {
-  final tier = COMMISSION_TIERS.firstWhere(
-    (t) => turnover >= t.min && turnover < t.max,
-    orElse: () => COMMISSION_TIERS.last,
-  );
-  return tier.base + (turnover * tier.percent / 100);
-}
 
 /// Kinds of informational cross-check warnings surfaced to the driver. None of
 /// these ever block saving — a legitimate reason may exist (promo week, tiny
@@ -144,28 +172,15 @@ List<EarningsWarning> crossCheckWarnings({required double hourlyRate}) {
 /// Weekly net-income break-even point (PLN): the turnover at which
 /// [WeekEarning.netProfit] is exactly 0.
 ///
-/// Unlike a naive fixed-cost sum, this accounts for the two costs that scale
-/// with turnover: the flat [FLAT_VAT_RATE] VAT and the tiered commission. For
-/// each [COMMISSION_TIERS] bracket we assume the solution lands in that bracket
-/// and solve algebraically:
+/// Accounts for the flat [FLAT_VAT_RATE] VAT that scales with turnover:
 ///
-///   netIncome - fixedCosts - netIncome*VAT - (base + netIncome*percent/100) = 0
-///   => netIncome * (1 - VAT - percent/100) = fixedCosts + base
+///   netIncome - fixedCosts - netIncome*VAT = 0
+///   => netIncome * (1 - VAT) = fixedCosts
 ///
-/// then keep the first candidate that actually falls inside the bracket it was
-/// solved for (making the tier assumption self-consistent). [fixedCosts] is the
-/// turnover-independent portion: ADMINISTRATIVE_COST + fuel + rental.
+/// [fixedCosts] is the turnover-independent portion: ADMINISTRATIVE_COST + fuel + rental.
 double calculateBreakEven({required double fixedCosts}) {
-  for (final tier in COMMISSION_TIERS) {
-    final denominator = 1 - FLAT_VAT_RATE - (tier.percent / 100);
-    if (denominator <= 0) continue; // guard against degenerate tiers
-    final candidate = (fixedCosts + tier.base) / denominator;
-    if (candidate >= tier.min && candidate < tier.max) {
-      return round2(candidate);
-    }
-  }
-  // Fallback (should not trigger with well-formed tiers): VAT-only estimate.
-  return round2(fixedCosts / (1 - FLAT_VAT_RATE));
+  final double denominator = 1 - FLAT_VAT_RATE - SETTLEMENT_FEE_RATE;
+  return round2(fixedCosts / denominator);
 }
 
 /// Average hourly rate across [weeks], skipping weeks with no online time.
@@ -345,6 +360,35 @@ WeekEarning? highestNetProfitWeek(List<WeekEarning> weeks) {
   return best;
 }
 
+class FuelReceipt {
+  FuelReceipt({
+    String? id,
+    required this.timestamp,
+    required this.amountPaid,
+  }) : id = id ?? '${timestamp.millisecondsSinceEpoch}_${amountPaid.hashCode}';
+
+  String id;
+  DateTime timestamp;
+  double amountPaid;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'timestamp': timestamp.toIso8601String(),
+        'amountPaid': amountPaid,
+      };
+
+  factory FuelReceipt.fromJson(Map<String, dynamic> json) => FuelReceipt(
+        id: json['id']?.toString(),
+        timestamp: DateTime.tryParse(json['timestamp']?.toString() ?? '') ?? DateTime.now(),
+        amountPaid: _toDoubleHelper(json['amountPaid']),
+      );
+
+  static double _toDoubleHelper(Object? v) {
+    if (v is num) return v.toDouble();
+    return double.tryParse(v?.toString().replaceAll(' ', '').replaceAll('.', '').replaceAll(',', '.') ?? '') ?? 0.0;
+  }
+}
+
 /// A single archived week of earnings. One entry per Monday-Sunday week.
 ///
 /// Every figure is read directly from the Uber Driver app earnings screen; the
@@ -354,13 +398,19 @@ class WeekEarning {
     required this.id,
     required this.weekStart,
     required this.weekEnd,
+    required this.driverMode,
     required this.netIncome,
     required this.cashReceived,
     required this.onlineHours,
     required this.tripCount,
-    required this.rentalDiscountEnabled,
-    required this.fuelPumpPaid,
-  });
+    required this.acceptanceRateReported,
+    required this.cancellationRateReported,
+    List<FuelReceipt>? fuelReceipts,
+    double? fuelPumpPaid,
+  }) : fuelReceipts = fuelReceipts ??
+            (fuelPumpPaid != null && fuelPumpPaid > 0
+                ? [FuelReceipt(timestamp: weekStart, amountPaid: fuelPumpPaid)]
+                : []);
 
   /// Stable identifier so edits/deletes target the right entry.
   final String id;
@@ -370,6 +420,9 @@ class WeekEarning {
 
   /// Always the following Sunday.
   final DateTime weekEnd;
+
+  /// Driver mode captured at creation time (immutable).
+  final DriverMode driverMode;
 
   /// "Net Gelir" — the single big number at the top of Uber's earnings screen.
   final double netIncome;
@@ -384,56 +437,76 @@ class WeekEarning {
   /// Weekly trip count.
   final int tripCount;
 
-  /// Whether the rental discount applies this week. When `false` there is no
-  /// rental deduction; when `true` the fee is derived from [RENTAL_TIERS].
-  final bool rentalDiscountEnabled;
+  /// Kabul Oranı % (e.g., 85.0 for 85%). Null if not reported.
+  final double? acceptanceRateReported;
 
-  /// "Pompada Ödenen" — what the driver actually paid at the pump.
-  final double fuelPumpPaid;
+  /// İptal Oranı % (e.g., 2.5 for 2.5%). Null if not reported.
+  final double? cancellationRateReported;
+
+  /// List of fuel receipts recorded during this week.
+  final List<FuelReceipt> fuelReceipts;
+
+  /// Total pump fuel paid across all [fuelReceipts].
+  double get fuelPumpPaidTotal => fuelReceipts.fold(0.0, (sum, r) => sum + r.amountPaid);
+
+  /// For backward compatibility with legacy single-value references:
+  double get fuelPumpPaid => fuelPumpPaidTotal;
 
   /// Real fuel cost after the 10% partner discount (not stored), rounded to
   /// whole cents.
-  double get fuelAfterDiscount => computeFuelAfterDiscount(fuelPumpPaid);
+  double get fuelAfterDiscount => computeFuelAfterDiscount(fuelPumpPaidTotal);
 
-  /// Rental deduction (PLN). Rental is ALWAYS charged; the toggle only decides
-  /// whether the driver qualifies for the trip-count discount tiers. When the
-  /// discount is off the driver pays the flat base rate (850 PLN) regardless of
-  /// trip count; when on, the fee comes from the [RENTAL_TIERS] bracket.
-  double get rentalFee =>
-      rentalDiscountEnabled ? expectedRentalFee(tripCount) : 850.0;
+  /// Rental deduction (PLN). Rental is derived from [RENTAL_TIERS] based on
+  /// [tripCount], [acceptanceRateReported], and [cancellationRateReported].
+  double get rentalFee {
+    final tiers = driverMode == DriverMode.paired ? RENTAL_TIERS_PAIRED : RENTAL_TIERS;
+    return expectedRentalTier(tripCount, acceptanceRateReported, cancellationRateReported, tiers).feePerDriver;
+  }
+
+  /// Total car rental fee (PLN) across both drivers if paired, or solo fee if solo.
+  double get totalCarRentalFee {
+    final tiers = driverMode == DriverMode.paired ? RENTAL_TIERS_PAIRED : RENTAL_TIERS;
+    return expectedRentalTier(tripCount, acceptanceRateReported, cancellationRateReported, tiers).totalCarFee;
+  }
 
   WeekEarning copyWith({
     DateTime? weekStart,
     DateTime? weekEnd,
+    DriverMode? driverMode,
     double? netIncome,
     double? cashReceived,
     double? onlineHours,
     int? tripCount,
-    bool? rentalDiscountEnabled,
+    double? acceptanceRateReported,
+    double? cancellationRateReported,
+    List<FuelReceipt>? fuelReceipts,
     double? fuelPumpPaid,
   }) {
     return WeekEarning(
       id: id,
       weekStart: weekStart ?? this.weekStart,
       weekEnd: weekEnd ?? this.weekEnd,
+      driverMode: driverMode ?? this.driverMode,
       netIncome: netIncome ?? this.netIncome,
       cashReceived: cashReceived ?? this.cashReceived,
       onlineHours: onlineHours ?? this.onlineHours,
       tripCount: tripCount ?? this.tripCount,
-      rentalDiscountEnabled:
-          rentalDiscountEnabled ?? this.rentalDiscountEnabled,
-      fuelPumpPaid: fuelPumpPaid ?? this.fuelPumpPaid,
+      acceptanceRateReported:
+          acceptanceRateReported ?? this.acceptanceRateReported,
+      cancellationRateReported:
+          cancellationRateReported ?? this.cancellationRateReported,
+      fuelReceipts: fuelReceipts ?? (fuelPumpPaid != null ? null : this.fuelReceipts),
+      fuelPumpPaid: fuelPumpPaid,
     );
   }
 
-  /// Flat 11.5% VAT charged on [netIncome], rounded to whole cents.
+  /// Flat 12% VAT charged on [netIncome], rounded to whole cents.
   double get vat => round2(netIncome * FLAT_VAT_RATE);
 
-  /// Commission for this week's turnover ([netIncome]) from [COMMISSION_TIERS],
-  /// rounded to whole cents.
-  double get commission => round2(computeFromTier(netIncome));
+  /// Flat 3% settlement fee charged on [netIncome], rounded to whole cents.
+  double get settlementFee => round2(netIncome * SETTLEMENT_FEE_RATE);
 
-  /// Real net profit after the fixed admin fee, VAT, rental and commission.
+  /// Real net profit after the fixed admin fee, VAT, rental, and settlement fee.
   /// Computed from the already-rounded components so the breakdown card lines
   /// always add up exactly to this figure (no off-by-a-cent display drift).
   double get netProfit => round2(
@@ -442,7 +515,7 @@ class WeekEarning {
             fuelAfterDiscount -
             vat -
             rentalFee -
-            commission,
+            settlementFee,
       );
 
   /// What actually lands in the bank once the cash already collected on the
@@ -462,48 +535,68 @@ class WeekEarning {
       crossCheckWarnings(hourlyRate: hourlyRate);
 
   Map<String, dynamic> toJson() => {
+        'version': 1,
         'id': id,
         'weekStart': weekStart.toIso8601String(),
         'weekEnd': weekEnd.toIso8601String(),
+        'driverMode': driverMode.name,
         'netIncome': netIncome,
         'cashReceived': cashReceived,
         'onlineHours': onlineHours,
         'tripCount': tripCount,
-        'rentalDiscountEnabled': rentalDiscountEnabled,
-        'fuelPumpPaid': fuelPumpPaid,
+        'acceptanceRateReported': acceptanceRateReported,
+        'cancellationRateReported': cancellationRateReported,
+        'fuelReceipts': fuelReceipts.map((r) => r.toJson()).toList(),
       };
 
   /// Rebuilds an entry from stored JSON. Reads only the keys it still needs, so
   /// OLD entries carrying now-removed keys (`administrativeCost`,
-  /// `otherExpenses`, `notes`, `acceptanceRateReported`,
-  /// `cancellationRateReported`, `rentalFee`) are ignored gracefully rather
-  /// than throwing. Returns `null` only when the week dates can't be parsed.
+  /// `otherExpenses`, `notes`, `rentalDiscountEnabled`, `commission`,
+  /// `rentalFee`) are ignored gracefully rather than throwing.
   static WeekEarning? fromJson(Map<String, dynamic> json) {
+    // ignore: unused_local_variable
+    final int version = _toInt(json['version'] ?? 0);
     final start = DateTime.tryParse(json['weekStart']?.toString() ?? '');
     final end = DateTime.tryParse(json['weekEnd']?.toString() ?? '');
     if (start == null || end == null) return null;
+
+    final modeStr = json['driverMode']?.toString();
+    final mode = modeStr == 'paired' ? DriverMode.paired : DriverMode.solo;
+
+    List<FuelReceipt> receipts = [];
+    if (json.containsKey('fuelReceipts') && json['fuelReceipts'] is List) {
+      final list = json['fuelReceipts'] as List<dynamic>;
+      receipts = list
+          .whereType<Map>()
+          .map((e) => FuelReceipt.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } else {
+      final legacyPump = _fuelPumpPaidFromJson(json);
+      if (legacyPump > 0) {
+        receipts = [
+          FuelReceipt(
+            id: 'legacy_${start.millisecondsSinceEpoch}',
+            timestamp: start,
+            amountPaid: legacyPump,
+          )
+        ];
+      }
+    }
 
     return WeekEarning(
       id: json['id']?.toString() ??
           '${start.millisecondsSinceEpoch}_${end.millisecondsSinceEpoch}',
       weekStart: start,
       weekEnd: end,
+      driverMode: mode,
       netIncome: _toDouble(json['netIncome']),
       cashReceived: _toDouble(json['cashReceived']),
       onlineHours: _toDouble(json['onlineHours']),
       tripCount: _toInt(json['tripCount']),
-      rentalDiscountEnabled: _rentalDiscountFromJson(json),
-      fuelPumpPaid: _fuelPumpPaidFromJson(json),
+      acceptanceRateReported: _toNullableDouble(json['acceptanceRateReported']),
+      cancellationRateReported: _toNullableDouble(json['cancellationRateReported']),
+      fuelReceipts: receipts,
     );
-  }
-
-  /// Reads [rentalDiscountEnabled], inferring it from a legacy stored
-  /// `rentalFee > 0` when the flag is absent (older entries).
-  static bool _rentalDiscountFromJson(Map<String, dynamic> json) {
-    final flag = json['rentalDiscountEnabled'];
-    if (flag is bool) return flag;
-    if (flag != null) return flag.toString().toLowerCase() == 'true';
-    return _toDouble(json['rentalFee']) > 0;
   }
 
   /// Reads [fuelPumpPaid], falling back to legacy stored discounted/gross fuel.
@@ -523,6 +616,14 @@ class WeekEarning {
     return double.tryParse(v?.toString().replaceAll(' ', '').replaceAll('.', '').replaceAll(',', '.') ?? '') ?? 0;
   }
 
+  static double? _toNullableDouble(Object? v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    final s = v.toString().trim();
+    if (s.isEmpty || s.toLowerCase() == 'null') return null;
+    return double.tryParse(s.replaceAll(' ', '').replaceAll('.', '').replaceAll(',', '.'));
+  }
+
   static int _toInt(Object? v) {
     if (v is num) return v.toInt();
     return int.tryParse(v?.toString() ?? '') ?? 0;
@@ -534,6 +635,15 @@ const int kMaxEarningEntries = 104;
 
 /// SharedPreferences key for the earnings history JSON list.
 const String kEarningsHistoryKey = 'earnings_history';
+
+/// SharedPreferences key for the persistent lifetime trip odometer.
+/// This value is ONLY incremented — never decremented by FIFO eviction —
+/// so the free-week milestone never regresses as old weeks are trimmed.
+const String kLifetimeTripsKey = 'lifetime_trips_total';
+
+/// SharedPreferences key (bool) guarding the one-time backfill migration.
+/// Once set to `true`, the backfill from existing history is never re-run.
+const String kLifetimeTripsBackfilledKey = 'lifetime_trips_backfilled';
 
 /// Monday (00:00, date-only) of the week identified by [offset] relative to
 /// [now]. `0` == current week, `-1` == last week, `1` == next week.
@@ -612,3 +722,24 @@ String encodeEarnings(List<WeekEarning> entries) {
       : sorted;
   return jsonEncode(trimmed.map((e) => e.toJson()).toList());
 }
+
+/// Threshold of lifetime trips required to earn one free week of rental.
+const int kFreeWeekTripThreshold = 2000;
+
+/// Sum of [WeekEarning.tripCount] across all stored [weeks].
+int calculateLifetimeTrips(Iterable<WeekEarning> weeks) {
+  var total = 0;
+  for (final w in weeks) {
+    total += w.tripCount;
+  }
+  return total;
+}
+
+/// Total number of free car rental weeks earned over the lifetime ([lifetimeTrips ~/ 2000]).
+int calculateFreeWeeksEarned(int lifetimeTrips) =>
+    lifetimeTrips ~/ kFreeWeekTripThreshold;
+
+/// Progress (in trips) toward the next free car rental week (from 0 to 1999).
+int calculateCurrentFreeWeekProgress(int lifetimeTrips) =>
+    lifetimeTrips % kFreeWeekTripThreshold;
+

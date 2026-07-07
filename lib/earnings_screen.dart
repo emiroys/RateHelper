@@ -33,6 +33,62 @@ enum _ViewMode { weekly, monthly, yearly }
 /// reachable via the history list below instead.
 const int _trendWeekWindow = 8;
 
+Future<void> showDriverModeDialog(BuildContext context, SharedPreferences prefs, VoidCallback onModeChanged) async {
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) {
+      return AlertDialog(
+        backgroundColor: const Color(0xFF161616),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          S.driverModeDialogTitle,
+          style: GoogleFonts.dmSans(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              tileColor: activeDriverMode == DriverMode.solo ? const Color(0xFF242424) : Colors.transparent,
+              leading: Icon(Icons.person_rounded, color: activeDriverMode == DriverMode.solo ? const Color(0xFFF59E0B) : Colors.white54),
+              title: Text(
+                S.driverModeSolo,
+                style: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+              ),
+              onTap: () async {
+                activeDriverMode = DriverMode.solo;
+                await prefs.setString(DriverMode.key, 'solo');
+                await prefs.setBool(DriverMode.askedKey, true);
+                if (!ctx.mounted) return;
+                Navigator.of(ctx).pop();
+                onModeChanged();
+              },
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              tileColor: activeDriverMode == DriverMode.paired ? const Color(0xFF242424) : Colors.transparent,
+              leading: Icon(Icons.people_rounded, color: activeDriverMode == DriverMode.paired ? const Color(0xFFF59E0B) : Colors.white54),
+              title: Text(
+                S.driverModePaired,
+                style: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+              ),
+              onTap: () async {
+                activeDriverMode = DriverMode.paired;
+                await prefs.setString(DriverMode.key, 'paired');
+                await prefs.setBool(DriverMode.askedKey, true);
+                if (!ctx.mounted) return;
+                Navigator.of(ctx).pop();
+                onModeChanged();
+              },
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
 String _monthTitle(DateTime month) =>
     '${S.monthsFull[month.month]} ${month.year}';
 
@@ -144,11 +200,35 @@ class _EarningsScreenState extends State<EarningsScreen> {
       _historyFilterMonth ??=
           DateTime(latest.year, latest.month, 1);
     }
+    final modeStr = prefs.getString(DriverMode.key);
+    activeDriverMode = modeStr == 'paired' ? DriverMode.paired : DriverMode.solo;
+
+    // --- Lifetime trip odometer migration & load ---
+    // One-time backfill: seed the persisted counter from whatever history
+    // currently exists. Weeks already evicted by FIFO before this update are
+    // permanently uncounted — the same limitation as before, just frozen.
+    if (prefs.getBool(kLifetimeTripsBackfilledKey) != true) {
+      final backfill = calculateLifetimeTrips(entries);
+      await prefs.setInt(kLifetimeTripsKey, backfill);
+      await prefs.setBool(kLifetimeTripsBackfilledKey, true);
+    }
+    _cachedLifetimeTrips = prefs.getInt(kLifetimeTripsKey) ?? 0;
+
     setState(() {
       _setEntries(entries);
       _driverName = prefs.getString(kDriverNameKey) ?? '';
       _loading = false;
     });
+
+    if (prefs.getBool(DriverMode.askedKey) != true) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && prefs.getBool(DriverMode.askedKey) != true) {
+          showDriverModeDialog(context, prefs, () {
+            if (mounted) setState(() {});
+          });
+        }
+      });
+    }
 
     if (widget.autoAddWeek && !_autoAddTriggered) {
       _autoAddTriggered = true;
@@ -167,8 +247,12 @@ class _EarningsScreenState extends State<EarningsScreen> {
   /// Guards against re-opening the auto-add form on every reload.
   bool _autoAddTriggered = false;
 
+  int _cachedLifetimeTrips = 0;
+
   /// Replaces the entry list and refreshes the memoized monthly/yearly rollups.
   /// The only place [_entries] should be reassigned, so the caches never drift.
+  /// Note: _cachedLifetimeTrips is NOT recomputed here — it is loaded from the
+  /// persisted SharedPreferences odometer and updated only on new/edited saves.
   void _setEntries(List<WeekEarning> entries) {
     _entries = entries;
     _months = aggregateByMonth(entries);
@@ -216,6 +300,19 @@ class _EarningsScreenState extends State<EarningsScreen> {
     await prefs.setString(kEarningsHistoryKey, encodeEarnings(_entries));
   }
 
+  /// Atomically increments the persisted lifetime trip odometer by [delta]
+  /// and updates the in-memory cache.
+  Future<void> _incrementLifetimeTrips(int delta) async {
+    if (delta <= 0) return;
+    final prefs = await _getPrefs();
+    final current = prefs.getInt(kLifetimeTripsKey) ?? 0;
+    final next = current + delta;
+    await prefs.setInt(kLifetimeTripsKey, next);
+    if (mounted) {
+      setState(() => _cachedLifetimeTrips = next);
+    }
+  }
+
   WeekEarning? _entryForOffset(int offset) {
     final start = weekStartForOffset(offset);
     for (final e in _entries) {
@@ -258,6 +355,8 @@ class _EarningsScreenState extends State<EarningsScreen> {
       ),
     );
     if (result == null) return;
+    final oldTrips = existing?.tripCount ?? 0;
+    final tripDelta = result.tripCount - oldTrips;
     setState(() {
       final next = [..._entries]
         ..removeWhere((e) =>
@@ -267,6 +366,9 @@ class _EarningsScreenState extends State<EarningsScreen> {
       _setEntries(next);
     });
     await _persist();
+    if (tripDelta > 0) {
+      await _incrementLifetimeTrips(tripDelta);
+    }
   }
 
   Future<void> _deleteEntry(WeekEarning entry) async {
@@ -305,10 +407,163 @@ class _EarningsScreenState extends State<EarningsScreen> {
     await _persist();
   }
 
+  Future<void> _quickAddFuel() async {
+    final ctrl = TextEditingController();
+    final added = await showDialog<double>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            S.quickAddFuelTitle,
+            style: GoogleFonts.dmSans(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          content: TextField(
+            controller: ctrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: GoogleFonts.dmSans(color: Colors.white, fontSize: 18),
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: S.amountPaidLabel,
+              labelStyle: GoogleFonts.dmSans(color: Colors.white54),
+              suffixText: 'PLN',
+              suffixStyle: GoogleFonts.dmSans(color: _gold),
+              enabledBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white24),
+              ),
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: _gold),
+              ),
+            ),
+            onSubmitted: (_) {
+              final val = double.tryParse(ctrl.text.replaceAll(',', '.').trim());
+              if (val != null && val > 0) {
+                Navigator.of(ctx).pop(val);
+              }
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(
+                S.cancel,
+                style: GoogleFonts.dmSans(color: Colors.white54),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _gold,
+                foregroundColor: Colors.black,
+              ),
+              onPressed: () {
+                final val = double.tryParse(ctrl.text.replaceAll(',', '.').trim());
+                if (val != null && val > 0) {
+                  Navigator.of(ctx).pop(val);
+                }
+              },
+              child: Text(
+                S.add,
+                style: GoogleFonts.dmSans(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (added == null || added <= 0 || !mounted) return;
+
+    final currentMonday = weekStartForOffset(0);
+    final currentSunday = weekEndForStart(currentMonday);
+
+    WeekEarning? currentEntry;
+    for (final e in _entries) {
+      if (isSameDate(e.weekStart, currentMonday)) {
+        currentEntry = e;
+        break;
+      }
+    }
+
+    final newReceipt = FuelReceipt(
+      timestamp: DateTime.now(),
+      amountPaid: added,
+    );
+
+    WeekEarning nextEntry;
+    if (currentEntry != null) {
+      nextEntry = currentEntry.copyWith(
+        fuelReceipts: [...currentEntry.fuelReceipts, newReceipt],
+      );
+    } else {
+      nextEntry = WeekEarning(
+        id: '${currentMonday.millisecondsSinceEpoch}_${currentSunday.millisecondsSinceEpoch}',
+        weekStart: currentMonday,
+        weekEnd: currentSunday,
+        driverMode: activeDriverMode,
+        netIncome: 0,
+        cashReceived: 0,
+        onlineHours: 0,
+        tripCount: 0,
+        acceptanceRateReported: null,
+        cancellationRateReported: null,
+        fuelReceipts: [newReceipt],
+      );
+    }
+
+    setState(() {
+      final nextList = [..._entries]
+        ..removeWhere((e) =>
+            e.id == nextEntry.id || isSameDate(e.weekStart, nextEntry.weekStart))
+        ..add(nextEntry)
+        ..sort((a, b) => b.weekStart.compareTo(a.weekStart));
+      _setEntries(nextList);
+    });
+    await _persist();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFF2C2C2C),
+        behavior: SnackBarBehavior.floating,
+        content: Text(
+          S.fuelAddedConfirmation(formatPln(added), nextEntry.fuelReceipts.length),
+          style: GoogleFonts.dmSans(color: Colors.white),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteReceiptFromEntry(WeekEarning entry, String receiptId) async {
+    final nextReceipts = entry.fuelReceipts.where((r) => r.id != receiptId).toList();
+    final nextEntry = entry.copyWith(fuelReceipts: nextReceipts);
+    setState(() {
+      final nextList = [..._entries]
+        ..removeWhere((e) => e.id == nextEntry.id || isSameDate(e.weekStart, nextEntry.weekStart))
+        ..add(nextEntry)
+        ..sort((a, b) => b.weekStart.compareTo(a.weekStart));
+      _setEntries(nextList);
+    });
+    await _persist();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _quickAddFuel,
+        backgroundColor: _gold,
+        foregroundColor: Colors.black,
+        icon: const Icon(Icons.local_gas_station_rounded),
+        label: Text(
+          S.quickAddFuel,
+          style: GoogleFonts.dmSans(fontWeight: FontWeight.w800),
+        ),
+      ),
       appBar: AppBar(
         backgroundColor: Colors.black,
         surfaceTintColor: Colors.transparent,
@@ -598,9 +853,46 @@ class _EarningsScreenState extends State<EarningsScreen> {
       SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: _DriverNameRow(
-            name: _driverName,
-            onTap: _editDriverName,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: _DriverNameRow(
+                  name: _driverName,
+                  onTap: _editDriverName,
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () async {
+                  final prefs = await _getPrefs();
+                  if (!mounted) return;
+                  await showDriverModeDialog(context, prefs, () {
+                    if (mounted) setState(() {});
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E1E),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: Text(
+                    S.driverModeLabel(activeDriverMode == DriverMode.paired),
+                    style: GoogleFonts.dmSans(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white70),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          child: _FreeWeekProgressCard(
+            lifetimeTrips: _cachedLifetimeTrips,
           ),
         ),
       ),
@@ -679,6 +971,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
             child: _BreakdownCard(
               entry: entry,
+              onDeleteReceipt: (receiptId) => _deleteReceiptFromEntry(entry, receiptId),
               // Break-even uses THIS week's own fuel + rental, never a
               // historical average — consistent with the live entry-form
               // preview and every other fuel figure in the app.
@@ -2138,13 +2431,14 @@ class _IconOnlyButton extends StatelessWidget {
 }
 
 class _BreakdownCard extends StatelessWidget {
-  const _BreakdownCard({required this.entry, this.breakEven});
+  const _BreakdownCard({required this.entry, this.breakEven, this.onDeleteReceipt});
 
   final WeekEarning entry;
 
   /// Break-even net-income threshold for this week. When [entry.netIncome] is
   /// below it, an informational (non-blocking) amber note is shown.
   final double? breakEven;
+  final ValueChanged<String>? onDeleteReceipt;
 
   @override
   Widget build(BuildContext context) {
@@ -2174,10 +2468,21 @@ class _BreakdownCard extends StatelessWidget {
           _line(S.netIncome, entry.netIncome, income: true, bold: true),
           const SizedBox(height: 6),
           _line(S.rental, -entry.rentalFee),
+          if (entry.driverMode == DriverMode.paired)
+            Padding(
+              padding: const EdgeInsets.only(left: 12, bottom: 4),
+              child: Text(
+                S.pairedCarTotalSubtitle(formatPln(entry.totalCarRentalFee)),
+                style: GoogleFonts.dmSans(fontSize: 11, color: Colors.white38, fontStyle: FontStyle.italic),
+              ),
+            ),
           _line(S.adminCost, -ADMINISTRATIVE_COST),
-          _line(S.fuelDiscounted, -entry.fuelAfterDiscount),
+          if (entry.fuelReceipts.isEmpty)
+            _line(S.fuelDiscounted, -entry.fuelAfterDiscount)
+          else
+            _buildFuelReceiptsBreakdown(),
           _line(S.vat, -entry.vat),
-          _line(S.commission, -entry.commission),
+          _line(S.settlementFee, -entry.settlementFee),
           _divider(),
           Row(
             children: [
@@ -2235,6 +2540,117 @@ class _BreakdownCard extends StatelessWidget {
             const SizedBox(height: 14),
             _WarningChip(text: S.belowBreakEven),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFuelReceiptsBreakdown() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161616),
+        border: Border.all(color: Colors.white12),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            S.fuelReceiptsTitle,
+            style: GoogleFonts.dmSans(
+              color: Colors.white70,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (int i = 0; i < entry.fuelReceipts.length; i++) ...[
+            Dismissible(
+              key: ValueKey(entry.fuelReceipts[i].id),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 8),
+                color: _crimson.withValues(alpha: 0.2),
+                child: const Icon(Icons.delete_outline_rounded, color: _crimson, size: 18),
+              ),
+              onDismissed: (_) {
+                onDeleteReceipt?.call(entry.fuelReceipts[i].id);
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Text(
+                      '  ${i + 1}. ',
+                      style: GoogleFonts.dmSans(
+                        color: _gold,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        '${S.formatReceiptTimestamp(entry.fuelReceipts[i].timestamp)} — ${formatPln(entry.fuelReceipts[i].amountPaid)} PLN',
+                        style: GoogleFonts.dmSans(color: Colors.white, fontSize: 13),
+                      ),
+                    ),
+                    if (onDeleteReceipt != null)
+                      GestureDetector(
+                        onTap: () => onDeleteReceipt?.call(entry.fuelReceipts[i].id),
+                        child: const Padding(
+                          padding: EdgeInsets.only(left: 8),
+                          child: Icon(Icons.delete_outline_rounded, color: Colors.white38, size: 16),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 6),
+            child: Divider(color: Colors.white24, height: 1),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                S.totalPumpPaid,
+                style: GoogleFonts.dmSans(color: Colors.white70, fontSize: 12),
+              ),
+              Text(
+                '${formatPln(entry.fuelPumpPaidTotal)} PLN',
+                style: GoogleFonts.dmSans(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                S.totalFuelDiscounted,
+                style: GoogleFonts.dmSans(color: Colors.white70, fontSize: 12),
+              ),
+              Text(
+                '-${formatPln(entry.fuelAfterDiscount)} PLN',
+                style: GoogleFonts.dmSans(
+                  color: _crimson,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -2400,11 +2816,13 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
   late final TextEditingController _hoursCtrl;
   late final TextEditingController _minutesCtrl;
   late final TextEditingController _tripsCtrl;
-  late final TextEditingController _fuelCtrl;
+  late final TextEditingController _acceptanceRateCtrl;
+  late final TextEditingController _cancellationRateCtrl;
+  late final ValueNotifier<List<FuelReceipt>> _fuelReceiptsNotifier;
+  List<FuelReceipt> get _fuelReceipts => _fuelReceiptsNotifier.value;
+  DriverMode get _formDriverMode => widget.existing?.driverMode ?? activeDriverMode;
 
-  /// Whether the rental discount applies. When on, the fee is derived from
-  /// [RENTAL_TIERS] live off the trip count alone.
-  bool _rentalDiscountEnabled = false;
+  double get _fuelPumpTotal => _fuelReceipts.fold(0.0, (sum, r) => sum + r.amountPaid);
 
   /// Set after a failed save when online time (hours + minutes) is missing;
   /// drives the inline "eksik veri" indicator under the online-time row.
@@ -2423,17 +2841,27 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       text: e != null ? '${((hours - hours.truncate()) * 60).round()}' : '',
     );
     _tripsCtrl = TextEditingController(text: e != null ? '${e.tripCount}' : '');
-    _fuelCtrl = TextEditingController(text: e != null ? _num(e.fuelPumpPaid) : '');
-    _rentalDiscountEnabled = e?.rentalDiscountEnabled ?? false;
+    _acceptanceRateCtrl = TextEditingController(
+      text: e?.acceptanceRateReported != null ? _num(e!.acceptanceRateReported!) : '',
+    );
+    _cancellationRateCtrl = TextEditingController(
+      text: e?.cancellationRateReported != null ? _num(e!.cancellationRateReported!) : '',
+    );
+    final initialReceipts = List<FuelReceipt>.from(e?.fuelReceipts ?? []);
+    if (initialReceipts.isEmpty && e != null && e.fuelPumpPaidTotal > 0) {
+      initialReceipts.add(FuelReceipt(timestamp: e.weekStart, amountPaid: e.fuelPumpPaidTotal));
+    }
+    _fuelReceiptsNotifier = ValueNotifier<List<FuelReceipt>>(initialReceipts);
 
     // Any field feeding the live preview triggers a rebuild (net income drives
-    // VAT + commission; trips drive the computed rental fee).
+    // VAT; trips and rates drive the computed rental fee).
     for (final c in [
       _netIncomeCtrl,
       _hoursCtrl,
       _minutesCtrl,
       _tripsCtrl,
-      _fuelCtrl,
+      _acceptanceRateCtrl,
+      _cancellationRateCtrl,
       _cashCtrl,
     ]) {
       c.addListener(_onPreviewChanged);
@@ -2468,6 +2896,14 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
     return v < 0 ? 0 : v;
   }
 
+  double? _parseNullable(TextEditingController c) {
+    final t = c.text.trim().replaceAll(' ', '').replaceAll('.', '').replaceAll(',', '.');
+    if (t.isEmpty) return null;
+    final v = double.tryParse(t);
+    if (v == null) return null;
+    return v < 0 ? 0 : v;
+  }
+
   /// Parses an integer field, clamping negatives to 0 (e.g. trip count).
   int _parseInt(TextEditingController c) {
     final v = int.tryParse(c.text.trim()) ?? 0;
@@ -2481,7 +2917,8 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       _hoursCtrl,
       _minutesCtrl,
       _tripsCtrl,
-      _fuelCtrl,
+      _acceptanceRateCtrl,
+      _cancellationRateCtrl,
       _cashCtrl,
     ]) {
       c.removeListener(_onPreviewChanged);
@@ -2491,7 +2928,9 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
     _hoursCtrl.dispose();
     _minutesCtrl.dispose();
     _tripsCtrl.dispose();
-    _fuelCtrl.dispose();
+    _acceptanceRateCtrl.dispose();
+    _cancellationRateCtrl.dispose();
+    _fuelReceiptsNotifier.dispose();
     super.dispose();
   }
 
@@ -2512,18 +2951,25 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       id: existing?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
       weekStart: widget.weekStart,
       weekEnd: widget.weekEnd,
+      driverMode: _formDriverMode,
       netIncome: _parse(_netIncomeCtrl),
       cashReceived: _parse(_cashCtrl),
       onlineHours: hours,
       tripCount: _parseInt(_tripsCtrl),
-      rentalDiscountEnabled: _rentalDiscountEnabled,
-      fuelPumpPaid: _parse(_fuelCtrl),
+      acceptanceRateReported: _parseNullable(_acceptanceRateCtrl),
+      cancellationRateReported: _parseNullable(_cancellationRateCtrl),
+      fuelReceipts: _fuelReceipts,
     );
     Navigator.of(context).pop(entry);
   }
 
-  /// Rental tier bracket for the currently entered trip count.
-  RentalTier _rentalTier() => expectedRentalTier(_parseInt(_tripsCtrl));
+  /// Rental tier bracket for the currently entered trip count and reported rates.
+  RentalTier _rentalTier() => expectedRentalTier(
+        _parseInt(_tripsCtrl),
+        _parseNullable(_acceptanceRateCtrl),
+        _parseNullable(_cancellationRateCtrl),
+        _formDriverMode == DriverMode.paired ? RENTAL_TIERS_PAIRED : RENTAL_TIERS,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -2533,12 +2979,14 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       id: 'preview',
       weekStart: widget.weekStart,
       weekEnd: widget.weekEnd,
+      driverMode: _formDriverMode,
       netIncome: _parse(_netIncomeCtrl),
       cashReceived: _parse(_cashCtrl),
       onlineHours: onlineHoursFromHm(_parseInt(_hoursCtrl), _parseInt(_minutesCtrl)),
       tripCount: _parseInt(_tripsCtrl),
-      rentalDiscountEnabled: _rentalDiscountEnabled,
-      fuelPumpPaid: _parse(_fuelCtrl),
+      acceptanceRateReported: _parseNullable(_acceptanceRateCtrl),
+      cancellationRateReported: _parseNullable(_cancellationRateCtrl),
+      fuelReceipts: _fuelReceipts,
     );
     final warnings = preview.warnings;
 
@@ -2586,25 +3034,16 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                   positive: true,
                   helper: S.netIncomeHint),
               _breakEvenReference(),
-              _RentalToggle(
-                enabled: _rentalDiscountEnabled,
-                onChanged: (v) {
-                  HapticFeedback.selectionClick();
-                  setState(() => _rentalDiscountEnabled = v);
-                },
-              ),
+              _numField(_tripsCtrl, S.tripCountLabel,
+                  integer: true, required: true, positive: true,
+                  helper: _formDriverMode == DriverMode.paired ? S.pairedTripsHint : null),
+              _numField(_acceptanceRateCtrl, S.acceptanceRateReported,
+                  suffix: '%', required: true, positive: false, maxVal: 100.0, helper: S.acceptanceRateHint),
+              _numField(_cancellationRateCtrl, S.cancellationRateReported,
+                  suffix: '%', required: true, positive: false, maxVal: 100.0, helper: S.cancellationRateHint),
               _computedRentalDisplay(),
               const SizedBox(height: 12),
-              _numField(
-                _fuelCtrl,
-                S.fuelPumpPaid,
-                suffix: 'PLN',
-                helper: _parse(_fuelCtrl) > 0
-                    ? S.fuelRealCostPreview(
-                        formatPln(computeFuelAfterDiscount(_parse(_fuelCtrl))),
-                      )
-                    : null,
-              ),
+              _buildFuelReceiptsSection(),
               _numField(_cashCtrl, S.cashReceived, suffix: 'PLN'),
               _label(S.onlineTime),
               Row(
@@ -2621,8 +3060,6 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                 ],
               ),
               if (_onlineTimeMissing) _inlineError(S.onlineTimeMissing),
-              _numField(_tripsCtrl, S.tripCountLabel,
-                  integer: true, required: true, positive: true),
               if (warnings.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 _WarningList(warnings: warnings),
@@ -2681,17 +3118,250 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
         ),
       );
 
-  /// Current live rental fee for the entered trips + toggle state (mirrors
+  Future<void> _addReceiptInline() async {
+    final ctrl = TextEditingController();
+    final added = await showDialog<double>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            S.quickAddFuelTitle,
+            style: GoogleFonts.dmSans(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          content: TextField(
+            controller: ctrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: GoogleFonts.dmSans(color: Colors.white, fontSize: 18),
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: S.amountPaidLabel,
+              labelStyle: GoogleFonts.dmSans(color: Colors.white54),
+              suffixText: 'PLN',
+              suffixStyle: GoogleFonts.dmSans(color: _gold),
+              enabledBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white24),
+              ),
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: _gold),
+              ),
+            ),
+            onSubmitted: (_) {
+              final val = double.tryParse(ctrl.text.replaceAll(',', '.').trim());
+              if (val != null && val > 0) {
+                Navigator.of(ctx).pop(val);
+              }
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(
+                S.cancel,
+                style: GoogleFonts.dmSans(color: Colors.white54),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _gold,
+                foregroundColor: Colors.black,
+              ),
+              onPressed: () {
+                final val = double.tryParse(ctrl.text.replaceAll(',', '.').trim());
+                if (val != null && val > 0) {
+                  Navigator.of(ctx).pop(val);
+                }
+              },
+              child: Text(
+                S.add,
+                style: GoogleFonts.dmSans(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (added == null || added <= 0 || !mounted) return;
+    _fuelReceiptsNotifier.value = [
+      ..._fuelReceiptsNotifier.value,
+      FuelReceipt(timestamp: DateTime.now(), amountPaid: added),
+    ];
+  }
+
+  Widget _buildFuelReceiptsSection() {
+    return ValueListenableBuilder<List<FuelReceipt>>(
+      valueListenable: _fuelReceiptsNotifier,
+      builder: (context, receipts, _) {
+        final totalPaid = receipts.fold(0.0, (sum, r) => sum + r.amountPaid);
+        final discounted = computeFuelAfterDiscount(totalPaid);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _label(S.fuelReceiptsTitle),
+                TextButton.icon(
+                  onPressed: _addReceiptInline,
+                  icon: const Icon(Icons.add_rounded, size: 18, color: _gold),
+                  label: Text(
+                    S.addReceipt,
+                    style: GoogleFonts.dmSans(
+                      color: _gold,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (receipts.isEmpty)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF161616),
+                  border: Border.all(color: Colors.white12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  S.noFuelReceipts,
+                  style: GoogleFonts.dmSans(color: Colors.white54, fontSize: 13),
+                ),
+              )
+            else ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF161616),
+                  border: Border.all(color: Colors.white12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    for (int i = 0; i < receipts.length; i++) ...[
+                      if (i > 0) const Divider(color: Colors.white10, height: 1),
+                      Dismissible(
+                        key: ValueKey(receipts[i].id),
+                        direction: DismissDirection.endToStart,
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: 16),
+                          color: _crimson.withValues(alpha: 0.2),
+                          child: const Icon(Icons.delete_outline_rounded, color: _crimson),
+                        ),
+                        onDismissed: (_) {
+                          final item = receipts[i];
+                          _fuelReceiptsNotifier.value = _fuelReceiptsNotifier.value
+                              .where((r) => r.id != item.id)
+                              .toList();
+                        },
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                          leading: CircleAvatar(
+                            radius: 13,
+                            backgroundColor: _gold.withValues(alpha: 0.15),
+                            child: Text(
+                              '${i + 1}',
+                              style: GoogleFonts.dmSans(
+                                color: _gold,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          title: Text(
+                            '${formatPln(receipts[i].amountPaid)} PLN',
+                            style: GoogleFonts.dmSans(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                          subtitle: Text(
+                            S.formatReceiptTimestamp(receipts[i].timestamp),
+                            style: GoogleFonts.dmSans(color: Colors.white54, fontSize: 12),
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline_rounded, color: Colors.white38, size: 20),
+                            onPressed: () {
+                              final item = receipts[i];
+                              _fuelReceiptsNotifier.value = _fuelReceiptsNotifier.value
+                                  .where((r) => r.id != item.id)
+                                  .toList();
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                    const Divider(color: Colors.white24, height: 1),
+                    Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                S.totalPumpPaid,
+                                style: GoogleFonts.dmSans(color: Colors.white70, fontSize: 13),
+                              ),
+                              Text(
+                                '${formatPln(totalPaid)} PLN',
+                                style: GoogleFonts.dmSans(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                S.totalFuelDiscounted,
+                                style: GoogleFonts.dmSans(color: _emerald, fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                              Text(
+                                '${formatPln(discounted)} PLN',
+                                style: GoogleFonts.dmSans(
+                                  color: _emerald,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  /// Current live rental fee for the entered trips and rates (mirrors
   /// [WeekEarning.rentalFee]).
-  double _currentRentalFee() =>
-      _rentalDiscountEnabled ? expectedRentalFee(_parseInt(_tripsCtrl)) : 850.0;
+  double _currentRentalFee() => _rentalTier().fee;
 
   /// Real, post-discount fuel cost for the amount currently typed in the pump
   /// field. Empty/unparsed input reads as 0 (matching the other live previews),
   /// so the break-even simply reflects the fixed costs so far and rises the
   /// instant fuel is entered.
   double _currentFuelAfterDiscount() =>
-      computeFuelAfterDiscount(_parse(_fuelCtrl));
+      computeFuelAfterDiscount(_fuelPumpTotal);
 
   /// Subtle, live break-even reference under the Net Gelir field. Reads the LIVE
   /// pump-paid field (× 0.90 discount) plus the rental toggle / trip count, so
@@ -2725,14 +3395,11 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
     );
   }
 
-  /// Read-only, formula-driven rental fee. Rental is always charged: with the
-  /// discount on the fee follows the trip-count tier; with it off it is the flat
-  /// 850 PLN base rate. Recomputes live; there is no manual override.
+  /// Read-only, formula-driven rental fee. Recomputes live from trip count,
+  /// acceptance rate, and cancellation rate; there is no manual override.
   Widget _computedRentalDisplay() {
     final tier = _rentalTier();
-    final label = _rentalDiscountEnabled
-        ? S.rentalComputed(rentalTierRangeLabel(tier), formatPln(tier.fee))
-        : S.rentalComputedFlat(formatPln(850));
+    final label = S.rentalComputed(rentalTierRangeLabel(tier), formatPln(tier.fee));
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -2791,6 +3458,8 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
     final parsed = double.tryParse(t);
     if (positive) {
       if (parsed == null || parsed <= 0) return S.enterValidAmount;
+    } else if (required) {
+      if (parsed == null || parsed < 0) return S.enterValidAmount;
     }
     if (parsed != null && parsed > maxVal) {
       return S.enterValidAmount;
@@ -3019,55 +3688,84 @@ class _ReminderSettingsSheetState extends State<_ReminderSettingsSheet> {
   }
 }
 
-/// Large, driving-friendly on/off switch for "Kira İndirimi Var mı?".
-class _RentalToggle extends StatelessWidget {
-  const _RentalToggle({required this.enabled, required this.onChanged});
+class _FreeWeekProgressCard extends StatelessWidget {
+  const _FreeWeekProgressCard({required this.lifetimeTrips});
 
-  final bool enabled;
-  final ValueChanged<bool> onChanged;
+  final int lifetimeTrips;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: GestureDetector(
-        onTap: () => onChanged(!enabled),
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: _cardColor,
-            border: Border.all(
-              color: enabled ? _emerald : const Color(0x0DFFFFFF),
-              width: enabled ? 1.5 : 1,
-            ),
-            borderRadius: _cardRadius,
-          ),
-          child: Row(
+    final progress = calculateCurrentFreeWeekProgress(lifetimeTrips);
+    final earned = calculateFreeWeeksEarned(lifetimeTrips);
+    final frac = (progress / kFreeWeekTripThreshold).clamp(0.0, 1.0);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _cardColor,
+        border: _cardBorder,
+        borderRadius: _cardRadius,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
+              const Icon(Icons.card_giftcard_rounded, size: 18, color: _gold),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  S.rentalDiscountToggle,
+                  S.freeWeekProgress(progress, kFreeWeekTripThreshold),
                   style: GoogleFonts.dmSans(
-                    fontSize: 16,
+                    fontSize: 14,
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
-              Switch(
-                value: enabled,
-                onChanged: onChanged,
-                activeThumbColor: Colors.white,
-                activeTrackColor: _emerald,
-                inactiveThumbColor: Colors.white70,
-                inactiveTrackColor: const Color(0x22FFFFFF),
-              ),
             ],
           ),
-        ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: frac,
+              backgroundColor: const Color(0xFF2A2A2A),
+              valueColor: const AlwaysStoppedAnimation<Color>(_gold),
+              minHeight: 6,
+            ),
+          ),
+          if (earned > 0) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: _gold.withValues(alpha: 0.15),
+                border: Border.all(color: _gold.withValues(alpha: 0.5), width: 1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Expanded(
+                    child: Text(
+                      earned > 1
+                          ? S.freeWeekRewardBadgeCount(earned)
+                          : S.freeWeekRewardBadge,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: _gold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
 }
+

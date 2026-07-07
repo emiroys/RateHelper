@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'crash_logger.dart';
+import 'earnings_models.dart';
 import 'earnings_screen.dart';
 import 'env.dart';
 import 'l10n.dart';
@@ -23,6 +24,48 @@ import 'onboarding_screen.dart';
 import 'overlay_sync.dart';
 import 'overlay_widget.dart';
 import 'radar_screen.dart';
+
+enum TripGoal {
+  tier0(soloMinTrips: 0, pairedMinTrips: 0, requiredAcceptRate: null),
+  tier1(soloMinTrips: 100, pairedMinTrips: 120, requiredAcceptRate: 80),
+  tier2(soloMinTrips: 150, pairedMinTrips: 170, requiredAcceptRate: 70),
+  tier3(soloMinTrips: 200, pairedMinTrips: 220, requiredAcceptRate: 60),
+  tier4(soloMinTrips: 250, pairedMinTrips: 270, requiredAcceptRate: 50);
+
+  const TripGoal({
+    required this.soloMinTrips,
+    required this.pairedMinTrips,
+    required this.requiredAcceptRate,
+  });
+
+  final int soloMinTrips;
+  final int pairedMinTrips;
+  final double? requiredAcceptRate;
+
+  int get minTrips => activeDriverMode == DriverMode.paired ? pairedMinTrips : soloMinTrips;
+}
+
+const double AMBER_BUFFER = 2.0;
+const double kAmberBuffer = AMBER_BUFFER;
+
+int? calculateNeededForRecovery({
+  required int acceptedRequests,
+  required int rejectedRequests,
+  required double? requiredAcceptRate,
+}) {
+  if (requiredAcceptRate == null) return null;
+  final total = acceptedRequests + rejectedRequests;
+  final currentRate = total == 0 ? 100.0 : (acceptedRequests / total) * 100.0;
+  if (currentRate > requiredAcceptRate) return null;
+
+  final r = requiredAcceptRate / 100.0;
+  final val = (r * rejectedRequests - (1 - r) * acceptedRequests) / (1 - r);
+  int n = val.floor() + 1;
+  while (((acceptedRequests + n) / (total + n)) * 100.0 <= requiredAcceptRate) {
+    n++;
+  }
+  return math.max(1, n);
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -38,6 +81,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _keyCanceled = 'canceledTrips';
   static const _keyAutoComplete = 'autoCompleteTrips';
   static const _keySteeringWheel = 'steeringWheelEnabled';
+  static const _keyTripGoal = 'trip_goal_tier';
   static const _kSysChannel = MethodChannel('com.ratehelper.app/system');
   static const _keyLastReset = 'lastResetTimestamp';
   static const _keyArchive = 'weekly_archive';
@@ -80,6 +124,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int canceledTrips = 0;
   bool _autoCompleteTrips = false;
   bool _steeringWheelEnabled = false;
+  TripGoal _selectedGoal = TripGoal.tier1;
 
   int? _prevAccepted;
   int? _prevRejected;
@@ -113,13 +158,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   double get cancellationRate =>
       totalAcceptedTrips == 0 ? 0.0 : (canceledTrips / totalAcceptedTrips) * 100;
 
-  int? get neededForRecovery {
-    if (acceptanceRate > 80.0) return null;
-    return math.max(1, 4 * rejectedRequests - acceptedRequests + 1);
-  }
+  int? get neededForRecovery => calculateNeededForRecovery(
+        acceptedRequests: acceptedRequests,
+        rejectedRequests: rejectedRequests,
+        requiredAcceptRate: _selectedGoal.requiredAcceptRate,
+      );
 
-  Color get _acceptRateColor =>
-      acceptanceRate > 80.0 ? _emerald : _crimson;
+  Color get _acceptRateColor {
+    final req = _selectedGoal.requiredAcceptRate;
+    if (req == null) return _emerald;
+    if (acceptanceRate < req) return _crimson;
+    if (acceptanceRate < req + AMBER_BUFFER) return _amber;
+    return _emerald;
+  }
 
   Future<SharedPreferences> _getPrefs() async {
     _prefs ??= await SharedPreferences.getInstance();
@@ -476,11 +527,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         lastResetMs,
       );
 
+      final goalStr = prefs.getString(_keyTripGoal);
+      final loadedGoal = goalStr != null
+          ? TripGoal.values.firstWhere(
+              (g) => g.name == goalStr,
+              orElse: () => TripGoal.tier1,
+            )
+          : TripGoal.tier1;
+
+      final modeStr = prefs.getString(DriverMode.key);
+      activeDriverMode = modeStr == 'paired' ? DriverMode.paired : DriverMode.solo;
+
+      if (prefs.getBool(DriverMode.askedKey) != true) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && prefs.getBool(DriverMode.askedKey) != true) {
+            showDriverModeDialog(context, prefs, () {
+              if (mounted) setState(() {});
+            });
+          }
+        });
+      }
+
       if (lastReset.isBefore(resetBoundary)) {
         await _performReset(prefs, resetBoundary);
+        if (mounted) {
+          setState(() {
+            _selectedGoal = loadedGoal;
+          });
+        }
       } else {
         if (!mounted) return;
         setState(() {
+          _selectedGoal = loadedGoal;
           acceptedRequests = prefs.getInt(_keyAccepted) ?? 0;
           rejectedRequests = prefs.getInt(_keyRejected) ?? 0;
           completedTrips = prefs.getInt(_keyCompleted) ?? 0;
@@ -494,6 +572,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } finally {
       _isLoadingOrResetting = false;
     }
+  }
+
+  Future<void> _setTripGoal(TripGoal goal) async {
+    if (_selectedGoal == goal) return;
+    setState(() {
+      _selectedGoal = goal;
+    });
+    final prefs = await _getPrefs();
+    await prefs.setString(_keyTripGoal, goal.name);
+    unawaited(OverlaySync.notifyCountersChanged());
   }
 
   Future<void> _performReset(SharedPreferences prefs, [tz.TZDateTime? boundary]) async {
@@ -1100,6 +1188,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 );
               } else if (v == 'crash') {
                 _showCrashLog();
+              } else if (v == 'driver_mode') {
+                _getPrefs().then((p) {
+                  if (!context.mounted) return;
+                  showDriverModeDialog(context, p, () {
+                    if (mounted) setState(() {});
+                  });
+                });
               }
             },
             itemBuilder: (_) => [
@@ -1114,6 +1209,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 value: 'crash',
                 child: Text(
                   S.crashLogTitle,
+                  style: GoogleFonts.dmSans(color: Colors.white),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'driver_mode',
+                child: Text(
+                  S.driverModeLabel(activeDriverMode == DriverMode.paired),
                   style: GoogleFonts.dmSans(color: Colors.white),
                 ),
               ),
@@ -1137,6 +1239,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+              _buildTripGoalSelectorChip(),
+              const SizedBox(height: 12),
               SizedBox(
                 height: 110,
                 child: Row(
@@ -1178,7 +1282,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          S.recovery(recovery),
+                          S.recovery(recovery, _selectedGoal.requiredAcceptRate!),
+                          style: GoogleFonts.dmSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _amber,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else if (_selectedGoal.requiredAcceptRate != null &&
+                  acceptanceRate >= _selectedGoal.requiredAcceptRate! &&
+                  acceptanceRate < _selectedGoal.requiredAcceptRate! + AMBER_BUFFER) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: _cardColor,
+                    border: _cardBorder,
+                    borderRadius: _cardRadius,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.shield_outlined, color: _amber, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          S.safeButClose,
                           style: GoogleFonts.dmSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -1387,10 +1520,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _openEarnings() {
-    Navigator.of(context).push(
+  Future<void> _openEarnings() async {
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const EarningsScreen()),
     );
+    if (mounted) setState(() {});
   }
 
   Widget _buildDesignerSignature() {
@@ -1427,6 +1561,101 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTripGoalSelectorChip() {
+    return GestureDetector(
+      onTap: _showTripGoalSelector,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: _cardColor,
+          border: _cardBorder,
+          borderRadius: _cardRadius,
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.flag_rounded, color: _amber, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                S.tripGoalChip(_selectedGoal.minTrips, _selectedGoal.requiredAcceptRate),
+                style: GoogleFonts.dmSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            const Icon(Icons.expand_more_rounded, color: Colors.white54, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showTripGoalSelector() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF161616),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Text(
+                    S.tripGoalTitle,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                for (final goal in TripGoal.values) ...[
+                  ListTile(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    selected: _selectedGoal == goal,
+                    selectedTileColor: const Color(0xFF242424),
+                    leading: Icon(
+                      Icons.outlined_flag_rounded,
+                      color: _selectedGoal == goal ? _amber : Colors.white54,
+                    ),
+                    title: Text(
+                      S.tripGoalOption(goal.minTrips, goal.requiredAcceptRate),
+                      style: GoogleFonts.dmSans(
+                        fontSize: 14,
+                        fontWeight: _selectedGoal == goal ? FontWeight.w800 : FontWeight.w500,
+                        color: _selectedGoal == goal ? Colors.white : Colors.white70,
+                      ),
+                    ),
+                    trailing: _selectedGoal == goal
+                        ? Icon(Icons.check_circle_rounded, color: _amber, size: 20)
+                        : null,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _setTripGoal(goal);
+                    },
+                  ),
+                  const SizedBox(height: 4),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rate_helper/home_screen.dart';
 import 'package:rate_helper/l10n.dart';
 
 // Pure logic extracted for testing — mirrors _HomeScreenState getters and helpers.
@@ -218,6 +219,89 @@ void main() {
       S.setLang(AppLang.pl);
       expect(S.formatPercent('100'), '100%');
       expect(S.formatPercent('85.5'), '85.5%');
+    });
+  });
+
+  group('calculateNeededForRecovery across TripGoal tiers', () {
+    test('tier0 (no requirement) returns null', () {
+      expect(
+        calculateNeededForRecovery(
+          acceptedRequests: 50,
+          rejectedRequests: 50,
+          requiredAcceptRate: TripGoal.tier0.requiredAcceptRate,
+        ),
+        isNull,
+      );
+    });
+
+    test('tier1 (80% requirement)', () {
+      final needed = calculateNeededForRecovery(
+        acceptedRequests: 70,
+        rejectedRequests: 30,
+        requiredAcceptRate: TripGoal.tier1.requiredAcceptRate,
+      );
+      expect(needed, 51);
+      expect(acceptanceRate(70 + 51, 30), greaterThan(80.0));
+      expect(acceptanceRate(70 + 50, 30), lessThanOrEqualTo(80.0));
+
+      expect(
+        calculateNeededForRecovery(
+          acceptedRequests: 85,
+          rejectedRequests: 15,
+          requiredAcceptRate: TripGoal.tier1.requiredAcceptRate,
+        ),
+        isNull,
+      );
+    });
+
+    test('tier2 (70% requirement)', () {
+      final needed = calculateNeededForRecovery(
+        acceptedRequests: 60,
+        rejectedRequests: 40,
+        requiredAcceptRate: TripGoal.tier2.requiredAcceptRate,
+      );
+      expect(needed, isNotNull);
+      expect(acceptanceRate(60 + needed!, 40), greaterThan(70.0));
+      expect(acceptanceRate(60 + needed - 1, 40), lessThanOrEqualTo(70.0));
+    });
+
+    test('tier3 (60% requirement)', () {
+      final needed = calculateNeededForRecovery(
+        acceptedRequests: 50,
+        rejectedRequests: 50,
+        requiredAcceptRate: TripGoal.tier3.requiredAcceptRate,
+      );
+      expect(needed, isNotNull);
+      expect(acceptanceRate(50 + needed!, 50), greaterThan(60.0));
+      expect(acceptanceRate(50 + needed - 1, 50), lessThanOrEqualTo(60.0));
+    });
+
+    test('tier4 (50% requirement)', () {
+      final needed = calculateNeededForRecovery(
+        acceptedRequests: 40,
+        rejectedRequests: 60,
+        requiredAcceptRate: TripGoal.tier4.requiredAcceptRate,
+      );
+      expect(needed, isNotNull);
+      expect(acceptanceRate(40 + needed!, 60), greaterThan(50.0));
+      expect(acceptanceRate(40 + needed - 1, 60), lessThanOrEqualTo(50.0));
+    });
+  });
+
+  group('Acceptance rate 3-state coloring amber buffer', () {
+    test('AMBER_BUFFER constant is 2.0', () {
+      expect(AMBER_BUFFER, 2.0);
+    });
+
+    test('rate within 2.0 points of required rate is within amber zone', () {
+      const req = 70.0;
+      // Below required rate -> Red (< 70.0)
+      expect(69.9 < req, isTrue);
+      // Meets required rate and within 2.0 points -> Amber [70.0, 72.0)
+      expect(70.0 >= req && 70.0 < req + AMBER_BUFFER, isTrue);
+      expect(71.99 >= req && 71.99 < req + AMBER_BUFFER, isTrue);
+      // 2.0 points above required rate -> Green (>= 72.0)
+      expect(72.0 < req + AMBER_BUFFER, isFalse);
     });
   });
 }

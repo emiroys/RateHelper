@@ -34,6 +34,7 @@ class _OverlayWidgetState extends State<OverlayWidget> {
 
   static const _crimson = Color(0xFFEF4444);
   static const _emerald = Color(0xFF10B981);
+  static const _amber = Color(0xFFF59E0B);
   static const _pillBg = Color(0xE6161616);
   static const _pillBorder = Color(0x33FFFFFF);
 
@@ -49,6 +50,7 @@ class _OverlayWidgetState extends State<OverlayWidget> {
 
   int _accepted = 0;
   int _rejected = 0;
+  double? _requiredAcceptRate = 80.0;
 
   double get _acceptanceRate {
     final total = _accepted + _rejected;
@@ -56,8 +58,13 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     return (_accepted / total) * 100;
   }
 
-  Color get _acceptRateColor =>
-      _acceptanceRate > 80.0 ? _emerald : _crimson;
+  Color get _acceptRateColor {
+    final req = _requiredAcceptRate;
+    if (req == null) return _emerald;
+    if (_acceptanceRate < req) return _crimson;
+    if (_acceptanceRate < req + 2.0) return _amber;
+    return _emerald;
+  }
 
   String _formatAcceptRate(double rate) {
     if (_accepted == 0 && _rejected == 0) {
@@ -104,6 +111,15 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     }
   }
 
+  double? _parseReqRate(SharedPreferences prefs) {
+    final goalStr = prefs.getString('trip_goal_tier');
+    if (goalStr == 'tier0') return null;
+    if (goalStr == 'tier2') return 70.0;
+    if (goalStr == 'tier3') return 60.0;
+    if (goalStr == 'tier4') return 50.0;
+    return 80.0;
+  }
+
   Future<void> _loadCountsOnStartup() async {
     try {
       _prefs = null;
@@ -114,9 +130,11 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       _updateLang(prefs);
       final accepted = prefs.getInt(_keyAccepted) ?? 0;
       final rejected = prefs.getInt(_keyRejected) ?? 0;
+      final reqRate = _parseReqRate(prefs);
       setState(() {
         _accepted = accepted;
         _rejected = rejected;
+        _requiredAcceptRate = reqRate;
       });
     } catch (e, s) {
       loge('overlay startup load failed', name: 'overlay', error: e, stack: s);
@@ -138,10 +156,12 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       _updateLang(prefs);
       final accepted = prefs.getInt(_keyAccepted) ?? 0;
       final rejected = prefs.getInt(_keyRejected) ?? 0;
-      if (accepted == _accepted && rejected == _rejected) return;
+      final reqRate = _parseReqRate(prefs);
+      if (accepted == _accepted && rejected == _rejected && reqRate == _requiredAcceptRate) return;
       setState(() {
         _accepted = accepted;
         _rejected = rejected;
+        _requiredAcceptRate = reqRate;
       });
     } catch (e, s) {
       loge('overlay load failed', name: 'overlay', error: e, stack: s);

@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'earnings_models.dart';
 
 enum AppLang { tr, en, pl }
 
@@ -65,10 +66,86 @@ class S {
       _p('İptal Edilen Sayısı', 'Cancelled Rides', 'Anulowane przejazdy');
   static String get save => _p('KAYDET', 'SAVE', 'ZAPISZ');
 
-  static String recovery(int n) => _p(
-        'Oranı %80.00 üzerine çıkarmak için sıradaki $n isteği üst üste KABUL etmelisin.',
-        'To exceed 80.00%, ACCEPT the next $n requests in a row.',
-        'Aby przekroczyć 80.00%, zaakceptuj $n kolejnych zleceń z rzędu.',
+  static String recovery(int n, [double targetRate = 80.0]) {
+    final targetStr = targetRate == targetRate.roundToDouble()
+        ? targetRate.toStringAsFixed(0)
+        : targetRate.toStringAsFixed(1);
+    return _p(
+      'Oranı %$targetStr üzerine çıkarmak için sıradaki $n isteği üst üste KABUL etmelisin.',
+      'To exceed $targetStr%, ACCEPT the next $n requests in a row.',
+      'Aby przekroczyć $targetStr%, zaakceptuj $n kolejnych zleceń z rzędu.',
+    );
+  }
+
+  static String get safeButClose => _p(
+        'Güvende ama sınırda: Birkaç ret üst üste gelirse kademeyi kaybedebilirsin.',
+        'Safe but close: one bad string of rejects could drop you below requirement.',
+        'Bezpiecznie, ale blisko: seria odrzuceń może obniżyć stawkę poniżej wymogu.',
+      );
+
+  static String get tripGoalTitle => _p(
+        'Haftalık Yolculuk Hedefi',
+        'Weekly Trip Goal',
+        'Tygodniowy Cel Przejazdów',
+      );
+
+  static String tripGoalChip(int minTrips, double? reqRate) {
+    if (reqRate == null) {
+      final range0 = activeDriverMode == DriverMode.paired ? '0-119' : '0-99';
+      return _p(
+        'Hedef: $range0 yolculuk (Gereksinim Yok)',
+        'Goal: $range0 rides (No Req.)',
+        'Cel: $range0 przejazdów (Brak Wymag.)',
+      );
+    }
+    final topMin = activeDriverMode == DriverMode.paired ? 270 : 250;
+    final reqStr = reqRate.toStringAsFixed(0);
+    final rangeStr = minTrips >= topMin ? '$topMin+' : '$minTrips-${minTrips + 49}';
+    return _p(
+      'Hedef: $rangeStr yolculuk (Min. %$reqStr)',
+      'Goal: $rangeStr rides (Min. $reqStr%)',
+      'Cel: $rangeStr przejazdów (Min. $reqStr%)',
+    );
+  }
+
+  static String tripGoalOption(int minTrips, double? reqRate) {
+    if (reqRate == null) {
+      final range0 = activeDriverMode == DriverMode.paired ? '0-119' : '0-99';
+      return _p(
+        '$range0 yolculuk (Gereksinim Yok)',
+        '$range0 rides (No Requirement)',
+        '$range0 przejazdów (Brak Wymagań)',
+      );
+    }
+    final topMin = activeDriverMode == DriverMode.paired ? 270 : 250;
+    final reqStr = reqRate.toStringAsFixed(0);
+    final rangeStr = minTrips >= topMin ? '$topMin+' : '$minTrips-${minTrips + 49}';
+    return _p(
+      '$rangeStr yolculuk (Min. %$reqStr Kabul)',
+      '$rangeStr rides (Min. $reqStr% Accept)',
+      '$rangeStr przejazdów (Min. $reqStr% Akcept.)',
+    );
+  }
+
+  static String get driverModeDialogTitle => _p(
+        'Aracı paylaşıyor musun? 🚗',
+        'Do you share the car? 🚗',
+        'Dzielisz samochód z innym kierowcą? 🚗',
+      );
+  static String get driverModeSolo => _p('Tek Sürücü', 'Single Driver', 'Jeden kierowca');
+  static String get driverModePaired => _p('İki Sürücü (Paylaşımlı)', 'Two Drivers (Shared)', 'Dwóch kierowców (Dzielony)');
+  static String driverModeLabel(bool paired) => paired
+      ? _p('Sürüş Modu: İki Sürücü ✏️', 'Driving Mode: Two Drivers ✏️', 'Tryb jazdy: Dwóch kierowców ✏️')
+      : _p('Sürüş Modu: Tek Sürücü ✏️', 'Driving Mode: Single Driver ✏️', 'Tryb jazdy: Jeden kierowca ✏️');
+  static String get pairedTripsHint => _p(
+        'İki sürücü modunda: sen ve ortağının birlikte yaptığı toplam yolculuk sayısı',
+        'Two-driver mode: combined trips completed by you and your partner',
+        'Tryb dwóch kierowców: łączna liczba przejazdów wykonana przez Ciebie i partnera',
+      );
+  static String pairedCarTotalSubtitle(String fee) => _p(
+        'Araç toplamı: $fee PLN (2 sürücü arası paylaşılıyor)',
+        'Car total: $fee PLN (shared between 2 drivers)',
+        'Razem za auto: $fee PLN (dzielone na 2 kierowców)',
       );
 
   static String get resetWeek => _p('HAFTAYI SIFIRLA', 'RESET WEEK', 'RESETUJ TYDZIEŃ');
@@ -247,23 +324,46 @@ class S {
       );
   static String get cashReceived =>
       _p('Alınan Nakit', 'Cash Received', 'Otrzymana Gotówka');
-  static String get vat => _p('VAT (%11.5)', 'VAT (11.5%)', 'VAT (11,5%)');
-  static String get commission => _p('Komisyon', 'Commission', 'Prowizja');
-  static String get rental => _p('Kira', 'Rental', 'Wynajem');
-  static String get rentalDiscountToggle => _p(
-        'Kira İndirimi Var mı?',
-        'Rental discount?',
-        'Zniżka na wynajem?',
+  static String get vat => _p('VAT (%12)', 'VAT (12%)', 'VAT (12%)');
+  static String get settlementFee => _p(
+        'Hesap Kesim Ücreti (%3)',
+        'Settlement Fee (3%)',
+        'Opłata rozliczeniowa (3%)',
       );
+  static String get rental => _p('Kira', 'Rental', 'Wynajem');
   static String rentalComputed(String range, String value) => _p(
         'Kira (Kademe: $range): $value PLN',
         'Rental (Tier: $range): $value PLN',
         'Wynajem (Próg: $range): $value PLN',
       );
-  static String rentalComputedFlat(String value) => _p(
-        'Kira (İndirimsiz): $value PLN',
-        'Rental (No discount): $value PLN',
-        'Wynajem (Bez zniżki): $value PLN',
+  static String get acceptanceRateReported =>
+      _p('Kabul Oranı (%)', 'Acceptance Rate (%)', 'Wskaźnik akceptacji (%)');
+  static String get acceptanceRateHint => _p(
+        'Örn: %80 gereksinimi için 85',
+        'E.g. 85 for 80% requirement',
+        'Np. 85 dla wymogu 80%',
+      );
+  static String get cancellationRateReported =>
+      _p('İptal Oranı (%)', 'Cancellation Rate (%)', 'Wskaźnik anulowań (%)');
+  static String get cancellationRateHint => _p(
+        'Örn: %5 altı için 3 veya 2.5',
+        'E.g. 3 for <5% requirement',
+        'Np. 3 dla wymogu <5%',
+      );
+  static String freeWeekProgress(int current, int total) => _p(
+        'Ücretsiz Hafta İlerlemesi: $current / $total yolculuk',
+        'Free Week Progress: $current / $total trips',
+        'Postęp darmowego tygodnia: $current / $total przejazdów',
+      );
+  static String get freeWeekRewardBadge => _p(
+        '🎉 Ücretsiz hafta hakkın var!',
+        '🎉 You earned a free week!',
+        '🎉 Masz prawo do darmowego tygodnia!',
+      );
+  static String freeWeekRewardBadgeCount(int count) => _p(
+        '🎉 Ücretsiz hafta hakkın var! ($count adet)',
+        '🎉 You earned free week(s)! ($count)',
+        '🎉 Masz prawo do darmowego tygodnia! ($count)',
       );
   static String get adminCost =>
       _p('İdari Gider', 'Administrative Cost', 'Koszt Administracyjny');
@@ -479,9 +579,12 @@ class S {
       _p('Net Gelir', 'Net Income', 'Dochód netto');
   static String get pdfColRental => _p('Kira', 'Rental', 'Wynajem');
   static String get pdfColFuel => _p('Yakıt', 'Fuel', 'Paliwo');
-  static String get pdfColVat => _p('VAT', 'VAT', 'VAT');
-  static String get pdfColCommission =>
-      _p('Komisyon', 'Commission', 'Prowizja');
+  static String get pdfColVat => _p('VAT (%12)', 'VAT (12%)', 'VAT (12%)');
+  static String get pdfColSettlementFee => _p(
+        'Kesim Ücreti (%3)',
+        'Settlement (3%)',
+        'Rozliczenie (3%)',
+      );
   static String get pdfColNetProfit =>
       _p('Net Kâr', 'Net Profit', 'Zysk netto');
   static String get pdfColHourly =>
@@ -493,9 +596,9 @@ class S {
         'Całkowity dochód netto',
       );
   static String get pdfSummaryVat => _p(
-        'Toplam Ödenen VAT',
-        'Total VAT Paid',
-        'Całkowity zapłacony VAT',
+        'Toplam Ödenen VAT (%12)',
+        'Total VAT Paid (12%)',
+        'Całkowity zapłacony VAT (12%)',
       );
   static String get pdfSummaryNetProfit => _p(
         'Toplam Net Kâr',
@@ -509,6 +612,37 @@ class S {
         'Dostępna nowa wersja: $latest',
       );
   static String get updateDownload => _p('İndir', 'Download', 'Pobierz');
+
+  static String get add => _p('Ekle', 'Add', 'Dodaj');
+  static String get quickAddFuel => _p('Yakıt Ekle', 'Add Fuel', 'Dodaj paliwo');
+  static String get quickAddFuelTitle => _p('Hızlı Yakıt Ekle', 'Quick Add Fuel', 'Szybkie dodawanie paliwa');
+  static String fuelAddedConfirmation(String amount, int count) => _p(
+        'Yakıt eklendi: $amount PLN (Bu haftaki $count. alım)',
+        'Fuel added: $amount PLN ($count. purchase this week)',
+        'Dodano paliwo: $amount PLN ($count. zakup w tym tygodniu)',
+      );
+  static String get fuelReceiptsTitle => _p('Yakıt Alımları', 'Fuel Purchases', 'Zakupy paliwa');
+  static String get addReceipt => _p('+ Alım Ekle', '+ Add Receipt', '+ Dodaj zakup');
+  static String get noFuelReceipts => _p(
+        'Bu hafta henüz yakıt alımı eklenmedi.',
+        'No fuel receipts added for this week yet.',
+        'Nie dodano jeszcze zakupów paliwa w tym tygodniu.',
+      );
+  static String get totalPumpPaid => _p('Toplam (Pompada):', 'Total (At Pump):', 'Razem (na stacji):');
+  static String get totalFuelDiscounted => _p('Toplam (%10 İndirimli):', 'Total (10% Discounted):', 'Razem (10% zniżki):');
+  static String get amountPaidLabel => _p('Ödenen Tutar', 'Amount Paid', 'Zapłacona kwota');
+  static String formatReceiptTimestamp(DateTime dt) {
+    final weekdaysTr = ['Pzt', 'Sal', 'Çrş', 'Prş', 'Cum', 'Cmt', 'Paz'];
+    final weekdaysEn = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final weekdaysPl = ['Pn', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Nd'];
+    List<String> names = weekdaysTr;
+    if (_lang == AppLang.en) names = weekdaysEn;
+    if (_lang == AppLang.pl) names = weekdaysPl;
+    final dayName = names[(dt.weekday - 1) % 7];
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '$dayName, $h:$m';
+  }
 
   static List<String> get months {
     switch (_lang) {

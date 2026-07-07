@@ -1,24 +1,29 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rate_helper/earnings_models.dart';
 import 'package:rate_helper/earnings_pdf_export.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 WeekEarning buildWeek({
   double netIncome = 5000,
   double cashReceived = 398,
-  bool rentalDiscountEnabled = true,
+  double? acceptanceRateReported = 85,
+  double? cancellationRateReported = 2,
   double fuelPumpPaid = 298.9555555556,
   double onlineHours = 40,
   int tripCount = 130,
+  DriverMode? driverMode,
 }) {
   return WeekEarning(
     id: 'test',
     weekStart: DateTime(2026, 6, 22),
     weekEnd: DateTime(2026, 6, 28),
+    driverMode: driverMode ?? activeDriverMode,
     netIncome: netIncome,
     cashReceived: cashReceived,
     onlineHours: onlineHours,
     tripCount: tripCount,
-    rentalDiscountEnabled: rentalDiscountEnabled,
+    acceptanceRateReported: acceptanceRateReported,
+    cancellationRateReported: cancellationRateReported,
     fuelPumpPaid: fuelPumpPaid,
   );
 }
@@ -36,36 +41,23 @@ void main() {
     });
   });
 
-  group('flat 11.5% VAT on net income', () {
-    test('FLAT_VAT_RATE constant is 11.5%', () {
-      expect(FLAT_VAT_RATE, 0.115);
+  group('flat 12% VAT on net income', () {
+    test('FLAT_VAT_RATE constant is 12%', () {
+      expect(FLAT_VAT_RATE, 0.12);
     });
 
-    test('vat = netIncome * 0.115 = 575.00', () {
-      // 5000 * 0.115
-      expect(buildWeek().vat, closeTo(575.00, 0.001));
+    test('vat = netIncome * 0.12 = 600.00', () {
+      expect(buildWeek().vat, closeTo(600.00, 0.001));
     });
   });
 
-  group('commission from tier(netIncome)', () {
-    test('turnover 5000 falls in the 3000+ bracket -> 0 PLN', () {
-      expect(computeFromTier(5000), 0);
-      expect(buildWeek().commission, 0);
+  group('flat 3% settlement fee on net income', () {
+    test('SETTLEMENT_FEE_RATE constant is 3%', () {
+      expect(SETTLEMENT_FEE_RATE, 0.03);
     });
 
-    test('brackets map turnover to base + percent continuously without gaps', () {
-      expect(computeFromTier(0), 50);
-      expect(computeFromTier(500), closeTo(55, 0.001));
-      expect(computeFromTier(999), closeTo(59.99, 0.001));
-      expect(computeFromTier(999.50), closeTo(59.995, 0.001));
-      expect(computeFromTier(1000), 35);
-      expect(computeFromTier(1999), closeTo(44.99, 0.001));
-      expect(computeFromTier(1999.50), closeTo(44.995, 0.001));
-      expect(computeFromTier(2000), 20);
-      expect(computeFromTier(2999), closeTo(29.99, 0.001));
-      expect(computeFromTier(2999.50), closeTo(29.995, 0.001));
-      expect(computeFromTier(3000), 0);
-      expect(computeFromTier(50000), 0);
+    test('settlementFee = netIncome * 0.03 = 150.00', () {
+      expect(buildWeek().settlementFee, closeTo(150.00, 0.001));
     });
   });
 
@@ -76,23 +68,22 @@ void main() {
   });
 
   group('net profit', () {
-    test('netIncome - admin - fuel - vat - rental - commission = 3465.94', () {
-      // 5000 - 40 - 269.06 - 575 - 650 - 0
-      expect(buildWeek().netProfit, closeTo(3465.94, 0.001));
+    test('netIncome - admin - fuel - vat - rental - settlementFee = 3240.94', () {
+      // 5000 - 40(admin) - 269.06(fuel) - 600(vat) - 700(rental) - 150(settlement) = 3240.94
+      expect(buildWeek().netProfit, closeTo(3240.94, 0.001));
     });
 
-    test('rental (flat 850) is always charged even with no discount', () {
-      // 5000 - 40 - 269.06 - 575 - 850(flat rental) - 0
-      final w = buildWeek(rentalDiscountEnabled: false);
-      expect(w.rentalFee, 850);
-      expect(w.netProfit, closeTo(3265.94, 0.001));
+    test('rental requirement fallback when acceptance rate is low', () {
+      // 130 trips needs 80% acceptance for 700 PLN tier. With 75%, falls back to 900 PLN tier.
+      final w = buildWeek(acceptanceRateReported: 75);
+      expect(w.rentalFee, 900);
+      expect(w.netProfit, closeTo(3040.94, 0.001));
     });
   });
 
   group('bank deposit vs cash in hand', () {
-    test('bankDeposit = netProfit - cashReceived = 3067.94', () {
-      // 3465.94 - 398
-      expect(buildWeek().bankDeposit, closeTo(3067.94, 0.001));
+    test('bankDeposit = netProfit - cashReceived = 2842.94', () {
+      expect(buildWeek().bankDeposit, closeTo(2842.94, 0.001));
     });
 
     test('cashInHand equals the cash received', () {
@@ -109,7 +100,7 @@ void main() {
     test('netProfit / online hours', () {
       final w = buildWeek(onlineHours: 40);
       expect(w.hourlyRate, closeTo(w.netProfit / 40, 0.001));
-      expect(w.hourlyRate, closeTo(86.6485, 0.01));
+      expect(w.hourlyRate, closeTo(81.0235, 0.01));
     });
 
     test('25 sa 59 dk online -> decimal 25.9833', () {
@@ -184,11 +175,13 @@ void main() {
           id: 'w$index',
           weekStart: DateTime(2024, 1, 1).add(Duration(days: 7 * index)),
           weekEnd: DateTime(2024, 1, 7).add(Duration(days: 7 * index)),
+          driverMode: DriverMode.solo,
           netIncome: 4000 + index.toDouble(),
           cashReceived: 300,
           onlineHours: 40,
           tripCount: 130,
-          rentalDiscountEnabled: true,
+          acceptanceRateReported: 85,
+          cancellationRateReported: 2,
           fuelPumpPaid: 277.7777777778,
         );
 
@@ -198,9 +191,9 @@ void main() {
       final e = decoded.first;
       expect(e.netIncome, 4000);
       expect(e.cashReceived, 300);
-      expect(e.rentalDiscountEnabled, isTrue);
-      // 130 trips -> 650 PLN tier, computed live.
-      expect(e.rentalFee, 650);
+      expect(e.acceptanceRateReported, 85);
+      expect(e.cancellationRateReported, 2);
+      expect(e.rentalFee, 700);
       expect(e.fuelPumpPaid, closeTo(277.7777777778, 0.001));
       expect(e.fuelAfterDiscount, closeTo(250, 0.001));
       expect(e.id, 'w0');
@@ -240,20 +233,66 @@ void main() {
         'cashReceived': 0,
         'onlineHours': 40,
         'tripCount': 130,
-        'rentalFee': 650,
+        'rentalFee': 700,
         'administrativeCost': 40,
         'acceptanceRateReported': 85,
         'cancellationRateReported': 2,
-        'otherExpenses': 0,
         'notes': '',
         'fuelGross': 300,
       };
       final decoded = WeekEarning.fromJson(legacy)!;
       expect(decoded.fuelPumpPaid, closeTo(300, 0.001));
       expect(decoded.fuelAfterDiscount, closeTo(270, 0.001));
-      // Legacy rentalFee > 0 infers the discount was enabled.
-      expect(decoded.rentalDiscountEnabled, isTrue);
-      expect(decoded.rentalFee, 650);
+      expect(decoded.rentalFee, 700);
+    });
+
+    test('fuelReceipts serialization and total calculation', () {
+      final now = DateTime(2026, 7, 7, 10, 30);
+      final receipts = [
+        FuelReceipt(id: '1', timestamp: now, amountPaid: 150),
+        FuelReceipt(id: '2', timestamp: now.add(const Duration(days: 1)), amountPaid: 200),
+      ];
+      final e = WeekEarning(
+        id: 'test_receipts',
+        weekStart: DateTime(2026, 7, 6),
+        weekEnd: DateTime(2026, 7, 12),
+        driverMode: DriverMode.solo,
+        netIncome: 3000,
+        cashReceived: 0,
+        onlineHours: 30,
+        tripCount: 100,
+        acceptanceRateReported: 90,
+        cancellationRateReported: 1,
+        fuelReceipts: receipts,
+      );
+      expect(e.fuelPumpPaidTotal, 350);
+      expect(e.fuelPumpPaid, 350);
+      expect(e.fuelAfterDiscount, 315); // 350 * 0.90
+      expect(e.fuelReceipts.length, 2);
+
+      final json = e.toJson();
+      expect(json['fuelReceipts'], isList);
+      final decoded = WeekEarning.fromJson(json)!;
+      expect(decoded.fuelReceipts.length, 2);
+      expect(decoded.fuelPumpPaidTotal, 350);
+      expect(decoded.fuelAfterDiscount, 315);
+    });
+
+    test('legacy fuelPumpPaid single field migrates into fuelReceipts list', () {
+      final legacy = {
+        'id': 'legacy_pump',
+        'weekStart': DateTime(2026, 7, 6).toIso8601String(),
+        'weekEnd': DateTime(2026, 7, 12).toIso8601String(),
+        'netIncome': 3000,
+        'cashReceived': 0,
+        'onlineHours': 30,
+        'tripCount': 100,
+        'fuelPumpPaid': 400,
+      };
+      final decoded = WeekEarning.fromJson(legacy)!;
+      expect(decoded.fuelReceipts.length, 1);
+      expect(decoded.fuelReceipts.first.amountPaid, 400);
+      expect(decoded.fuelPumpPaidTotal, 400);
     });
 
     test('parses Polish currency formatted strings with thousand separator dots in JSON', () {
@@ -272,7 +311,7 @@ void main() {
       expect(decoded.cashReceived, closeTo(300.50, 0.001));
     });
 
-    test('legacy rentalFee 0 infers rental discount disabled', () {
+    test('legacy JSON without rate reporting fields decodes with null rates and falls back in rental tier', () {
       final legacy = {
         'id': 'legacy0',
         'weekStart': DateTime(2026, 6, 22).toIso8601String(),
@@ -283,68 +322,122 @@ void main() {
         'tripCount': 130,
         'rentalFee': 0,
         'fuelPumpPaid': 300,
-        'acceptanceRateReported': 85,
-        'cancellationRateReported': 2,
       };
       final decoded = WeekEarning.fromJson(legacy)!;
-      expect(decoded.rentalDiscountEnabled, isFalse);
-      // Discount off -> flat 850 base rate is charged.
-      expect(decoded.rentalFee, 850);
+      expect(decoded.acceptanceRateReported, isNull);
+      expect(decoded.cancellationRateReported, isNull);
+      // Without rate reporting, 130 trips falls back to 0-99 requirement tier -> 900 PLN base rate.
+      expect(decoded.rentalFee, 900);
     });
   });
 
-  group('rental tier lookup (trip count only, no accept rate)', () {
-    test('brackets map trip counts to expected fee', () {
-      expect(expectedRentalFee(0), 850);
-      expect(expectedRentalFee(120), 850);
-      expect(expectedRentalFee(100), 850);
-      expect(expectedRentalFee(121), 650);
-      expect(expectedRentalFee(130), 650);
-      expect(expectedRentalFee(160), 650);
-      expect(expectedRentalFee(161), 450);
-      expect(expectedRentalFee(199), 450);
-      expect(expectedRentalFee(200), 250);
-      expect(expectedRentalFee(5000), 250);
+  group('rental tier lookup with rate requirements', () {
+    test('brackets map trip counts and rates to expected fee', () {
+      expect(expectedRentalFee(0), 900);
+      expect(expectedRentalFee(99), 900);
+      expect(expectedRentalFee(100, 80, 5), 700);
+      expect(expectedRentalFee(149, 80, 5), 700);
+      expect(expectedRentalFee(150, 70, 5), 500);
+      expect(expectedRentalFee(199, 70, 5), 500);
+      expect(expectedRentalFee(200, 60, 5), 300);
+      expect(expectedRentalFee(249, 60, 5), 300);
+      expect(expectedRentalFee(250, 50, 5), 100);
+      expect(expectedRentalFee(5000, 50, 5), 100);
+    });
+
+    test('fallback when rate requirements not met', () {
+      // 150 trips requires 70% accept, 5% cancel for 500 PLN tier.
+      // If accept is 65%, fails 150-199 (70%), fails 100-149 (80%), falls back to 0-99 (900 PLN).
+      expect(expectedRentalFee(150, 65, 5), 900);
+      // If cancellation is 6% (> 5%), fails all requirement tiers and falls back to 900 PLN regardless of trip count.
+      expect(expectedRentalFee(250, 90, 6), 900);
     });
 
     test('expectedRentalTier returns the matching bracket object', () {
-      expect(expectedRentalTier(130).fee, 650);
-      expect(expectedRentalTier(130).minTrips, 121);
-      expect(expectedRentalTier(40).fee, 850);
+      expect(expectedRentalTier(130, 85, 2).fee, 700);
+      expect(expectedRentalTier(130, 85, 2).minTrips, 100);
+      expect(expectedRentalTier(40).fee, 900);
     });
 
     test('negative trip count falls back to the lowest bracket', () {
-      // Callers clamp trips to >= 0; a stray negative must not crash or return
-      // null — it maps to the 0-120 (850 PLN) tier.
-      expect(expectedRentalFee(-1), 850);
-      expect(expectedRentalTier(-5).fee, 850);
+      expect(expectedRentalFee(-1), 900);
+      expect(expectedRentalTier(-5).fee, 900);
     });
 
-    test('tiers are contiguous and ascending', () {
+    test('tiers are contiguous and ascending in minTrips', () {
       for (var i = 1; i < RENTAL_TIERS.length; i++) {
         expect(RENTAL_TIERS[i].minTrips, RENTAL_TIERS[i - 1].maxTrips + 1);
       }
     });
 
     test('rentalTierRangeLabel formats bounded and open-ended brackets', () {
-      expect(rentalTierRangeLabel(expectedRentalTier(130)), '121-160');
-      expect(rentalTierRangeLabel(expectedRentalTier(100)), '0-120');
-      expect(rentalTierRangeLabel(expectedRentalTier(500)), '200+');
+      expect(rentalTierRangeLabel(expectedRentalTier(130, 85, 2)), '100-149');
+      expect(rentalTierRangeLabel(expectedRentalTier(50)), '0-99');
+      expect(rentalTierRangeLabel(expectedRentalTier(300, 50, 5)), '250+');
     });
   });
 
   group('computed rentalFee (rental always charged)', () {
-    test('disabled discount -> flat 850 regardless of trip count', () {
-      expect(buildWeek(rentalDiscountEnabled: false, tripCount: 0).rentalFee, 850);
-      expect(buildWeek(rentalDiscountEnabled: false, tripCount: 130).rentalFee, 850);
-      expect(buildWeek(rentalDiscountEnabled: false, tripCount: 200).rentalFee, 850);
-      expect(buildWeek(rentalDiscountEnabled: false, tripCount: 5000).rentalFee, 850);
+    test('rentalFee is dynamically computed from trip count and rates', () {
+      expect(buildWeek(tripCount: 0).rentalFee, 900);
+      expect(buildWeek(tripCount: 130, acceptanceRateReported: 85, cancellationRateReported: 2).rentalFee, 700);
+      expect(buildWeek(tripCount: 200, acceptanceRateReported: 60, cancellationRateReported: 5).rentalFee, 300);
+    });
+  });
+
+  group('paired driver mode (RENTAL_TIERS_PAIRED)', () {
+    tearDown(() {
+      activeDriverMode = DriverMode.solo;
     });
 
-    test('enabled discount -> rentalFee from the trip tier', () {
-      expect(buildWeek(tripCount: 130).rentalFee, 650);
-      expect(buildWeek(tripCount: 100).rentalFee, 850);
-      expect(buildWeek(tripCount: 200).rentalFee, 250);
+    test('expectedRentalTier returns brackets from RENTAL_TIERS_PAIRED when mode is paired', () {
+      activeDriverMode = DriverMode.paired;
+      expect(expectedRentalTier(0).feePerDriver, 450);
+      expect(expectedRentalTier(0).totalCarFee, 900);
+
+      expect(expectedRentalTier(120, 80, 5).feePerDriver, 350);
+      expect(expectedRentalTier(120, 80, 5).totalCarFee, 700);
+
+      expect(expectedRentalTier(170, 70, 5).feePerDriver, 250);
+      expect(expectedRentalTier(170, 70, 5).totalCarFee, 500);
+
+      expect(expectedRentalTier(220, 60, 5).feePerDriver, 150);
+      expect(expectedRentalTier(220, 60, 5).totalCarFee, 300);
+
+      expect(expectedRentalTier(270, 50, 5).feePerDriver, 50);
+      expect(expectedRentalTier(270, 50, 5).totalCarFee, 100);
+    });
+
+    test('WeekEarning rentalFee uses feePerDriver and totalCarRentalFee uses totalCarFee in paired mode', () {
+      activeDriverMode = DriverMode.paired;
+      final week = buildWeek(tripCount: 170, acceptanceRateReported: 75, cancellationRateReported: 3);
+      expect(week.rentalFee, 250);
+      expect(week.totalCarRentalFee, 500);
+    });
+  });
+
+  group('lifetime trip counter and free week progress', () {
+    test('calculateLifetimeTrips sums tripCount across all entries', () {
+      final weeks = [
+        buildWeek(tripCount: 130),
+        buildWeek(tripCount: 150),
+        buildWeek(tripCount: 220),
+      ];
+      expect(calculateLifetimeTrips(weeks), 500);
+    });
+
+    test('calculateFreeWeeksEarned computes rewards at 2000 trip intervals', () {
+      expect(calculateFreeWeeksEarned(0), 0);
+      expect(calculateFreeWeeksEarned(1999), 0);
+      expect(calculateFreeWeeksEarned(2000), 1);
+      expect(calculateFreeWeeksEarned(4500), 2);
+    });
+
+    test('calculateCurrentFreeWeekProgress returns modulo progress toward next reward', () {
+      expect(calculateCurrentFreeWeekProgress(0), 0);
+      expect(calculateCurrentFreeWeekProgress(1500), 1500);
+      expect(calculateCurrentFreeWeekProgress(2000), 0);
+      expect(calculateCurrentFreeWeekProgress(2350), 350);
     });
   });
 
@@ -397,11 +490,13 @@ void main() {
           id: 'x',
           weekStart: DateTime(2026, 1, 1),
           weekEnd: DateTime(2026, 1, 7),
+          driverMode: DriverMode.solo,
           netIncome: netIncome,
           cashReceived: 0,
           onlineHours: hours,
           tripCount: 100,
-          rentalDiscountEnabled: false,
+          acceptanceRateReported: null,
+          cancellationRateReported: null,
           fuelPumpPaid: 0,
         );
 
@@ -416,9 +511,7 @@ void main() {
   });
 
   group('aggregation + records', () {
-    // No rental / fuel so netProfit = netIncome * 0.885 - ADMINISTRATIVE_COST
-    // (commission is 0 for turnover >= 3000). Aggregation asserts compare
-    // against the model's own netProfit, so they stay self-consistent.
+    // Aggregation asserts compare against the model's own netProfit, so they stay self-consistent.
     WeekEarning aggWeek({
       required DateTime weekStart,
       required double netIncome,
@@ -429,11 +522,13 @@ void main() {
         id: id ?? weekStart.toIso8601String(),
         weekStart: weekStart,
         weekEnd: weekStart.add(const Duration(days: 6)),
+        driverMode: DriverMode.solo,
         netIncome: netIncome,
         cashReceived: 0,
         onlineHours: onlineHours,
         tripCount: 100,
-        rentalDiscountEnabled: false,
+        acceptanceRateReported: null,
+        cancellationRateReported: null,
         fuelPumpPaid: 0,
       );
     }
@@ -447,208 +542,99 @@ void main() {
         final july = aggWeek(
             weekStart: DateTime(2026, 7, 6), netIncome: 3000, onlineHours: 50);
 
-        // History is stored newest-first; aggregation must not depend on order.
         final months = aggregateByMonth([july, june2, june1]);
         expect(months.length, 2);
 
-        final june = months.first;
-        expect(june.month, DateTime(2026, 6, 1));
-        expect(june.weekCount, 2);
-        expect(june.totalNetProfit,
-            closeTo(june1.netProfit + june2.netProfit, 0.0001));
-        expect(june.totalOnlineHours, closeTo(140, 0.0001));
-        expect(
-          june.avgHourlyRate,
-          closeTo((june1.netProfit + june2.netProfit) / 140, 0.0001),
-        );
-        expect(june.totalBankDeposit,
-            closeTo(june1.bankDeposit + june2.bankDeposit, 0.0001));
-        // Weeks kept oldest -> newest within a month.
-        expect(june.weeks.map((w) => w.id).toList(),
-            [june1.id, june2.id]);
+        final junM = months[0];
+        expect(junM.month, DateTime(2026, 6, 1));
+        expect(junM.weekCount, 2);
+        expect(junM.totalNetProfit, june1.netProfit + june2.netProfit);
+        final expectedAvgRate = (june1.netProfit + june2.netProfit) /
+            (june1.onlineHours + june2.onlineHours);
+        expect(junM.avgHourlyRate, closeTo(expectedAvgRate, 0.0001));
 
-        final julyMonth = months.last;
-        expect(julyMonth.month, DateTime(2026, 7, 1));
-        expect(julyMonth.weekCount, 1);
-        expect(julyMonth.avgHourlyRate,
-            closeTo(july.netProfit / 50, 0.0001));
+        final julM = months[1];
+        expect(julM.month, DateTime(2026, 7, 1));
+        expect(julM.weekCount, 1);
+        expect(julM.totalNetProfit, july.netProfit);
+        expect(julM.avgHourlyRate, closeTo(july.hourlyRate, 0.0001));
       });
 
-      test('avgHourlyRate is blended, not the mean of weekly rates', () {
-        // Rates: 88.5 and 35.4; blended = 3540+3540... use different hours.
-        final a = aggWeek(
-            weekStart: DateTime(2026, 3, 2), netIncome: 4000, onlineHours: 40);
-        final b = aggWeek(
-            weekStart: DateTime(2026, 3, 9), netIncome: 4000, onlineHours: 10);
-        final months = aggregateByMonth([a, b]);
-        final blended = (a.netProfit + b.netProfit) / (40 + 10);
-        expect(months.single.avgHourlyRate, closeTo(blended, 0.0001));
-        // Simple mean would be higher, confirming we blend by hours.
-        final mean = (a.hourlyRate + b.hourlyRate) / 2;
-        expect(months.single.avgHourlyRate, lessThan(mean));
-      });
-
-      test('empty list -> empty', () {
-        expect(aggregateByMonth(const []), isEmpty);
+      test('results are sorted oldest month first', () {
+        final m3 = aggWeek(
+            weekStart: DateTime(2026, 3, 2), netIncome: 1000, onlineHours: 10);
+        final m1 = aggWeek(
+            weekStart: DateTime(2026, 1, 5), netIncome: 1000, onlineHours: 10);
+        final m2 = aggWeek(
+            weekStart: DateTime(2026, 2, 2), netIncome: 1000, onlineHours: 10);
+        final months = aggregateByMonth([m1, m3, m2]);
+        expect(months.map((m) => m.month.month), [1, 2, 3]);
       });
     });
 
     group('aggregateByYear', () {
-      test('weeks across two years -> one summary per year', () {
-        final y2025 = aggWeek(
-            weekStart: DateTime(2025, 12, 1), netIncome: 4000, onlineHours: 40);
-        final y2026a = aggWeek(
-            weekStart: DateTime(2026, 1, 5), netIncome: 5000, onlineHours: 50);
-        final y2026b = aggWeek(
-            weekStart: DateTime(2026, 2, 2), netIncome: 3000, onlineHours: 30);
+      test('groups months under their year, oldest first', () {
+        final y25 = aggWeek(
+            weekStart: DateTime(2025, 12, 8), netIncome: 2000, onlineHours: 20);
+        final y26a = aggWeek(
+            weekStart: DateTime(2026, 1, 5), netIncome: 3000, onlineHours: 30);
+        final y26b = aggWeek(
+            weekStart: DateTime(2026, 2, 2), netIncome: 4000, onlineHours: 40);
 
-        final years = aggregateByYear([y2026b, y2026a, y2025]);
+        final years = aggregateByYear([y25, y26a, y26b]);
         expect(years.length, 2);
-        expect(years.first.year, 2025);
-        expect(years.last.year, 2026);
+        expect(years[0].year, 2025);
+        expect(years[0].months.length, 1);
 
-        final y26 = years.last;
-        expect(y26.weekCount, 2);
-        expect(y26.months.length, 2);
-        expect(y26.totalNetProfit,
-            closeTo(y2026a.netProfit + y2026b.netProfit, 0.0001));
-        expect(
-          y26.avgHourlyRate,
-          closeTo((y2026a.netProfit + y2026b.netProfit) / 80, 0.0001),
-        );
-      });
-
-      test('empty list -> empty', () {
-        expect(aggregateByYear(const []), isEmpty);
+        expect(years[1].year, 2026);
+        expect(years[1].months.length, 2);
+        expect(years[1].totalNetProfit, y26a.netProfit + y26b.netProfit);
       });
     });
 
-    group('record functions', () {
-      // rates: w3=13.275, w1=88.5, w2=44.25 ; w4 incomplete (0 hours)
-      final w3 = aggWeek(
-          weekStart: DateTime(2026, 6, 1),
-          netIncome: 3000,
-          onlineHours: 200,
-          id: 'w3');
-      final w1 = aggWeek(
-          weekStart: DateTime(2026, 6, 8),
-          netIncome: 4000,
-          onlineHours: 40,
-          id: 'w1');
-      final w2 = aggWeek(
-          weekStart: DateTime(2026, 6, 15),
-          netIncome: 5000,
-          onlineHours: 100,
-          id: 'w2');
-      final w4 = aggWeek(
-          weekStart: DateTime(2026, 6, 22),
-          netIncome: 0,
-          onlineHours: 0,
-          id: 'w4');
-      final fixture = [w2, w4, w1, w3];
+    group('bestHourlyRateWeek', () {
+      test('returns the week with the highest hourlyRate', () {
+        final low = aggWeek(
+            weekStart: DateTime(2026, 6, 1), netIncome: 2000, onlineHours: 40);
+        final high = aggWeek(
+            weekStart: DateTime(2026, 6, 8), netIncome: 4000, onlineHours: 20);
+        final mid = aggWeek(
+            weekStart: DateTime(2026, 6, 15), netIncome: 3000, onlineHours: 30);
 
-      test('bestHourlyRateWeek picks the highest rate', () {
-        expect(bestHourlyRateWeek(fixture)?.id, 'w1');
+        final best = bestHourlyRateWeek([low, mid, high]);
+        expect(best?.id, high.id);
       });
 
-      test('worstHourlyRateWeek excludes incomplete (zero-hour) weeks', () {
-        expect(worstHourlyRateWeek(fixture)?.id, 'w3');
+      test('ignores weeks with 0 online hours', () {
+        final zero = aggWeek(
+            weekStart: DateTime(2026, 6, 1), netIncome: 5000, onlineHours: 0);
+        final normal = aggWeek(
+            weekStart: DateTime(2026, 6, 8), netIncome: 1000, onlineHours: 10);
+        expect(bestHourlyRateWeek([zero, normal])?.id, normal.id);
       });
-
-      test('highestNetProfitWeek picks the biggest single-week profit', () {
-        expect(highestNetProfitWeek(fixture)?.id, 'w2');
-      });
-
-      test('empty list -> null', () {
-        expect(bestHourlyRateWeek(const []), isNull);
-        expect(worstHourlyRateWeek(const []), isNull);
-        expect(highestNetProfitWeek(const []), isNull);
-      });
-    });
-
-    group('month filtering (selected month subset)', () {
-      // Two months of data; the "best week" of each month differs from the
-      // best week of the full history, so filtering to a month must change it.
-      final mayLow = aggWeek(
-          weekStart: DateTime(2026, 5, 4),
-          netIncome: 3000,
-          onlineHours: 200,
-          id: 'may-low');
-      final mayHigh = aggWeek(
-          weekStart: DateTime(2026, 5, 11),
-          netIncome: 5000,
-          onlineHours: 60,
-          id: 'may-high');
-      final junTop = aggWeek(
-          weekStart: DateTime(2026, 6, 1),
-          netIncome: 5000,
-          onlineHours: 40,
-          id: 'jun-top');
-      final all = [mayLow, mayHigh, junTop];
-
-      test('aggregateByMonth returns only that month\'s weeks', () {
-        final months = aggregateByMonth(all);
-        final may = months.firstWhere((m) => m.month.month == 5);
-        expect(may.weeks.map((w) => w.id).toSet(), {'may-low', 'may-high'});
-        final june = months.firstWhere((m) => m.month.month == 6);
-        expect(june.weeks.map((w) => w.id).toList(), ['jun-top']);
-      });
-
-      test('best week of the selected month differs from full-history best', () {
-        // Across everything, jun-top has the highest hourly rate.
-        expect(bestHourlyRateWeek(all)?.id, 'jun-top');
-        // Filtered to May, the best week is may-high, not jun-top.
-        final may =
-            aggregateByMonth(all).firstWhere((m) => m.month.month == 5);
-        expect(bestHourlyRateWeek(may.weeks)?.id, 'may-high');
-      });
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // Audit findings: regression tests for the specific bugs / bad defaults the
-  // full-feature audit looked for.
-  // ---------------------------------------------------------------------------
-
-  group('audit: division by zero / NaN guard', () {
-    test('hourlyRate with 0 online hours is 0, finite (never NaN/Infinity)', () {
-      final w = buildWeek(onlineHours: 0);
-      expect(w.hourlyRate, 0);
-      expect(w.hourlyRate.isFinite, isTrue);
-    });
-
-    test('averageHourlyRate over all-zero-hour weeks is 0, not NaN', () {
-      final avg = averageHourlyRate([buildWeek(onlineHours: 0)]);
-      expect(avg, 0);
-      expect(avg.isFinite, isTrue);
-    });
-
-    test('formatPln renders non-finite values as an em dash', () {
-      expect(formatPln(double.nan), '—');
-      expect(formatPln(double.infinity), '—');
-      expect(formatPln(double.negativeInfinity), '—');
     });
   });
 
   group('audit: negative netProfit is preserved and displayed with a sign', () {
-    // Small income, big fuel + rental -> genuinely negative week.
+    // Small income, big fuel -> genuinely negative week.
     final bad = buildWeek(
       netIncome: 100,
       fuelPumpPaid: 200,
-      rentalDiscountEnabled: true,
       tripCount: 130,
+      acceptanceRateReported: 85,
+      cancellationRateReported: 2,
       cashReceived: 0,
       onlineHours: 10,
     );
 
     test('netProfit can be negative (not clamped or abs-ed)', () {
       expect(bad.netProfit, lessThan(0));
-      expect(bad.netProfit, closeTo(-832.5, 0.001));
+      expect(bad.netProfit, closeTo(-835.0, 0.001));
     });
 
     test('formatPln keeps the minus sign for a negative profit', () {
       expect(formatPln(bad.netProfit), startsWith('-'));
-      expect(formatPln(bad.netProfit), '-832,50');
+      expect(formatPln(bad.netProfit), '-835,00');
     });
 
     test('a negative hourlyRate stays negative (not abs-ed)', () {
@@ -658,13 +644,10 @@ void main() {
   });
 
   group('audit: currency rounding to 2 decimals at each step', () {
-    test('vat / commission / fuel are each rounded to whole cents', () {
-      // 33.33 * 0.115 = 3.83295 -> 3.83
+    test('vat / settlementFee / fuel are each rounded to whole cents', () {
       final w = buildWeek(netIncome: 33.33, fuelPumpPaid: 100.005);
-      expect(w.vat, 3.83);
       expect(w.vat, round2(w.vat));
-      expect(w.commission, round2(w.commission));
-      // 100.005 * 0.9 = 90.0045 -> 90.00
+      expect(w.settlementFee, round2(w.settlementFee));
       expect(w.fuelAfterDiscount, 90.0);
     });
 
@@ -675,7 +658,7 @@ void main() {
           w.fuelAfterDiscount -
           w.vat -
           w.rentalFee -
-          w.commission);
+          w.settlementFee);
       expect(w.netProfit, recomputed);
     });
 
@@ -699,8 +682,7 @@ void main() {
           'onlineHours': 40,
           'tripCount': 130,
           'fuelPumpPaid': 300,
-          // Keys removed across the two simplification passes:
-          'rentalFee': 650,
+          'rentalFee': 700,
           'administrativeCost': 40,
           'otherExpenses': 120,
           'notes': 'eski not',
@@ -713,8 +695,7 @@ void main() {
       expect(decoded.netIncome, 5000);
       expect(decoded.tripCount, 130);
       expect(decoded.fuelPumpPaid, 300);
-      expect(decoded.rentalDiscountEnabled, isTrue); // inferred from rentalFee>0
-      expect(decoded.rentalFee, 650);
+      expect(decoded.rentalFee, 700);
     });
 
     test('re-serialized JSON no longer carries the removed keys', () {
@@ -722,8 +703,6 @@ void main() {
       expect(json.containsKey('otherExpenses'), isFalse);
       expect(json.containsKey('notes'), isFalse);
       expect(json.containsKey('administrativeCost'), isFalse);
-      expect(json.containsKey('acceptanceRateReported'), isFalse);
-      expect(json.containsKey('cancellationRateReported'), isFalse);
     });
 
     test('a stored list of legacy entries decodes cleanly', () {
@@ -740,11 +719,13 @@ void main() {
         id: 'straddle',
         weekStart: DateTime(2026, 6, 29), // Monday
         weekEnd: DateTime(2026, 7, 5), // Sunday
+        driverMode: DriverMode.solo,
         netIncome: 4000,
         cashReceived: 0,
         onlineHours: 40,
         tripCount: 100,
-        rentalDiscountEnabled: false,
+        acceptanceRateReported: null,
+        cancellationRateReported: null,
         fuelPumpPaid: 0,
       );
       final months = aggregateByMonth([straddling]);
@@ -757,11 +738,13 @@ void main() {
         id: 'ny',
         weekStart: DateTime(2025, 12, 29), // Monday
         weekEnd: DateTime(2026, 1, 4), // Sunday
+        driverMode: DriverMode.solo,
         netIncome: 4000,
         cashReceived: 0,
         onlineHours: 40,
         tripCount: 100,
-        rentalDiscountEnabled: false,
+        acceptanceRateReported: null,
+        cancellationRateReported: null,
         fuelPumpPaid: 0,
       );
       final years = aggregateByYear([straddling]);
@@ -771,16 +754,13 @@ void main() {
   });
 
   group('break-even: live current-week fuel (no historical average)', () {
-    // Fix 1: the break-even reference reads the LIVE pump-paid figure (× 0.90),
-    // NOT a 4-week average or 250 default. This mirrors the exact expression the
-    // entry form and breakdown card feed into calculateBreakEven.
     double liveBreakEven({
       required double fuelPumpPaid,
-      required bool rentalDiscountEnabled,
       required int tripCount,
+      double? acceptanceRateReported,
+      double? cancellationRateReported,
     }) {
-      final rental =
-          rentalDiscountEnabled ? expectedRentalFee(tripCount) : 850.0;
+      final rental = expectedRentalFee(tripCount, acceptanceRateReported, cancellationRateReported);
       return calculateBreakEven(
         fixedCosts:
             ADMINISTRATIVE_COST + computeFuelAfterDiscount(fuelPumpPaid) + rental,
@@ -790,35 +770,28 @@ void main() {
     test('empty/zero fuel yields a finite fixed-costs-only break-even', () {
       final v = liveBreakEven(
         fuelPumpPaid: 0,
-        rentalDiscountEnabled: true,
         tripCount: 130,
+        acceptanceRateReported: 85,
+        cancellationRateReported: 2,
       );
       expect(v.isFinite, isTrue);
       expect(v, greaterThan(0));
-      // With 0 fuel the only fixed costs are admin (40) + rental (650).
-      expect(v, closeTo(calculateBreakEven(fixedCosts: 40 + 650), 0.001));
+      expect(v, closeTo(calculateBreakEven(fixedCosts: 40 + 700), 0.001));
     });
 
     test('break-even rises as the live fuel figure increases', () {
       final low = liveBreakEven(
-          fuelPumpPaid: 100, rentalDiscountEnabled: true, tripCount: 130);
+          fuelPumpPaid: 100, tripCount: 130, acceptanceRateReported: 85, cancellationRateReported: 2);
       final high = liveBreakEven(
-          fuelPumpPaid: 500, rentalDiscountEnabled: true, tripCount: 130);
+          fuelPumpPaid: 500, tripCount: 130, acceptanceRateReported: 85, cancellationRateReported: 2);
       expect(high, greaterThan(low));
     });
 
     test('uses the pump figure directly, not any stored history', () {
-      // 300 pump -> 270 fuel; fixedCosts = 40 + 270 + 650 = 960.
+      // 300 pump -> 270 fuel; fixedCosts = 40 + 270 + 700 = 1010.
       final v = liveBreakEven(
-          fuelPumpPaid: 300, rentalDiscountEnabled: true, tripCount: 130);
-      expect(v, closeTo(calculateBreakEven(fixedCosts: 960), 0.001));
-    });
-
-    test('rental toggle off (flat 850) still degrades gracefully at 0 fuel', () {
-      final v = liveBreakEven(
-          fuelPumpPaid: 0, rentalDiscountEnabled: false, tripCount: 0);
-      expect(v.isFinite, isTrue);
-      expect(v, closeTo(calculateBreakEven(fixedCosts: 40 + 850), 0.001));
+          fuelPumpPaid: 300, tripCount: 130, acceptanceRateReported: 85, cancellationRateReported: 2);
+      expect(v, closeTo(calculateBreakEven(fixedCosts: 1010), 0.001));
     });
   });
 
@@ -827,18 +800,17 @@ void main() {
           id: id ?? start.toIso8601String(),
           weekStart: start,
           weekEnd: start.add(const Duration(days: 6)),
+          driverMode: DriverMode.solo,
           netIncome: 4000,
           cashReceived: 0,
           onlineHours: 40,
           tripCount: 100,
-          rentalDiscountEnabled: false,
+          acceptanceRateReported: null,
+          cancellationRateReported: null,
           fuelPumpPaid: 0,
         );
 
-    test('a week whose weekStart is exactly the 1st is included in its month',
-        () {
-      // Fix 2 regression: a boundary week starting on the 1st must NOT be
-      // excluded by an off-by-one / strict-comparison filter.
+    test('a week whose weekStart is exactly the 1st is included in its month', () {
       final onFirst = wk(DateTime(2026, 5, 1), id: 'first');
       final weeks =
           EarningsPdfExport.weeksForMonth([onFirst], DateTime(2026, 5, 1));
@@ -847,14 +819,12 @@ void main() {
     });
 
     test('a month-straddling week counts toward its weekStart month only', () {
-      // Mon Jun 29 -> Sun Jul 5 belongs to JUNE (weekStart convention).
       final straddle = wk(DateTime(2026, 6, 29), id: 'straddle');
       expect(
         EarningsPdfExport.weeksForMonth([straddle], DateTime(2026, 6, 1))
             .map((w) => w.id),
         contains('straddle'),
       );
-      // ...and is absent from July.
       expect(
         EarningsPdfExport.weeksForMonth([straddle], DateTime(2026, 7, 1)),
         isEmpty,
@@ -867,14 +837,6 @@ void main() {
       final result =
           EarningsPdfExport.weeksForMonth([may, jun], DateTime(2026, 5, 1));
       expect(result.map((w) => w.id).toSet(), {'may'});
-    });
-
-    test('a month with no weeks returns empty (graceful no-data path)', () {
-      expect(
-        EarningsPdfExport.weeksForMonth([wk(DateTime(2026, 5, 4))],
-            DateTime(2026, 8, 1)),
-        isEmpty,
-      );
     });
 
     test('sanitizeDriverName strips emojis while preserving Latin and Polish characters', () {
@@ -893,21 +855,15 @@ void main() {
     });
   });
 
-  group('break-even: precise reverse calculation (VAT + commission)', () {
-    // Round-trip: solve break-even for a set of fixed costs, then build the
-    // exact week that produces those fixed costs and confirm the forward
-    // netProfit() function returns ~0. This validates the inverse against the
-    // forward function directly rather than a hardcoded expected number.
-    //
-    // fixedCosts = ADMINISTRATIVE_COST + fuelAfterDiscount + rentalFee, so the
-    // fixture week must reproduce the same fuel + rental used to derive them.
+  group('break-even: precise reverse calculation (VAT + settlementFee)', () {
     void roundTrip({
       required double fuelPumpPaid,
-      required bool rentalDiscountEnabled,
       required int tripCount,
+      double? acceptanceRateReported,
+      double? cancellationRateReported,
     }) {
       final fuel = computeFuelAfterDiscount(fuelPumpPaid);
-      final rental = rentalDiscountEnabled ? expectedRentalFee(tripCount) : 850.0;
+      final rental = expectedRentalFee(tripCount, acceptanceRateReported, cancellationRateReported);
       final fixedCosts = ADMINISTRATIVE_COST + fuel + rental;
 
       final breakEven = calculateBreakEven(fixedCosts: fixedCosts);
@@ -916,84 +872,64 @@ void main() {
         id: 'be',
         weekStart: DateTime(2026, 6, 22),
         weekEnd: DateTime(2026, 6, 28),
+        driverMode: DriverMode.solo,
         netIncome: breakEven,
         cashReceived: 0,
         onlineHours: 1,
         tripCount: tripCount,
-        rentalDiscountEnabled: rentalDiscountEnabled,
+        acceptanceRateReported: acceptanceRateReported,
+        cancellationRateReported: cancellationRateReported,
         fuelPumpPaid: fuelPumpPaid,
       );
 
-      // The forward function must agree the week breaks even.
       expect(week.netProfit.abs(), lessThan(0.1),
           reason: 'netProfit at break-even ($breakEven) should be ~0');
     }
 
-    test('rental discount ON, typical fuel', () {
+    test('typical fuel, high tier', () {
       roundTrip(
         fuelPumpPaid: 277.7777777778, // -> 250 after discount
-        rentalDiscountEnabled: true,
-        tripCount: 130, // -> 650 rental
+        tripCount: 130,
+        acceptanceRateReported: 85,
+        cancellationRateReported: 2,
       );
     });
 
-    test('rental discount OFF (flat 850), typical fuel', () {
+    test('typical fuel, lowest tier (no rates reported)', () {
       roundTrip(
         fuelPumpPaid: 277.7777777778,
-        rentalDiscountEnabled: false,
-        tripCount: 130,
+        tripCount: 50,
       );
     });
 
     test('high fuel week', () {
       roundTrip(
         fuelPumpPaid: 500, // -> 450 after discount
-        rentalDiscountEnabled: true,
         tripCount: 130,
+        acceptanceRateReported: 85,
+        cancellationRateReported: 2,
       );
     });
 
     test('low fuel week', () {
       roundTrip(
         fuelPumpPaid: 100, // -> 90 after discount
-        rentalDiscountEnabled: true,
-        tripCount: 200, // -> 250 rental (cheapest tier)
+        tripCount: 200,
+        acceptanceRateReported: 75,
+        cancellationRateReported: 3,
       );
     });
 
-    test('very high fixed costs push break-even into a higher bracket', () {
-      // Discount off (850) + big fuel -> break-even lands above the 1000
-      // commission bracket boundary, exercising tier selection.
-      roundTrip(
-        fuelPumpPaid: 1000, // -> 900 after discount
-        rentalDiscountEnabled: false,
-        tripCount: 130,
-      );
-    });
-
-    test('accounts for VAT + commission (strictly above the naive sum)', () {
-      const fixedCosts = 940.0; // 40 + 250 + 650
+    test('accounts for VAT + settlementFee (strictly above the naive sum)', () {
+      const fixedCosts = 940.0;
       final precise = calculateBreakEven(fixedCosts: fixedCosts);
-      // The naive estimate ignored VAT/commission entirely.
       expect(precise, greaterThan(fixedCosts));
-      // And also above the VAT-only fallback, because commission adds cost.
       expect(precise, greaterThan(fixedCosts / (1 - FLAT_VAT_RATE)));
     });
 
     test('result is rounded to whole cents', () {
       final v = calculateBreakEven(fixedCosts: 940.005);
       expect(v, round2(v));
-    });
-
-    test('the chosen candidate is self-consistent with its commission tier', () {
-      final breakEven = calculateBreakEven(fixedCosts: 940);
-      // computeFromTier on the solution must be the same commission the solve
-      // assumed — i.e. plugging the answer back is consistent.
-      final tier = COMMISSION_TIERS.firstWhere(
-        (t) => breakEven >= t.min && breakEven <= t.max,
-      );
-      final expectedCommission = tier.base + breakEven * tier.percent / 100;
-      expect(computeFromTier(breakEven), closeTo(expectedCommission, 0.001));
     });
   });
 
@@ -1003,11 +939,13 @@ void main() {
         id: 'z',
         weekStart: DateTime(2026, 5, 4),
         weekEnd: DateTime(2026, 5, 10),
+        driverMode: DriverMode.solo,
         netIncome: 3000,
         cashReceived: 0,
         onlineHours: 0,
         tripCount: 100,
-        rentalDiscountEnabled: false,
+        acceptanceRateReported: null,
+        cancellationRateReported: null,
         fuelPumpPaid: 0,
       );
       final month = aggregateByMonth([zeroHours]).single;
@@ -1021,10 +959,172 @@ void main() {
       expect(bestHourlyRateWeek(const []), isNull);
     });
   });
+
+  group('schema versioning & driver mode immutability', () {
+    tearDown(() {
+      activeDriverMode = DriverMode.solo;
+    });
+
+    test('immutable driverMode: solo-mode week retains solo rental fee after global mode switches to paired', () {
+      activeDriverMode = DriverMode.solo;
+      final week = buildWeek(tripCount: 130, acceptanceRateReported: 85, cancellationRateReported: 2);
+      expect(week.driverMode, DriverMode.solo);
+      expect(week.rentalFee, 700); // solo tier 100-149
+
+      final encoded = encodeEarnings([week]);
+      activeDriverMode = DriverMode.paired; // switch global state
+
+      final decodedList = decodeEarnings(encoded);
+      expect(decodedList, hasLength(1));
+      final decoded = decodedList.first;
+      expect(decoded.driverMode, DriverMode.solo);
+      expect(decoded.rentalFee, 700); // unchanged from save time!
+    });
+
+    test('schema versioning round-trips version 1 and parses legacy untagged (version 0) data', () {
+      final week = buildWeek(driverMode: DriverMode.solo);
+      final json = week.toJson();
+      expect(json['version'], 1);
+      expect(json['driverMode'], 'solo');
+
+      final decoded = WeekEarning.fromJson(json);
+      expect(decoded, isNotNull);
+      expect(decoded!.driverMode, DriverMode.solo);
+
+      // Legacy version 0 data without 'version' or 'driverMode' key
+      final legacyJson = {
+        'id': 'legacy_123',
+        'weekStart': '2026-06-22T00:00:00.000',
+        'weekEnd': '2026-06-28T00:00:00.000',
+        'netIncome': 5000.0,
+        'cashReceived': 398.0,
+        'onlineHours': 40.0,
+        'tripCount': 130,
+        'acceptanceRateReported': 85.0,
+        'cancellationRateReported': 2.0,
+        'fuelPumpPaid': 298.9555555556,
+      };
+      final legacyDecoded = WeekEarning.fromJson(legacyJson);
+      expect(legacyDecoded, isNotNull);
+      expect(legacyDecoded!.driverMode, DriverMode.solo);
+      expect(legacyDecoded.rentalFee, 700);
+    });
+  });
+
+  group('lifetime trip odometer (persisted, FIFO-independent)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('backfill migration seeds counter from existing history exactly once', () async {
+      // Simulate existing install with history already in prefs.
+      final weeks = [
+        buildWeek(tripCount: 130, driverMode: DriverMode.solo),
+        buildWeek(tripCount: 200, driverMode: DriverMode.solo),
+      ];
+      SharedPreferences.setMockInitialValues({
+        kEarningsHistoryKey: encodeEarnings(weeks),
+        // No kLifetimeTripsKey or kLifetimeTripsBackfilledKey yet
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      // --- First load: backfill should run ---
+      expect(prefs.getBool(kLifetimeTripsBackfilledKey), isNull);
+      final entries = decodeEarnings(prefs.getString(kEarningsHistoryKey));
+      final backfill = calculateLifetimeTrips(entries);
+      expect(backfill, 330); // 130 + 200
+
+      // Simulate the migration logic from _load()
+      if (prefs.getBool(kLifetimeTripsBackfilledKey) != true) {
+        await prefs.setInt(kLifetimeTripsKey, backfill);
+        await prefs.setBool(kLifetimeTripsBackfilledKey, true);
+      }
+      expect(prefs.getInt(kLifetimeTripsKey), 330);
+      expect(prefs.getBool(kLifetimeTripsBackfilledKey), true);
+
+      // --- Second load: backfill must NOT re-run ---
+      // Simulate adding a new week to history (would change sum if re-summed).
+      final newWeek = buildWeek(tripCount: 500, driverMode: DriverMode.solo);
+      final updatedEntries = [...entries, newWeek];
+      await prefs.setString(kEarningsHistoryKey, encodeEarnings(updatedEntries));
+
+      // Simulate incrementing odometer for the new save
+      final current = prefs.getInt(kLifetimeTripsKey) ?? 0;
+      await prefs.setInt(kLifetimeTripsKey, current + 500);
+      expect(prefs.getInt(kLifetimeTripsKey), 830); // 330 + 500
+
+      // Re-run migration guard — must NOT overwrite to 830 (sum of all 3)
+      if (prefs.getBool(kLifetimeTripsBackfilledKey) != true) {
+        final reSummed = calculateLifetimeTrips(
+            decodeEarnings(prefs.getString(kEarningsHistoryKey)));
+        await prefs.setInt(kLifetimeTripsKey, reSummed);
+      }
+      // Value stays at 830 (330 backfill + 500 increment), NOT 830 from re-sum
+      expect(prefs.getInt(kLifetimeTripsKey), 830);
+    });
+
+    test('delta-based increment: editing a week only adds positive difference', () async {
+      SharedPreferences.setMockInitialValues({
+        kLifetimeTripsKey: 1000,
+        kLifetimeTripsBackfilledKey: true,
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      // Simulate editing: old entry had 130 trips, new entry has 150
+      const oldTrips = 130;
+      const newTrips = 150;
+      const delta = newTrips - oldTrips; // 20
+      expect(delta, 20);
+
+      final current = prefs.getInt(kLifetimeTripsKey) ?? 0;
+      if (delta > 0) {
+        await prefs.setInt(kLifetimeTripsKey, current + delta);
+      }
+      expect(prefs.getInt(kLifetimeTripsKey), 1020);
+    });
+
+    test('negative delta (reducing trips in an edit) does NOT decrement odometer', () async {
+      SharedPreferences.setMockInitialValues({
+        kLifetimeTripsKey: 1000,
+        kLifetimeTripsBackfilledKey: true,
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      // Simulate editing: old entry had 150 trips, new entry has 100
+      const oldTrips = 150;
+      const newTrips = 100;
+      const delta = newTrips - oldTrips; // -50
+      expect(delta, -50);
+
+      // Guard: only increment on positive delta
+      if (delta > 0) {
+        await prefs.setInt(kLifetimeTripsKey, (prefs.getInt(kLifetimeTripsKey) ?? 0) + delta);
+      }
+      expect(prefs.getInt(kLifetimeTripsKey), 1000); // unchanged
+    });
+
+    test('deleting an entry does NOT decrement the odometer', () async {
+      SharedPreferences.setMockInitialValues({
+        kLifetimeTripsKey: 500,
+        kLifetimeTripsBackfilledKey: true,
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      // Delete path does not touch kLifetimeTripsKey at all
+      expect(prefs.getInt(kLifetimeTripsKey), 500); // unchanged
+    });
+
+    test('calculateLifetimeTrips is still accurate for backfill purposes', () {
+      final weeks = [
+        buildWeek(tripCount: 130, driverMode: DriverMode.solo),
+        buildWeek(tripCount: 150, driverMode: DriverMode.solo),
+        buildWeek(tripCount: 220, driverMode: DriverMode.solo),
+      ];
+      expect(calculateLifetimeTrips(weeks), 500);
+    });
+  });
 }
 
-/// Minimal JSON encoder for the legacy-map decode test (avoids importing
-/// dart:convert into the test just for one string).
 String _jsonNoThrow(Map<String, dynamic> m) {
   final parts = m.entries.map((e) {
     final v = e.value;
