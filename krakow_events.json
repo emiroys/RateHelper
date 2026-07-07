@@ -1,14 +1,62 @@
 [
   {
-    "title": "ADCC World Championship 2026",
-    "venue": "Tauron Arena Kraków",
-    "date": "2026-09-12T10:00:00",
+    "title": "Wisła Kraków vs. Wrexham A.F.C. (Dostluk Maçı)",
+    "venue": "Stadion Miejski im. Henryka Reymana",
+    "date": "2026-07-08T18:00:00",
     "surgeLevel": "High"
   },
   {
-    "title": "ADCC World Championship 2026",
+    "title": "KS Cracovia vs. Pardubice (Dostluk Maçı)",
+    "venue": "Stadion Cracovii im. Józefa Piłsudskiego",
+    "date": "2026-07-09T15:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Targi Ryucon (Anime & Popkultura Festival) - 1. Gün",
     "venue": "Tauron Arena Kraków",
-    "date": "2026-09-13T10:00:00",
+    "date": "2026-07-10T09:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Targi Ryucon (Anime & Popkultura Festival) - 2. Gün",
+    "venue": "Tauron Arena Kraków",
+    "date": "2026-07-11T09:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Targi Ryucon (Anime & Popkultura Festival) - 3. Gün",
+    "venue": "Tauron Arena Kraków",
+    "date": "2026-07-12T09:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Wisła Kraków vs. Podbeskidzie (Dostluk Maçı)",
+    "venue": "Stadion Miejski im. Henryka Reymana",
+    "date": "2026-07-12T14:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Wisła Kraków vs. Artis Brno (Dostluk Maçı)",
+    "venue": "Stadion Miejski im. Henryka Reymana",
+    "date": "2026-07-18T13:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "KS Cracovia vs. Sevilla FC (Dostluk Maçı)",
+    "venue": "Stadion Cracovii im. Józefa Piłsudskiego",
+    "date": "2026-07-19T16:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Cisza na Fali - Silent Disco Party (American College Party)",
+    "venue": "Parking TAURON Areny Kraków",
+    "date": "2026-07-24T19:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Wisła Kraków vs. GKS Katowice (Ekstraklasa)",
+    "venue": "Stadion Miejski im. Henryka Reymana",
+    "date": "2026-07-26T20:15:00",
     "surgeLevel": "High"
   }
 ]
