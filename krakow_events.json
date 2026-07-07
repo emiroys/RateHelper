@@ -1,68 +1,62 @@
 [
   {
-    "title": "Melanie Martinez – HADES: THE SACRIFICE",
-    "venue": "TAURON Arena Kraków",
-    "date": "2026-09-23T16:00:00",
+    "title": "Wisła Kraków vs. Wrexham A.F.C. (Dostluk Maçı)",
+    "venue": "Stadion Miejski im. Henryka Reymana",
+    "date": "2026-07-08T18:00:00",
     "surgeLevel": "High"
   },
   {
-    "title": "MROZU - Odpowiedni moment tour",
-    "venue": "TAURON Arena Kraków",
-    "date": "2026-10-30T17:00:00",
+    "title": "KS Cracovia vs. Pardubice (Dostluk Maçı)",
+    "venue": "Stadion Cracovii im. Józefa Piłsudskiego",
+    "date": "2026-07-09T15:00:00",
     "surgeLevel": "High"
   },
   {
-    "title": "Niall Horan: Dinner Party Live On Tour",
-    "venue": "TAURON Arena Kraków",
-    "date": "2026-11-03T17:00:00",
+    "title": "Targi Ryucon (Anime & Popkultura Festival) - 1. Gün",
+    "venue": "Tauron Arena Kraków",
+    "date": "2026-07-10T09:00:00",
     "surgeLevel": "High"
   },
   {
-    "title": "KoRn",
-    "venue": "TAURON Arena Kraków",
-    "date": "2026-11-17T17:00:00",
+    "title": "Targi Ryucon (Anime & Popkultura Festival) - 2. Gün",
+    "venue": "Tauron Arena Kraków",
+    "date": "2026-07-11T09:00:00",
     "surgeLevel": "High"
   },
   {
-    "title": "IEM Kraków 2027 - CS2 ESL Pro Tour Championship | Thursday",
-    "venue": "TAURON Arena Kraków",
-    "date": "2027-02-04T20:00:00",
+    "title": "Targi Ryucon (Anime & Popkultura Festival) - 3. Gün",
+    "venue": "Tauron Arena Kraków",
+    "date": "2026-07-12T09:00:00",
     "surgeLevel": "High"
   },
   {
-    "title": "IEM Kraków 2027 - CS2 ESL Pro Tour Championship | 4-day | 4-7.02.2027",
-    "venue": "TAURON Arena Kraków",
-    "date": "2027-02-04T20:00:00",
+    "title": "Wisła Kraków vs. Podbeskidzie (Dostluk Maçı)",
+    "venue": "Stadion Miejski im. Henryka Reymana",
+    "date": "2026-07-12T14:00:00",
     "surgeLevel": "High"
   },
   {
-    "title": "IEM Kraków 2027 - CS2 ESL Pro Tour Championship | Friday",
-    "venue": "TAURON Arena Kraków",
-    "date": "2027-02-05T20:00:00",
+    "title": "Wisła Kraków vs. Artis Brno (Dostluk Maçı)",
+    "venue": "Stadion Miejski im. Henryka Reymana",
+    "date": "2026-07-18T13:00:00",
     "surgeLevel": "High"
   },
   {
-    "title": "IEM Kraków 2027 - CS2 ESL Pro Tour Championship | Saturday",
-    "venue": "TAURON Arena Kraków",
-    "date": "2027-02-06T20:00:00",
+    "title": "KS Cracovia vs. Sevilla FC (Dostluk Maçı)",
+    "venue": "Stadion Cracovii im. Józefa Piłsudskiego",
+    "date": "2026-07-19T16:00:00",
     "surgeLevel": "High"
   },
   {
-    "title": "IEM Kraków 2027 - CS2 ESL Pro Tour Championship | Sunday",
-    "venue": "TAURON Arena Kraków",
-    "date": "2027-02-07T20:00:00",
+    "title": "Cisza na Fali - Silent Disco Party (American College Party)",
+    "venue": "Parking TAURON Areny Kraków",
+    "date": "2026-07-24T19:00:00",
     "surgeLevel": "High"
   },
   {
-    "title": "Thirty Seconds to Mars Presents A Beautiful Lie vs This Is War",
-    "venue": "TAURON Arena Kraków",
-    "date": "2027-04-15T16:00:00",
-    "surgeLevel": "High"
-  },
-  {
-    "title": "Thirty Seconds to Mars Presents A Beautiful Lie vs This Is War | VIP",
-    "venue": "TAURON Arena Kraków",
-    "date": "2027-04-15T20:00:00",
+    "title": "Wisła Kraków vs. GKS Katowice (Ekstraklasa)",
+    "venue": "Stadion Miejski im. Henryka Reymana",
+    "date": "2026-07-26T20:15:00",
     "surgeLevel": "High"
   }
 ]
