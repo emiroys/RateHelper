@@ -1,228 +1,283 @@
-# RateHelper 🚖
+# RateHelper v1.0 — Podręcznik Architektury i Dokumentacja Operacyjna
 
-RateHelper to otwartoźródłowy, lokalny asystent kierowcy zbudowany w technologii Flutter. Aplikacja pomaga kierowcom rideshare (Uber/Bolt) śledzić w czasie rzeczywistym wskaźniki akceptacji i anulowań oraz — dzięki wbudowanemu modułowi zarobków — obliczać **rzeczywisty zysk godzinowy w PLN** po odliczeniu kosztów wynajmu, prowizji, paliwa i podatku.
-
-Wszystko działa **wyłącznie lokalnie** na urządzeniu. Brak kont, chmury i telemetrii.
+> **Identyfikator aplikacji:** `com.ratehelper.app`  
+> **Platforma docelowa:** Android (arm64-v8a, zoptymalizowane pod flagowce typu Samsung Galaxy S24 Ultra)  
+> **Framework:** Flutter (Dart) + Natywny Kotlin/Java (Android OS Layer)  
+> **Wersja:** `1.0.2+2`
 
 ---
 
 ## Spis treści
 
-- [Główne funkcje](#-główne-funkcje)
-- [Przepływ aplikacji](#-przepływ-aplikacji)
-- [Ekran główny — liczniki statystyk](#ekran-główny--liczniki-statystyk)
-- [Nakładka na żywo](#nakładka-na-żywo)
-- [Zarobki — śledzenie zysku](#zarobki--śledzenie-zysku)
-- [Optymalizacje wydajności i bezpieczeństwa](#-optymalizacje-wydajności-i-bezpieczeństwa)
-- [Bezpieczeństwo i prywatność](#-bezpieczeństwo-i-polityka-prywatności)
-- [Języki interfejsu](#-języki-interfejsu)
-- [Wymagania](#-wymagania)
-- [Budowanie ze źródeł](#-budowanie-ze-źródeł)
-- [Struktura projektu](#-struktura-projektu)
-- [Licencja i kontakt](#-licencja-i-kontakt)
+1. [Tożsamość i cel aplikacji](#1-tożsamość-i-cel-aplikacji)
+2. [Główne funkcje (Zaktualizowana matryca v1.0)](#2-główne-funkcje-zaktualizowana-matryca-v10)
+3. [Architektura systemu i wielowątkowość (Isolates)](#3-architektura-systemu-i-wielowątkowość-isolates)
+4. [Szczegółowa specyfikacja modułów](#4-szczegółowa-specyfikacja-modułów)
+   - [Moduł I: Pulpit Wskaźników i Kalkulator Odzysku](#moduł-i-pulpit-wskaźników-i-kalkulator-odzysku)
+   - [Moduł II: Natywna Nakładka na Żywo (Pill Overlay)](#moduł-ii-natywna-nakładka-na-żywo-pill-overlay)
+   - [Moduł III: Zaawansowany Silnik Księgowy (Kary/Zyski)](#moduł-iii-zaawansowany-silnik-księgowy-karyzyski)
+   - [Moduł IV: Tryb Solo vs. Paired (Podział Kosztów)](#moduł-iv-tryb-solo-vs-paired-podział-kosztów)
+   - [Moduł V: Radar Wydarzeń (OTA Surge Radar)](#moduł-v-radar-wydarzeń-ota-surge-radar)
+   - [Moduł VI: Integracja Sprzętowa (Bluetooth Media Keys)](#moduł-vi-integracja-sprzętowa-bluetooth-media-keys)
+5. [Bezpieczeństwo, Prywatność i Integralność Danych](#5-bezpieczeństwo-prywatność-i-integralność-danych)
+6. [Budowanie ze źródeł i pokrycie testowe](#6-budowanie-ze-źródeł-i-pokrycie-testowe)
+7. [Mapa plików projektu](#7-mapa-plików-projektu)
 
 ---
 
-## 🔥 Główne funkcje
+## 1. Tożsamość i cel aplikacji
 
-| Moduł | Opis |
-|---|---|
-| **Nakładka na żywo** | Pływający widżet (`SYSTEM_ALERT_WINDOW`) nad aplikacjami Uber/Bolt — pokazuje aktualny wskaźnik akceptacji i pozwala szybko zliczać kursy bez przełączania okien |
-| **Liczniki statystyk** | Zaakceptowane / Odrzucone / Ukończone / Anulowane — duże przyciski, jedno dotknięcie, tryb jazdy |
-| **Zarobki i Analiza** | Tygodniowy kalkulator zysku w PLN (VAT, prowizja, paliwo, wynajem, idari). Wykresy i agregacja z widokiem tygodniowym, miesięcznym i rocznym |
-| **Wskaźnik Rentowności** | Obliczanie na żywo *punktu break-even* w oparciu o koszty stałe i zmienne z uwzględnieniem nieliniowej prowizji partnera i 11,5% VAT |
-| **Eksport do PDF** | Generowanie profesjonalnego zestawienia finansowego za dowolny wybrany miesiąc z opcją personalizacji danych kierowcy i automatyczną sanityzacją znaków |
-| **Lokalne Przypomnienia** | Cykliczne powiadomienia systemowe (Android Alarm) w poniedziałki rano przypominające o zapisaniu statystyk z minionego tygodnia |
-| **Tygodniowy reset** | Automatyczny reset liczników w poniedziałek o 04:00 (strefa `Europe/Warsaw`) z zachowaniem archiwu |
-| **Wskazówka odzysku** | Wyliczanie liczby kolejnych akceptacji potrzebnych do podniesienia wskaźnika AR powyżej 80% |
-| **Aktualizacje OTA** | Weryfikacja nowej wersji bezpośrednio przez bezpieczny manifest na GitHub Gist i instalacja sprawdzonych pakietów APK |
+**RateHelper** to zaawansowany, całkowicie lokalny asystent narzędziowy stworzony dla kierowców rideshare (Uber/Bolt) operujących w **Krakowie**. Aplikacja rozwiązuje kluczowe problemy operacyjne kierowców zawodowych, łącząc w jednym interfejsie bezdyskusyjną matematykę zysków, predykcję stref podwyższonego popytu (surge) oraz automatyzację rejestracji zleceń bez odrywania rąk od kierownicy.
+
+### Główne zasady projektowe
+
+- **100% Local, Zero Cloud:** Wszystkie dane finansowe i statystyki przechowywane są wyłącznie w piaskownicy Androida (`SharedPreferences`). Brak zewnętrznej telemetrii i kont użytkowników.
+- **Driving-First UI:** Ekstremalny ciemny motyw (True Dark), gigantyczne punkty dotykowe (XL Targets) oraz haptyka zwrotna dostosowana do obsługi urządzenia w uchwycie samochodowym.
+- **Trójjęzyczność:** Pełna lokalizacja interfejsu w językach: Tureckim (domyślny), Polskim oraz Angielskim.
 
 ---
 
-## 📱 Przepływ aplikacji
+## 2. Główne funkcje (Zaktualizowana matryca v1.0)
+
+| Moduł | Opis Funkcjonalny | Mechanizm Implementacji |
+| --- | --- | --- |
+| **Pływająca Nakładka** | Widget 276×80 dp wiszący bezpośrednio nad aplikacją Uber/Bolt Driver, pozwalający na rejestrację kliknięć bez opuszczania nawigacji. | Osobny izolat Flutter (`OverlayIsolate`) sprzężony z natywnym `WindowManager` w Javie. |
+| **3-Stanowy Alert AR** | Inteligentne monitorowanie wskaźnika akceptacji (AR) z dynamicznym systemem wczesnego ostrzegania (Zielony/Żółty/Czerwony). | Algorytm sprawdzający bufor bezpieczeństwa `AMBER_BUFFER = 2.0%` wokół progu wybranego celu. |
+| **Silnik Księgowy** | Precyzyjny kalkulator rentowności tygodniowej z automatycznym odliczaniem podatków, prowizji, paliwa i amortyzacji. | Pełne mapowanie podatku ryczałtowego/VAT (12%), prowizji partnera (3%) oraz stałych kosztów administracyjnych (40 PLN). |
+| **Tryby Jazdy (1 vs 2)** | Elastyczne przełączanie profilu kosztów w zależności od tego, czy kierowca jeździ sam, czy dzieli auto na zmiany. | Dynamiczne tabele progowe `RENTAL_TIERS` i `RENTAL_TIERS_PAIRED` działające w sposób odporny na modyfikacje wsteczne. |
+| **Surge Radar (OTA)** | Kalendarz masowych imprez w Krakowie (Tauron Arena, mecze Wisły/Cracovii) przewidujący skoki mnożników. | Bezpieczne pobieranie pliku manifestu z repozytorium GitHub bez konieczności aktualizacji całej aplikacji (Zero-Update OTA). |
+| **Obsługa Bluetooth** | Logowanie zleceń (Akceptacja/Odrzucenie) za pomocą fabrycznych przycisków multimedialnych na kierownicy pojazdu. | Natywna usługa `AccessibilityService` przechwytująca zdarzenia `KeyEvent` w tle systemu Android. |
+| **Niezależny Drogomierz** | Niezatracalny licznik podróży całkowitych monitorujący postęp do darmowego tygodnia najmu (próg 2000 kursów). | Zdecouple'owany licznik oparty na przyrostach różnicowych (delta), odporny na dwuletnie czyszczenie historii (FIFO). |
+
+---
+
+## 3. Architektura systemu i wielowątkowość (Isolates)
+
+Aplikacja opiera się na **dwóch całkowicie niezależnych izolatach Flutter**, które współdzielą zasoby sprzętowe i synchronizują dane poprzez dedykowany mechanizm IPC:
 
 ```
-Pierwsze uruchomienie
-        │
-        ▼
-┌───────────────────┐
-│  Konfiguracja     │  1) Uprawnienie „Wyświetlanie nad innymi aplikacjami”
-│  początkowa       │  2) Wyłączenie optymalizacji baterii (instrukcje
-└─────────┬─────────┘     dla producenta: Samsung, Xiaomi, Huawei…)
-          │
-          ▼
-┌───────────────────┐
-│  Ekran główny     │  Karty wskaźnika akceptacji i anulowań
-│                   │  Liczniki + cofnij + reset tygodnia
-└─────────┬─────────┘  Dolny pasek: Nakładka · Historia · Zarobki · Język
-          │
-    ┌─────┴─────┬──────────────┐
-    ▼           ▼              ▼
- Nakładka    Historia       Zarobki
- (pływająca) (archiwum)    (zysk PLN, PDF, Break-even)
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Android OS Layer                            │
+│   ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐ │
+│   │   MainActivity   │  │  OverlayService  │  │  MediaKey A11y   │ │
+│   │   (Kotlin)       │  │  (Java, forked)  │  │  (Kotlin)        │ │
+│   │  MethodChannel   │  │  Natywne drag +  │  │  Przechwytywanie │ │
+│   │  BroadcastRcv    │  │  FloatingWindow  │  │  KeyEvent (A11y) │ │
+│   └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘ │
+└────────────┼────────────────────┼────────────────────┼─────────────┘
+             │ Flutter Engine     │ Overlay Isolate    │ IPC Broadcast
+┌────────────┼────────────────────┼────────────────────┼─────────────┐
+│            ▼                    ▼                    ▼             │
+│   ┌──────────────────┐  ┌──────────────────┐                      │
+│   │   HomeScreen      │  │  OverlayWidget   │ ◄─ SharedPreferences│
+│   │   (główny izolat) │  │  (izolat okna)   │    2-way sync       │
+│   └────────┬──────────┘  └──────────────────┘                      │
+│            │                                                       │
+│   ┌────────┼──────────┬─────────────────┬─────────────┐           │
+│   ▼        ▼          ▼                 ▼             ▼           │
+│ Zarobki  Radar     Onboarding      Eksport PDF   Przypomnienia    │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
-### Konfiguracja początkowa
+### Protokół synchronizacji stanów
 
-Przy pierwszym uruchomieniu aplikacja prowadzi kierowcę przez dwa wymagane uprawnienia Android:
-
-1. **Wyświetlanie nad innymi aplikacjami** — bez tego nakładka nie pojawi się nad Uber Driver.
-2. **Wyłączenie optymalizacji baterii** — instrukcje dostosowane do marki telefonu (Samsung, Xiaomi, Huawei, OnePlus, inne).
-
-Po zakończeniu konfiguracja nie pojawia się ponownie (flaga `onboardingComplete` w SharedPreferences).
-
-### Ekran główny — liczniki statystyk
-
-- **Wskaźnik akceptacji (AR)** — `zaakceptowane / (zaakceptowane + odrzucone) × 100`; domyślnie 100% przy braku danych.
-- **Wskaźnik anulowań (CR)** — `anulowane / (ukończone + anulowane) × 100`.
-- Przyciski **[+]** / **[-]** z wibracją haptyczną (lekką / średnią).
-- **Automatyczne ukończenie** — automatyczne zwiększanie licznika ukończonych po zarejestrowaniu akceptacji (opcjonalne).
-- **Cofnij** — natychmiastowe cofnięcie ostatniego kroku (zapobieganie pomyłkom).
-- **Reset tygodnia** — automatyczny (poniedziałek 04:00, strefa `Europe/Warsaw`) lub ręczny. Statystyki trafiają do archiwum.
-- **Historia** — chronologiczna lista archiwalnych tygodni ze wskaźnikami.
-- **Logi dotknięć** — lokalny dziennik interakcji z nakładką (przydatny przy audycie).
-
-### Nakładka na żywo
-
-Kompaktowa pigułka o rozmiarze **276×80 dp** unosząca się nad innymi aplikacjami:
-
-- **−** (czerwony) → odrzucenie zlecenia (zwiększa licznik odrzuconych).
-- **+** (zielony) → akceptacja zlecenia (zwiększa licznik zaakceptowanych).
-- Środek → aktualny wskaźnik akceptacji sformatowany zgodnie z językiem systemu.
-- Przeciąganie natywne (Android `WindowManager`) — bezpieczna, zoptymalizowana interakcja bez blokowania reszty ekranu.
-- Synchronizacja w tle z główną aplikacją za pomocą `SharedPreferences` oraz dwukierunkowej komunikacji isolate IPC (`overlayListener`).
+Wszelkie operacje zapisu w głównym izolacie wywołują natychmiastowe powiadomienie `OverlaySync.notifyCountersChanged()`. Po powrocie do aplikacji głównej (`resumed`), interfejs wykonuje `prefs.reload()`, zapewniając całkowitą spójność danych i eliminując zjawisko wyścigu (race conditions).
 
 ---
 
-## 💰 Zarobki — śledzenie zysku
+## 4. Szczegółowa specyfikacja modułów
 
-Ekran Zarobków (dostępny z dolnego paska) pozwala na precyzyjne rozliczanie przychodów z aplikacji:
+### Moduł I: Pulpit Wskaźników i Kalkulator Odzysku
 
-**Wpisywane ręcznie (pola formularza):**
+Główny pulpit zarządza czterema krytycznymi licznikami: **Zaakceptowane**, **Odrzucone**, **Ukończone** oraz **Anulowane**.
 
-| Pole | Źródło w Uber Driver |
-|---|---|
-| **Dochód netto** | Kwota brutto partnera przed potrąceniem prowizji i VAT (główna suma u góry) |
-| **Zapłacono na stacji** | Faktyczny koszt zatankowanego paliwa (PLN) |
-| **Otrzymana gotówka** | Gotówka pobrana bezpośrednio od klientów |
-| **Czas online** | Czas spędzony w aplikacji (godziny + minuty) |
-| **Liczba przejazdów** | Całkowita liczba ukończonych zleceń w danym tygodniu |
-| **Zniżka na wynajem** | Przełącznik aktywujący stawkę progresywną w zależności od liczby kursów |
+- **Wskaźnik Akceptacji (AR):** Wzór: $\text{AR} = \frac{\text{zaakceptowane}}{\text{zaakceptowane} + \text{odrzucone}} \times 100$.
+- **3-Stanowy system wizualny:** Jeśli wskaźnik zbliża się do krytycznego progu, karta zmienia kolor na bursztynowy (`AMBER_BUFFER = 2.0%`), dając kierowcy przestrzeń na odrzucenie kilku gorszych zleceń bez natychmiastowego wypadnięcia z progu zniżkowego. Gdy spada poniżej celu, system aktywuje kolor karmazynowy i wylicza dokładną liczbę ($X$) kolejnych koniecznych akceptacji pod rząd według wzoru matematycznego:
 
-**Obliczane automatycznie:**
+$$X = \max\left(1,\ \left\lfloor \frac{r \cdot \text{rejected} - (1-r) \cdot \text{accepted}}{1-r} \right\rfloor + 1\right)$$
 
-| Składnik | Reguła |
-|---|---|
-| **VAT (11,5%)** | Podatek od przychodów Uber/Bolt odprowadzany przez partnera: `dochód netto × 0,115` |
-| **Prowizja partnera** | Progresywna prowizja rozliczeniowa partnera (0–999 PLN → 50 PLN + 1% VAT, ..., 3000+ PLN → 0 PLN) |
-| **Koszt paliwa** | Uwzględnia automatyczny 10% rabat z kart paliwowych: `zapłacono na stacji × 0,90` |
-| **Koszt administracyjny** | Stała opłata partnerska wynosząca **40 PLN** |
-| **Wynajem auta** | Naliczany zawsze. Przy zniżce zależy od liczby kursów (850 / 650 / 450 / 250 PLN). Bez zniżki stawka płaska **850 PLN** |
-| **Zysk netto** | Ostateczny zysk kierowcy na czysto: `dochód netto − wszystkie powyższe koszty` |
-| **Stawka godzinowa** | Średnia stawka za godzinę pracy: `zysk netto ÷ godziny online` |
-| **Na konto** | Kwota przelewu od partnera po potrąceniach gotówki: `zysk netto − otrzymana gotówka` |
+### Moduł II: Natywna Nakładka na Żywo (Pill Overlay)
+
+Pływająca pigułka o wymiarach 276×80 dp operuje na natywnym wątku renderowania Androida poprzez `WindowManager.updateViewLayout()`. Zastosowano margines błędu dotyku (20px slop) dopasowany do digitizera serii Samsung Galaxy Ultra, dzięki czemu fizyczne przeciąganie nakładki nie koliduje z panelami dotykowymi aplikacji Uber/Bolt Driver. Widget używa komponentu `RepaintBoundary` w celu odizolowania renderowania dynamicznego tekstu od statycznych ikon wektorowych.
+
+### Moduł III: Zaawansowany Silnik Księgowy (Kary/Zyski)
+
+Kalkulator zysku netto operuje na architekturze ciągłego przeliczania wartości w czasie rzeczywistym. Formuła finansowa została zdefiniowana następująco:
+
+```
+Zysk Netto = Przychód Netto Uber
+            − Stała Opłata Administracyjna (40.00 PLN)
+            − Paliwo po Rabacie Partnerskim (Suma Rachunków × 0.90)
+            − Podatek VAT Ryczałtowy (Przychód Netto × 0.12)
+            − Prowizja Rozliczeniowa Partnera (Przychód Netto × 0.03)
+            − Indywidualny Koszt Wynajmu (rentalFee wyliczone z tabel progowych)
+```
+
+#### Próg rentowności (Break-Even)
+
+Aplikacja dynamicznie wskazuje kwotę obrotu, od której kierowca zaczyna zarabiać na czysto:
+
+$$\text{Break-Even} = \frac{\text{Koszty Stałe (Najem + Admin + Paliwo)}}{\text{1} - \text{FLAT\_VAT\_RATE (0.12)} - \text{SETTLEMENT\_FEE\_RATE (0.03)}} = \frac{\text{Koszty Stałe}}{\text{0.85}}$$
+
+Dodatkowo, formularz paliwowy pozwala na **wielokrotne wprowadzanie rachunków (Multi-Receipt Logging)** w ciągu jednego tygodnia. Każdy paragon otrzymuje unikalne ID generowane ze znacznika czasu i sumy kontrolnej kwoty, co eliminuje błędy duplikacji danych.
+
+### Moduł IV: Tryb Solo vs. Paired (Podział Kosztów)
+
+RateHelper wspiera zaawansowany podział progów najmu pojazdu, dopasowany do realiów krakowskich kierowców jeżdżących w pojedynkę lub dzielących auto w systemie dwuzmianowym (12-godzinnym).
+
+- **Tryb Solo (1 Kierowca):** Całkowity koszt auta i rygorystyczne progi spoczywają na jednej osobie.
+- **Tryb Paired (2 Kierowców):** Koszt najmu dzielony jest na pół, a progi liczby przejazdów zostają przesunięte w celu odzwierciedlenia skróconego czasu pracy pojedynczego kierowcy.
+
+```
+RENTAL_TIERS (Solo):
+┌─────────────┬────────────────┬─────────┬──────────────┐
+│ Liczba Kursów│ Koszt Kierowcy │ Min. AR%│ Maks. Anul.% │
+├─────────────┼────────────────┼─────────┼──────────────┤
+│ 0 – 99      │ 900 PLN        │ —       │ —            │
+│ 100 – 149   │ 700 PLN        │ 80%     │ 5%           │
+│ 150 – 199   │ 500 PLN        │ 70%     │ 5%           │
+│ 200 – 249   │ 300 PLN        │ 60%     │ 5%           │
+│ 250+        │ 100 PLN        │ 50%     │ 5%           │
+└─────────────┴────────────────┴─────────┴──────────────┘
+
+RENTAL_TIERS_PAIRED (Tryb Współdzielony):
+┌─────────────┬────────────────┬───────────────┬─────────┬──────────────┐
+│ Liczba Kursów│ Koszt Kierowcy │ Koszt Pojazdu │ Min. AR%│ Maks. Anul.% │
+├─────────────┼────────────────┼───────────────┼─────────┼──────────────┤
+│ 0 – 119     │ 450 PLN        │ 900 PLN       │ —       │ —            │
+│ 120 – 169   │ 350 PLN        │ 700 PLN       │ 80%     │ 5%           │
+│ 170 – 219   │ 250 PLN        │ 500 PLN       │ 70%     │ 5%           │
+│ 220 – 269   │ 150 PLN        │ 300 PLN       │ 60%     │ 5%           │
+│ 270+        │ 50 PLN         │ 100 PLN       │ 50%     │ 5%           │
+└─────────────┴────────────────┴───────────────┴─────────┴──────────────┘
+```
+
+**Reguła Nienaruszalności Historii (Fix #1):** Wybrany tryb jazdy (`driverMode`) jest zapisywany w strukturze JSON trwale w momencie zamknięcia tygodnia. Zmiana globalnego przełącznika w ustawieniach aplikacji nigdy nie rekalkuluje wstecznie zysków z poprzednich miesięcy.
+
+### Moduł V: Radar Wydarzeń (Surge Radar OTA)
+
+W celu maksymalizacji stawek godzinowych, aplikacja została wyposażona w asynchroniczny moduł pobierania danych o imprezach masowych w Krakowie. Dane pobierane są bezpośrednio z surowego pliku JSON hostowanego w repozytorium GitHub (`krakow_events.json`).
+
+- **Pamięć podręczna (TTL):** Wyniki są cache'owane w pamięci RAM przez 1 godzinę, co zapobiega niepotrzebnemu zużyciu pakietu danych kierowcy.
+- **Strefy Surge:** Wydarzenia kategoryzowane są według stopni zagrożenia popytem: `High` (powyżej 10 tys. uczestników — Karmazynowy), `Medium` (Żółty) oraz `Low` (Zielony).
+
+### Moduł VI: Integracja Sprzętowa (Bluetooth Media Keys)
+
+Natywna usługa systemowa `MediaKeyAccessibilityService.kt` pozwala na bezwzrokowe zliczanie zleceń. Wykorzystuje ona bezprzewodowe piloty Bluetooth montowane na koło kierownicy.
+
+- **Filtracja zdarzeń:** Krótkie kliknięcie (<800 ms) przycisków zmiany utworu (`MEDIA_NEXT` / `MEDIA_PREVIOUS`) jest przepuszczane do systemu — Spotify czy YouTube Music działają bez zakłóceń.
+- **Przechwytywanie (Long Press):** Przytrzymanie przycisku powyżej 800 ms wywołuje krótką wibrację haptyczną (150 ms), blokuje zmianę utworu w odtwarzaczu muzycznym i inkrementuje licznik zaakceptowanych (przycisk w przód) lub odrzuconych (przycisk w tył) zleceń.
+
+> **Uwaga konfiguracyjna (Kompilacja):** W pliku konfiguracyjnym usługi `accessibility_service_config.xml` parametr `android:accessibilityEventTypes` został całkowicie usunięty, a flagą nadrzędną sterującą nasłuchem jest wyłącznie `android:canRequestFilterKeyEvents="true"`. Rozwiązuje to krytyczny błąd kompilacji zasobów AAPT (Resource Linking Failed) na nowych wersjach SDK.
 
 ---
 
-## ⚡ Optymalizacje wydajności i bezpieczeństwa
+## 5. Bezpieczeństwo, Prywatność i Integralność Danych
 
-Najnowsze usprawnienia techniczne wdrożone w celu zapewnienia maksymalnej płynności i niezawodności:
-
-* **Optymalizacja renderowania nakładki (`RepaintBoundary`)**: Przyciski sterujące nakładki (`_CircleBtn`) zostały wydzielone do osobnych warstw renderowania. Zapobiega to ponownemu przerysowywaniu ikon wektorowych i efektów rozbłysków (InkWell) przy każdej zmianie tekstu wskaźnika akceptacji na żywo.
-* **Ochrona przed paste-bombingiem**: Wprowadzono sztywne limity długości wpisywanych znaków (`LengthLimitingTextInputFormatter(7)`) oraz walidację maksymalnych wartości (do `999 999.0`). Chroni to aplikację przed wpisaniem uszkodzonych danych, które zniekształcają średnie historyczne i psują skalowanie wykresów.
-* **Keep-Alive dla widoków (`AutomaticKeepAliveClientMixin`)**: Widoki kart wykresów na ekranie głównym są utrzymywane w pamięci. Przełączanie zakładek nie powoduje resetowania ani ponownego odtwarzania animacji wejściowych wykresów od zera.
-* **Bezpieczny eksport PDF**: Generator dokumentów automatycznie filtruje znaki specjalne oraz emotikony w imieniu kierowcy za pomocą wyrażeń regularnych, chroniąc przed błędami biblioteki PDF (`PdfException`).
-* **Synchroniczne zapobieganie race-condition**: Metoda zapisu danych synchronizuje aktualny stan liczników poprzez uprzednie przeładowanie pamięci dyskowej (`await prefs.reload()`), co chroni przed nadpisywaniem zmian dokonanych z poziomu nakładki na żywo.
-
----
-
-## 🔒 Bezpieczeństwo i polityka prywatności
-
-* **W 100% lokalnie** — brak chmury, zewnętrznych serwerów i telemetrii. Całość danych spoczywa w bezpiecznym piaskowym katalogu aplikacji.
-* **Kopia zapasowa wyłączona** — `allowBackup=false` uniemożliwia wyodrębnienie historii transakcji i zarobków za pomocą zewnętrznych programów kopii zapasowej.
-* **Bezpieczne pliki tymczasowe** — wygenerowane PDF są zapisywane w izolowanym folderze cache i usuwane natychmiast po udostępnieniu.
-* **Aktualizacje podpisane cyfrowo** — mechanizm OTA weryfikuje sumę kontrolną APK za pomocą podpisu zapisanego w `.env` i pobiera pliki wyłącznie z oficjalnego repozytorium GitHub releases.
+| Zagrożenie | Zastosowana Architektura Obronna |
+| --- | --- |
+| **Wyciek danych finansowych** | Całkowity brak modułów sieciowych odpowiedzialnych za analitykę, reklamy czy synchronizację w chmurze. Dane nigdy nie opuszczają urządzenia. |
+| **Inżynieria wsteczna bazy** | Flaga `android:allowBackup=false` w manifestu uniemożliwia pobranie struktury SharedPreferences poprzez debugowanie ADB lub lokalne backupy systemowe. |
+| **Ataki typu MITM (OTA)** | Klasa `StrictSecurityHttpOverrides` wymusza rygorystyczną weryfikację łańcucha certyfikatów TLS podczas sprawdzania aktualizacji i pobierania radaru wydarzeń. |
+| **Paste-Bombing & Crash** | Filtry tekstowe `LengthLimitingTextInputFormatter(7)` oraz walidacja matematyczna do wartości maksymalnej 999 999,00 PLN zabezpieczają przed wprowadzeniem błędnych struktur niszczących wykresy. |
+| **Utrata danych kamieni milowych** | Licznik przebiegu całkowitego (`lifetime_trips_total`) działa w trybie dopisywania różnicowego. Czyszczenie bazy z wpisów starszych niż 2 lata (limit FIFO: 104 tygodnie) nie powoduje cofania licznika postępu do darmowego najmu. |
 
 ---
 
-## 🌍 Języki interfejsu
+## 6. Budowanie ze źródeł i pokrycie testowe
 
-Aplikacja w pełni obsługuje języki: **polski**, **angielski** oraz **turecki** (domyślny). Działa automatyczna lokalizacja formatów procentowych (np. `100%` w PL/EN oraz `%100` w TR).
+### Wymagania systemowe
 
----
+- Flutter SDK >= `3.x`
+- Android SDK (API Level 26+)
+- Zainstalowane narzędzie `build_runner` dla generowania kodu zaciemniającego sekrety
 
-## 📋 Wymagania
+### Procedura produkcyjna (Release Build)
 
-| Parametr | Specyfikacja |
-|---|---|
-| **Platforma** | Android 8.0+ (docelowo arm64-v8a) |
-| **Flutter SDK** | 3.x lub nowszy |
-| **Kompilacja** | Java JDK + Android SDK |
+1. **Klonowanie repozytorium:**
 
----
-
-## 🛠️ Budowanie ze źródeł
-
-### 1. Klonowanie repozytorium
 ```bash
 git clone https://github.com/emiroys/ratehelper.git
 cd ratehelper
 ```
 
-### 2. Plik środowiskowy (`.env`)
-Skopiuj plik szablonu i wprowadź własne zmienne:
+2. **Plik środowiskowy (`.env`):**
+
 ```bash
 cp .env.example .env
 ```
+
 Wypełnij `.env`:
+
 ```env
 APP_SIGNATURE=1234567890ABCDEF
 GIST_URL=https://gist.githubusercontent.com/twoj-profil/update.json
 ```
 
-### 3. Instalacja zależności i generowanie kodu
+3. **Instalacja pakietów:**
+
 ```bash
 flutter pub get
+```
+
+4. **Generowanie kodu generatora Envied (Zaciemnianie kluczy API):**
+
+```bash
 dart run build_runner build --delete-conflicting-outputs
 ```
 
-### 4. Uruchamianie testów
+5. **Uruchomienie pakietu testów regresyjnych (Finanse, Progi, Zaokrąglenia, Daty):**
+
 ```bash
-flutter test
+flutter test test/earnings_test.dart test/logic_test.dart
 ```
 
-### 5. Kompilacja APK produkcyjnego
+6. **Kompilacja bezpiecznej wersji APK ze stripowaniem symboli debugowania i obfuskacją kodu Dart:**
+
 ```bash
-flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbols/
+flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbols/ --no-tree-shake-icons
 ```
-Plik wynikowy dla systemów 64-bitowych znajdziesz w: `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`.
+
+Plik wynikowy dla systemów 64-bitowych: `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`.
 
 ---
 
-## 📂 Struktura projektu
+## 7. Mapa plików projektu
+
+Finansowa i strukturalna architektura kodu RateHelper rozkłada się na następujące moduły kluczowe:
 
 ```
 lib/
-├── main.dart                # Inicjalizacja aplikacji, konfiguracja izolatu nakładki
-├── home_screen.dart         # Główny ekran liczników statystyk, weryfikacja OTA, synchronizacja
-├── earnings_models.dart     # Logika kalkulatora, tabele prowizji, matematyka break-even
-├── earnings_screen.dart     # Interfejs zarobków (wykresy, formularze, walidacja i limity)
-├── earnings_pdf_export.dart # Generowanie i sanityzacja raportów PDF
-├── earnings_reminders.dart  # Zarządca alarmów i powiadomień poniedziałkowych
-├── overlay_widget.dart      # Widżet pływający z optymalizacją RepaintBoundary
-├── onboarding_screen.dart   # Ekran powitalny i przyznawanie uprawnień systemowych
-├── l10n.dart                # Klasy lokalizacji językowej
-├── secure_http.dart         # Zabezpieczenia certyfikatów i protokołu TLS
-└── crash_logger.dart        # Dziennik awarii i błędów krytycznych
+├── main.dart                  # Inicjalizacja wątków, konfiguracja izolatu nakładki
+├── home_screen.dart           # Kokpit wskaźników, licznik odzysku, mechanizm aktualizacji OTA
+├── earnings_models.dart       # Silnik matematyczny, struktury JSON, progi Solo/Paired
+├── earnings_screen.dart       # Formularze księgowe, izolowane odświeżanie list, wykresy i drogomierz
+├── earnings_pdf_export.dart   # Generator zestawień miesięcznych PDF ze stripowaniem emotikonów
+├── earnings_reminders.dart    # Harmonogram powiadomień push (Poniedziałek 09:00)
+├── radar_screen.dart          # Interfejs graficzny Radaru Wydarzeń Kraków
+├── overlay_widget.dart        # Kod UI nakładki (Izolat okna) z optymalizacją RepaintBoundary
+├── overlay_sync.dart          # Komunikacja międzyizolatowa i wymuszanie przeładowania pamięci
+├── onboarding_screen.dart     # Menadżer uprawnień systemowych (Overlay / Battery)
+├── l10n.dart                  # Słownik tłumaczeń (TR/EN/PL) i lokalne formatowanie walut
+├── secure_http.dart           # Zabezpieczenia certyfikatów i protokołu TLS
+├── crash_logger.dart          # Dziennik awarii i błędów krytycznych
+├── models/
+│   └── event_model.dart       # Model wydarzenia masowego (Radar OTA)
+└── services/
+    └── event_service.dart     # Pobieranie i cache manifestu krakow_events.json
+
+android/app/src/main/kotlin/com/ratehelper/app/
+├── MainActivity.kt            # MethodChannel, obsługa zdarzeń MediaKey
+└── MediaKeyAccessibilityService.kt  # Przechwytywanie przycisków Bluetooth (long press 800 ms)
 ```
 
 ---
 
-## 📄 Licencja i kontakt
+## Licencja i kontakt
 
-Projekt open-source udostępniany na zasadach wolnego oprogramowania.
-Dedykowana instrukcja konfiguracji dla kierowców bez znajomości programowania dostępna jest pod adresem: [`SETUP_GUIDE_TR.md`](SETUP_GUIDE_TR.md).
+Projekt open-source udostępniany na zasadach wolnego oprogramowania.  
+Dedykowana instrukcja konfiguracji dla kierowców bez znajomości programowania: [`SETUP_GUIDE_TR.md`](SETUP_GUIDE_TR.md).
 
-<p align="center">
-  <sub>RateHelper — stworzony przez kierowców dla kierowców, którzy chcą znać swój realny zysk.</sub>
-</p>
+---
+
+> **RateHelper v1.0** — Tworzony z perspektywy fotela kierowcy. Dbamy o Twój realny zysk na krakowskich drogach.
