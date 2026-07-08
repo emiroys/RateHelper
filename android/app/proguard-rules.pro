@@ -98,20 +98,6 @@
 -keep class io.flutter.plugins.pathprovider.** { *; }
 -dontwarn io.flutter.plugins.pathprovider.**
 
-# ------------------------------------------------------------------------------
-# flutter_local_notifications — the weekly Monday reminder. The plugin
-# serializes scheduled-notification state with Gson (reflection), so its model
-# classes and Gson's TypeToken machinery must survive R8, otherwise scheduled
-# notifications silently fail to persist / re-fire after reboot.
-# ------------------------------------------------------------------------------
--keep class com.dexterous.** { *; }
--keep class com.google.gson.** { *; }
--keep class * extends com.google.gson.reflect.TypeToken { *; }
--keepclassmembers class * {
-    @com.google.gson.annotations.SerializedName <fields>;
-}
--dontwarn com.dexterous.**
--dontwarn com.google.gson.**
 
 # ------------------------------------------------------------------------------
 # RateHelper own MethodChannel host (MainActivity battery/manufacturer bridge).

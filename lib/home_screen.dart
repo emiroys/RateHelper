@@ -46,8 +46,11 @@ enum TripGoal {
   int get minTrips => activeDriverMode == DriverMode.paired ? pairedMinTrips : soloMinTrips;
 }
 
+// ignore: constant_identifier_names
 const double AMBER_BUFFER = 2.0;
 const double kAmberBuffer = AMBER_BUFFER;
+
+const String kReleaseName = "2. Büyük Güncelleme"; // update manually each significant release
 
 int? calculateNeededForRecovery({
   required int acceptedRequests,
@@ -117,6 +120,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   SharedPreferences? _prefs;
   AppLang _currentLang = AppLang.tr;
   String _versionLabel = '';
+  bool _showRawVersion = false;
   String? _debugBuildSignature;
 
   int acceptedRequests = 0;
@@ -1406,34 +1410,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
               Center(child: _buildDesignerSignature()),
 
-              if (_versionLabel.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(
-                  '${S.version} $_versionLabel',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 9,
-                    color: const Color(0x55FFFFFF),
-                    letterSpacing: 1.5,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-              ],
-              if (!kReleaseMode &&
-                  _debugBuildSignature != null &&
-                  _debugBuildSignature!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                SelectableText(
-                  'SIG: $_debugBuildSignature',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 8,
-                    color: const Color(0x55FFFFFF),
-                    letterSpacing: 0.5,
-                    height: 1.3,
-                  ),
-                ),
-              ],
+              const SizedBox(height: 12),
+              Center(child: _buildReleaseInfoRow()),
 
               const SizedBox(height: 16),
                 ],
@@ -1557,6 +1535,66 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildReleaseInfoRow() {
+    return GestureDetector(
+      onTap: () {
+        setState(() => _showRawVersion = !_showRawVersion);
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'RateHelper — ${S.releaseName}',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 10,
+                color: const Color(0x77FFFFFF),
+                letterSpacing: 1.2,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            if (_versionLabel.isNotEmpty) ...[
+              const SizedBox(height: 3),
+              Text(
+                _showRawVersion
+                    ? '${S.version} $_versionLabel'
+                    : _versionLabel,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 8,
+                  color: _showRawVersion
+                      ? const Color(0x77FFFFFF)
+                      : const Color(0x38FFFFFF),
+                  letterSpacing: 1.0,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
+            if (_showRawVersion &&
+                !kReleaseMode &&
+                _debugBuildSignature != null &&
+                _debugBuildSignature!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              SelectableText(
+                'SIG: $_debugBuildSignature',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 8,
+                  color: const Color(0x55FFFFFF),
+                  letterSpacing: 0.5,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

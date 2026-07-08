@@ -253,7 +253,6 @@ lib/
 ├── earnings_models.dart       # Silnik matematyczny, struktury JSON, progi Solo/Paired
 ├── earnings_screen.dart       # Formularze księgowe, izolowane odświeżanie list, wykresy i drogomierz
 ├── earnings_pdf_export.dart   # Generator zestawień miesięcznych PDF ze stripowaniem emotikonów
-├── earnings_reminders.dart    # Harmonogram powiadomień push (Poniedziałek 09:00)
 ├── radar_screen.dart          # Interfejs graficzny Radaru Wydarzeń Kraków
 ├── overlay_widget.dart        # Kod UI nakładki (Izolat okna) z optymalizacją RepaintBoundary
 ├── overlay_sync.dart          # Komunikacja międzyizolatowa i wymuszanie przeładowania pamięci

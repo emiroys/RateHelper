@@ -45,7 +45,6 @@ dependencies:
   envied: ^0.5.4
   pdf: ^3.11.1
   share_plus: ^13.2.0
-  flutter_local_notifications: ^18.0.1
 
 dev_dependencies:
   flutter_test:

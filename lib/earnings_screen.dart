@@ -7,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'earnings_models.dart';
 import 'earnings_pdf_export.dart';
-import 'earnings_reminders.dart';
 import 'l10n.dart';
 
 const kDriverNameKey = 'driver_name';
@@ -114,8 +113,8 @@ String _warningText(EarningsWarning w) {
 class EarningsScreen extends StatefulWidget {
   const EarningsScreen({super.key, this.autoAddWeek = false});
 
-  /// When true (e.g. launched from the Monday reminder), the "add new week"
-  /// form for the current week opens automatically after the first load.
+  /// When true, the "add new week" form for the current week opens
+  /// automatically after the first load.
   final bool autoAddWeek;
 
   @override
@@ -608,8 +607,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
         cashReceived: 0,
         onlineHours: 0,
         tripCount: 0,
-        acceptanceRateReported: null,
-        cancellationRateReported: null,
+        hasRentalDiscount: true,
         fuelReceipts: [newReceipt],
       );
     }
@@ -683,11 +681,6 @@ class _EarningsScreenState extends State<EarningsScreen> {
             tooltip: S.exportPdf,
             icon: const Icon(Icons.picture_as_pdf_rounded),
             onPressed: _entries.isEmpty ? null : _exportPdf,
-          ),
-          IconButton(
-            tooltip: S.reminderSettingsTitle,
-            icon: const Icon(Icons.notifications_active_rounded),
-            onPressed: _showReminderSettings,
           ),
         ],
       ),
@@ -931,20 +924,6 @@ class _EarningsScreenState extends State<EarningsScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  /// Bottom sheet with the "Pazartesi Hatırlatması" on/off switch.
-  Future<void> _showReminderSettings() async {
-    final prefs = await _getPrefs();
-    if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: const Color(0xFF121212),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => _ReminderSettingsSheet(prefs: prefs),
     );
   }
 
@@ -2915,8 +2894,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
   late final TextEditingController _hoursCtrl;
   late final TextEditingController _minutesCtrl;
   late final TextEditingController _tripsCtrl;
-  late final TextEditingController _acceptanceRateCtrl;
-  late final TextEditingController _cancellationRateCtrl;
+  late bool _hasRentalDiscount;
   late final ValueNotifier<List<FuelReceipt>> _fuelReceiptsNotifier;
   List<FuelReceipt> get _fuelReceipts => _fuelReceiptsNotifier.value;
   DriverMode get _formDriverMode => widget.existing?.driverMode ?? activeDriverMode;
@@ -2940,12 +2918,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       text: e != null ? '${((hours - hours.truncate()) * 60).round()}' : '',
     );
     _tripsCtrl = TextEditingController(text: e != null ? '${e.tripCount}' : '');
-    _acceptanceRateCtrl = TextEditingController(
-      text: e?.acceptanceRateReported != null ? _num(e!.acceptanceRateReported!) : '',
-    );
-    _cancellationRateCtrl = TextEditingController(
-      text: e?.cancellationRateReported != null ? _num(e!.cancellationRateReported!) : '',
-    );
+    _hasRentalDiscount = e?.hasRentalDiscount ?? true;
     final initialReceipts = List<FuelReceipt>.from(e?.fuelReceipts ?? []);
     if (initialReceipts.isEmpty && e != null && e.fuelPumpPaidTotal > 0) {
       initialReceipts.add(FuelReceipt(timestamp: e.weekStart, amountPaid: e.fuelPumpPaidTotal));
@@ -2959,8 +2932,6 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       _hoursCtrl,
       _minutesCtrl,
       _tripsCtrl,
-      _acceptanceRateCtrl,
-      _cancellationRateCtrl,
       _cashCtrl,
     ]) {
       c.addListener(_onPreviewChanged);
@@ -2995,13 +2966,6 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
     return v < 0 ? 0 : v;
   }
 
-  double? _parseNullable(TextEditingController c) {
-    final t = c.text.trim().replaceAll(' ', '').replaceAll('.', '').replaceAll(',', '.');
-    if (t.isEmpty) return null;
-    final v = double.tryParse(t);
-    if (v == null) return null;
-    return v < 0 ? 0 : v;
-  }
 
   /// Parses an integer field, clamping negatives to 0 (e.g. trip count).
   int _parseInt(TextEditingController c) {
@@ -3016,8 +2980,6 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       _hoursCtrl,
       _minutesCtrl,
       _tripsCtrl,
-      _acceptanceRateCtrl,
-      _cancellationRateCtrl,
       _cashCtrl,
     ]) {
       c.removeListener(_onPreviewChanged);
@@ -3027,8 +2989,6 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
     _hoursCtrl.dispose();
     _minutesCtrl.dispose();
     _tripsCtrl.dispose();
-    _acceptanceRateCtrl.dispose();
-    _cancellationRateCtrl.dispose();
     _fuelReceiptsNotifier.dispose();
     super.dispose();
   }
@@ -3055,19 +3015,16 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       cashReceived: _parse(_cashCtrl),
       onlineHours: hours,
       tripCount: _parseInt(_tripsCtrl),
-      acceptanceRateReported: _parseNullable(_acceptanceRateCtrl),
-      cancellationRateReported: _parseNullable(_cancellationRateCtrl),
+      hasRentalDiscount: _hasRentalDiscount,
       fuelReceipts: _fuelReceipts,
     );
     Navigator.of(context).pop(entry);
   }
 
-  /// Rental tier bracket for the currently entered trip count and reported rates.
+  /// Rental tier bracket for the currently entered trip count and mode.
   RentalTier _rentalTier() => expectedRentalTier(
         _parseInt(_tripsCtrl),
-        _parseNullable(_acceptanceRateCtrl),
-        _parseNullable(_cancellationRateCtrl),
-        _formDriverMode == DriverMode.paired ? RENTAL_TIERS_PAIRED : RENTAL_TIERS,
+        _formDriverMode,
       );
 
   @override
@@ -3083,8 +3040,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       cashReceived: _parse(_cashCtrl),
       onlineHours: onlineHoursFromHm(_parseInt(_hoursCtrl), _parseInt(_minutesCtrl)),
       tripCount: _parseInt(_tripsCtrl),
-      acceptanceRateReported: _parseNullable(_acceptanceRateCtrl),
-      cancellationRateReported: _parseNullable(_cancellationRateCtrl),
+      hasRentalDiscount: _hasRentalDiscount,
       fuelReceipts: _fuelReceipts,
     );
     final warnings = preview.warnings;
@@ -3136,10 +3092,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
               _numField(_tripsCtrl, S.tripCountLabel,
                   integer: true, required: true, positive: true,
                   helper: _formDriverMode == DriverMode.paired ? S.pairedTripsHint : null),
-              _numField(_acceptanceRateCtrl, S.acceptanceRateReported,
-                  suffix: '%', required: true, positive: false, maxVal: 100.0, helper: S.acceptanceRateHint),
-              _numField(_cancellationRateCtrl, S.cancellationRateReported,
-                  suffix: '%', required: true, positive: false, maxVal: 100.0, helper: S.cancellationRateHint),
+              _rentalDiscountToggleRow(),
               _computedRentalDisplay(),
               const SizedBox(height: 12),
               _buildFuelReceiptsSection(),
@@ -3492,11 +3445,46 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
     );
   }
 
-  /// Read-only, formula-driven rental fee. Recomputes live from trip count,
-  /// acceptance rate, and cancellation rate; there is no manual override.
+  Widget _rentalDiscountToggleRow() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: _cardColor,
+        border: _cardBorder,
+        borderRadius: _cardRadius,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          activeThumbColor: _emerald,
+          title: Text(
+            S.hasRentalDiscountToggle,
+            style: GoogleFonts.dmSans(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          value: _hasRentalDiscount,
+          onChanged: (val) {
+            setState(() => _hasRentalDiscount = val);
+            _onPreviewChanged();
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Read-only, formula-driven rental fee. Recomputes live from trip count
+  /// and rental discount toggle.
   Widget _computedRentalDisplay() {
     final tier = _rentalTier();
-    final label = S.rentalComputed(rentalTierRangeLabel(tier), formatPln(tier.fee));
+    final noDiscountFee = _formDriverMode == DriverMode.paired ? 450.0 : 900.0;
+    final label = _hasRentalDiscount
+        ? S.rentalComputed(rentalTierRangeLabel(tier), formatPln(tier.fee))
+        : S.rentalNoDiscount(formatPln(noDiscountFee));
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -3678,106 +3666,6 @@ class _RangeOption extends StatelessWidget {
               ),
             ),
             const Icon(Icons.chevron_right_rounded, color: Colors.white38),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Bottom sheet holding the "Pazartesi Hatırlatması" on/off switch. Persists
-/// the flag and (re)schedules or cancels the weekly local notification.
-class _ReminderSettingsSheet extends StatefulWidget {
-  const _ReminderSettingsSheet({required this.prefs});
-
-  final SharedPreferences prefs;
-
-  @override
-  State<_ReminderSettingsSheet> createState() => _ReminderSettingsSheetState();
-}
-
-class _ReminderSettingsSheetState extends State<_ReminderSettingsSheet> {
-  late bool _enabled = EarningsReminders.isEnabled(widget.prefs);
-
-  Future<void> _toggle(bool value) async {
-    HapticFeedback.selectionClick();
-    setState(() => _enabled = value);
-    await EarningsReminders.setEnabled(widget.prefs, value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
-            GestureDetector(
-              onTap: () => _toggle(!_enabled),
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                decoration: BoxDecoration(
-                  color: _cardColor,
-                  border: Border.all(
-                    color: _enabled ? _emerald : const Color(0x0DFFFFFF),
-                    width: _enabled ? 1.5 : 1,
-                  ),
-                  borderRadius: _cardRadius,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            S.reminderSettingsTitle,
-                            style: GoogleFonts.dmSans(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            S.reminderSettingsBody,
-                            style: GoogleFonts.dmSans(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white54,
-                              height: 1.35,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Switch(
-                      value: _enabled,
-                      onChanged: _toggle,
-                      activeThumbColor: Colors.white,
-                      activeTrackColor: _emerald,
-                      inactiveThumbColor: Colors.white70,
-                      inactiveTrackColor: const Color(0x22FFFFFF),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ],
         ),
       ),

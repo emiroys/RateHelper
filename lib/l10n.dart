@@ -307,6 +307,11 @@ class S {
       );
 
   static String get version => _p('Sürüm', 'Version', 'Wersja');
+  static String get releaseName => _p(
+        '2. Büyük Güncelleme',
+        '2nd Major Update',
+        '2. Duża Aktualizacja',
+      );
   static String get designer => _p('Tasarımcı', 'Designer', 'Projektant');
 
   static String get navLang => _p('Dil', 'Lang', 'Język');
@@ -342,19 +347,15 @@ class S {
         'Rental (Tier: $range): $value PLN',
         'Wynajem (Próg: $range): $value PLN',
       );
-  static String get acceptanceRateReported =>
-      _p('Kabul Oranı (%)', 'Acceptance Rate (%)', 'Wskaźnik akceptacji (%)');
-  static String get acceptanceRateHint => _p(
-        'Örn: %80 gereksinimi için 85',
-        'E.g. 85 for 80% requirement',
-        'Np. 85 dla wymogu 80%',
+  static String get hasRentalDiscountToggle => _p(
+        'Kira İndirimi Var mı?',
+        'Rental Discount Active?',
+        'Zniżka na wynajem?',
       );
-  static String get cancellationRateReported =>
-      _p('İptal Oranı (%)', 'Cancellation Rate (%)', 'Wskaźnik anulowań (%)');
-  static String get cancellationRateHint => _p(
-        'Örn: %5 altı için 3 veya 2.5',
-        'E.g. 3 for <5% requirement',
-        'Np. 3 dla wymogu <5%',
+  static String rentalNoDiscount(String value) => _p(
+        'Kira (İndirimsiz): $value PLN',
+        'Rental (No Discount): $value PLN',
+        'Wynajem (Bez zniżki): $value PLN',
       );
   static String freeWeekProgress(int current, int total) => _p(
         'Ücretsiz Hafta İlerlemesi: $current / $total yolculuk',
@@ -496,37 +497,6 @@ class S {
         'Ten tydzień jest poniżej progu rentowności',
       );
 
-  // Monday reminder notification + settings toggle
-  static String get reminderSettingsTitle => _p(
-        'Pazartesi Hatırlatması',
-        'Monday Reminder',
-        'Przypomnienie w poniedziałek',
-      );
-  static String get reminderSettingsBody => _p(
-        'Her Pazartesi 09:00’da geçen haftanın kazançlarını girmeni hatırlatır.',
-        'Reminds you every Monday at 09:00 to log last week’s earnings.',
-        'Przypomina w każdy poniedziałek o 09:00, aby wpisać zarobki z ubiegłego tygodnia.',
-      );
-  static String get reminderNotificationTitle => _p(
-        'Kazanç Takibi',
-        'Earnings Tracker',
-        'Śledzenie zarobków',
-      );
-  static String get reminderNotificationBody => _p(
-        'Geçen haftanın kazanç verilerini eklemeyi unutma!',
-        'Don’t forget to log last week’s earnings!',
-        'Nie zapomnij wpisać zarobków z ubiegłego tygodnia!',
-      );
-  static String get reminderChannelName => _p(
-        'Haftalık Hatırlatma',
-        'Weekly Reminder',
-        'Cotygodniowe przypomnienie',
-      );
-  static String get reminderChannelDescription => _p(
-        'Pazartesi kazanç girme hatırlatması',
-        'Monday earnings logging reminder',
-        'Poniedziałkowe przypomnienie o zarobkach',
-      );
 
   // PDF export
   static String get exportPdf => _p(

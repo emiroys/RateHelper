@@ -39,17 +39,14 @@ DriverMode activeDriverMode = DriverMode.solo;
 
 DriverMode get driverMode => activeDriverMode;
 
-/// A rental-fee bracket keyed on weekly trip count, acceptance rate, and
-/// cancellation rate requirements.
+/// A rental-fee bracket keyed on weekly trip count.
 class RentalTier {
   const RentalTier({
     required this.minTrips,
     required this.maxTrips,
     required this.feePerDriver,
-    required this.totalCarFee,
-    required this.minAcceptRate,
-    required this.maxCancelRate,
-  });
+    double? totalCarFee,
+  }) : totalCarFee = totalCarFee ?? feePerDriver;
 
   /// Inclusive lower bound of the trip bracket.
   final int minTrips;
@@ -63,79 +60,45 @@ class RentalTier {
   /// Total weekly rental fee for the car (PLN) for this bracket.
   final double totalCarFee;
 
-  /// Minimum required acceptance rate (%), or null if no requirement.
-  final double? minAcceptRate;
-
-  /// Maximum allowed cancellation rate (%).
-  final double maxCancelRate;
-
   /// For backward compatibility:
   double get fee => feePerDriver;
 
   bool contains(int trips) => trips >= minTrips && trips <= maxTrips;
-
-  /// Whether the reported rates satisfy this tier's acceptance and cancellation requirements.
-  bool meetsRequirements(double? acceptanceRate, double? cancellationRate) {
-    if (minAcceptRate != null) {
-      if (acceptanceRate == null || acceptanceRate < minAcceptRate!) {
-        return false;
-      }
-    }
-    if (maxCancelRate < 100) {
-      if (cancellationRate == null || cancellationRate > maxCancelRate) {
-        return false;
-      }
-    }
-    return true;
-  }
 }
 
-/// New ERES rental fee schedule (PLN), keyed on trip count and rates.
+/// New ERES rental fee schedule (PLN), keyed on trip count.
 // ignore: constant_identifier_names
 const List<RentalTier> RENTAL_TIERS = [
-  RentalTier(minTrips: 0,   maxTrips: 99,  feePerDriver: 900, totalCarFee: 900, minAcceptRate: null, maxCancelRate: 999), // no requirement tier
-  RentalTier(minTrips: 100, maxTrips: 149, feePerDriver: 700, totalCarFee: 700, minAcceptRate: 80,   maxCancelRate: 5),
-  RentalTier(minTrips: 150, maxTrips: 199, feePerDriver: 500, totalCarFee: 500, minAcceptRate: 70,   maxCancelRate: 5),
-  RentalTier(minTrips: 200, maxTrips: 249, feePerDriver: 300, totalCarFee: 300, minAcceptRate: 60,   maxCancelRate: 5),
-  RentalTier(minTrips: 250, maxTrips: 999999, feePerDriver: 100, totalCarFee: 100, minAcceptRate: 50, maxCancelRate: 5),
+  RentalTier(minTrips: 0,   maxTrips: 99,  feePerDriver: 900),
+  RentalTier(minTrips: 100, maxTrips: 149, feePerDriver: 700),
+  RentalTier(minTrips: 150, maxTrips: 199, feePerDriver: 500),
+  RentalTier(minTrips: 200, maxTrips: 249, feePerDriver: 300),
+  RentalTier(minTrips: 250, maxTrips: 999999, feePerDriver: 100),
 ];
 
 /// New ERES rental fee schedule (PLN) for paired drivers (2 drivers sharing a car).
 // ignore: constant_identifier_names
 const List<RentalTier> RENTAL_TIERS_PAIRED = [
-  RentalTier(minTrips: 0,   maxTrips: 119, feePerDriver: 450, totalCarFee: 900, minAcceptRate: null, maxCancelRate: 999),
-  RentalTier(minTrips: 120, maxTrips: 169, feePerDriver: 350, totalCarFee: 700, minAcceptRate: 80,   maxCancelRate: 5),
-  RentalTier(minTrips: 170, maxTrips: 219, feePerDriver: 250, totalCarFee: 500, minAcceptRate: 70,   maxCancelRate: 5),
-  RentalTier(minTrips: 220, maxTrips: 269, feePerDriver: 150, totalCarFee: 300, minAcceptRate: 60,   maxCancelRate: 5),
-  RentalTier(minTrips: 270, maxTrips: 999999, feePerDriver: 50, totalCarFee: 100, minAcceptRate: 50, maxCancelRate: 5),
+  RentalTier(minTrips: 0,   maxTrips: 119, feePerDriver: 450, totalCarFee: 900),
+  RentalTier(minTrips: 120, maxTrips: 169, feePerDriver: 350, totalCarFee: 700),
+  RentalTier(minTrips: 170, maxTrips: 219, feePerDriver: 250, totalCarFee: 500),
+  RentalTier(minTrips: 220, maxTrips: 269, feePerDriver: 150, totalCarFee: 300),
+  RentalTier(minTrips: 270, maxTrips: 999999, feePerDriver: 50, totalCarFee: 100),
 ];
 
-/// Expected rental bracket for [tripCount], [acceptanceRate], and [cancellationRate].
-RentalTier expectedRentalTier(int tripCount, [double? acceptanceRate, double? cancellationRate, List<RentalTier>? tiers]) {
-  final activeTiers = tiers ?? (driverMode == DriverMode.paired ? RENTAL_TIERS_PAIRED : RENTAL_TIERS);
+/// Expected rental bracket for [tripCount] and [mode].
+RentalTier expectedRentalTier(int tripCount, DriverMode mode) {
+  final tiers = mode == DriverMode.paired ? RENTAL_TIERS_PAIRED : RENTAL_TIERS;
   final trips = tripCount < 0 ? 0 : tripCount;
-  var initialIndex = 0;
-  for (var i = activeTiers.length - 1; i >= 0; i--) {
-    if (trips >= activeTiers[i].minTrips) {
-      initialIndex = i;
-      break;
-    }
-  }
-
-  for (var i = initialIndex; i >= 0; i--) {
-    final tier = activeTiers[i];
-    if (tier.meetsRequirements(acceptanceRate, cancellationRate)) {
-      return tier;
-    }
-  }
-
-  return activeTiers[0];
+  return tiers.firstWhere(
+    (t) => trips >= t.minTrips && trips <= t.maxTrips,
+    orElse: () => tiers.last,
+  );
 }
 
-/// Expected weekly rental fee (PLN) for [tripCount], [acceptanceRate], and
-/// [cancellationRate]. Negative trip counts are treated as 0.
-double expectedRentalFee(int tripCount, [double? acceptanceRate, double? cancellationRate, List<RentalTier>? tiers]) =>
-    expectedRentalTier(tripCount, acceptanceRate, cancellationRate, tiers).feePerDriver;
+/// Expected weekly rental fee (PLN) for [tripCount] and [mode].
+double expectedRentalFee(int tripCount, DriverMode mode) =>
+    expectedRentalTier(tripCount, mode).feePerDriver;
 
 /// Human-readable trip bracket for [tier], e.g. `100-149` or `250+` for the
 /// open-ended top tier.
@@ -399,8 +362,7 @@ class WeekEarning {
     required this.cashReceived,
     required this.onlineHours,
     required this.tripCount,
-    required this.acceptanceRateReported,
-    required this.cancellationRateReported,
+    this.hasRentalDiscount = true,
     List<FuelReceipt>? fuelReceipts,
     double? fuelPumpPaid,
   }) : fuelReceipts = fuelReceipts ??
@@ -433,11 +395,8 @@ class WeekEarning {
   /// Weekly trip count.
   final int tripCount;
 
-  /// Kabul Oranı % (e.g., 85.0 for 85%). Null if not reported.
-  final double? acceptanceRateReported;
-
-  /// İptal Oranı % (e.g., 2.5 for 2.5%). Null if not reported.
-  final double? cancellationRateReported;
+  /// Whether rental discount is active for this entry.
+  final bool hasRentalDiscount;
 
   /// List of fuel receipts recorded during this week.
   final List<FuelReceipt> fuelReceipts;
@@ -452,18 +411,15 @@ class WeekEarning {
   /// whole cents.
   double get fuelAfterDiscount => computeFuelAfterDiscount(fuelPumpPaidTotal);
 
-  /// Rental deduction (PLN). Rental is derived from [RENTAL_TIERS] based on
-  /// [tripCount], [acceptanceRateReported], and [cancellationRateReported].
-  double get rentalFee {
-    final tiers = driverMode == DriverMode.paired ? RENTAL_TIERS_PAIRED : RENTAL_TIERS;
-    return expectedRentalTier(tripCount, acceptanceRateReported, cancellationRateReported, tiers).feePerDriver;
-  }
+  /// Rental deduction (PLN).
+  double get rentalFee => hasRentalDiscount
+      ? expectedRentalFee(tripCount, driverMode)
+      : (driverMode == DriverMode.paired ? 450.0 : 900.0);
 
   /// Total car rental fee (PLN) across both drivers if paired, or solo fee if solo.
-  double get totalCarRentalFee {
-    final tiers = driverMode == DriverMode.paired ? RENTAL_TIERS_PAIRED : RENTAL_TIERS;
-    return expectedRentalTier(tripCount, acceptanceRateReported, cancellationRateReported, tiers).totalCarFee;
-  }
+  double get totalCarRentalFee => hasRentalDiscount
+      ? expectedRentalTier(tripCount, driverMode).totalCarFee
+      : 900.0;
 
   WeekEarning copyWith({
     DateTime? weekStart,
@@ -473,8 +429,7 @@ class WeekEarning {
     double? cashReceived,
     double? onlineHours,
     int? tripCount,
-    double? acceptanceRateReported,
-    double? cancellationRateReported,
+    bool? hasRentalDiscount,
     List<FuelReceipt>? fuelReceipts,
     double? fuelPumpPaid,
   }) {
@@ -487,10 +442,7 @@ class WeekEarning {
       cashReceived: cashReceived ?? this.cashReceived,
       onlineHours: onlineHours ?? this.onlineHours,
       tripCount: tripCount ?? this.tripCount,
-      acceptanceRateReported:
-          acceptanceRateReported ?? this.acceptanceRateReported,
-      cancellationRateReported:
-          cancellationRateReported ?? this.cancellationRateReported,
+      hasRentalDiscount: hasRentalDiscount ?? this.hasRentalDiscount,
       fuelReceipts: fuelReceipts ?? (fuelPumpPaid != null ? null : this.fuelReceipts),
       fuelPumpPaid: fuelPumpPaid,
     );
@@ -539,8 +491,7 @@ class WeekEarning {
         'cashReceived': cashReceived,
         'onlineHours': onlineHours,
         'tripCount': tripCount,
-        'acceptanceRateReported': acceptanceRateReported,
-        'cancellationRateReported': cancellationRateReported,
+        'hasRentalDiscount': hasRentalDiscount,
         'fuelReceipts': fuelReceipts.map((r) => r.toJson()).toList(),
       };
 
@@ -578,6 +529,12 @@ class WeekEarning {
       }
     }
 
+    final hasRentalDiscount = json.containsKey('hasRentalDiscount')
+        ? _toBool(json['hasRentalDiscount'])
+        : (json.containsKey('rentalDiscountEnabled')
+            ? _toBool(json['rentalDiscountEnabled'])
+            : true);
+
     return WeekEarning(
       id: json['id']?.toString() ??
           '${start.millisecondsSinceEpoch}_${end.millisecondsSinceEpoch}',
@@ -588,8 +545,7 @@ class WeekEarning {
       cashReceived: _toDouble(json['cashReceived']),
       onlineHours: _toDouble(json['onlineHours']),
       tripCount: _toInt(json['tripCount']),
-      acceptanceRateReported: _toNullableDouble(json['acceptanceRateReported']),
-      cancellationRateReported: _toNullableDouble(json['cancellationRateReported']),
+      hasRentalDiscount: hasRentalDiscount,
       fuelReceipts: receipts,
     );
   }
@@ -611,12 +567,11 @@ class WeekEarning {
     return double.tryParse(v?.toString().replaceAll(' ', '').replaceAll('.', '').replaceAll(',', '.') ?? '') ?? 0;
   }
 
-  static double? _toNullableDouble(Object? v) {
-    if (v == null) return null;
-    if (v is num) return v.toDouble();
-    final s = v.toString().trim();
-    if (s.isEmpty || s.toLowerCase() == 'null') return null;
-    return double.tryParse(s.replaceAll(' ', '').replaceAll('.', '').replaceAll(',', '.'));
+  static bool _toBool(Object? v) {
+    if (v is bool) return v;
+    if (v == null) return true;
+    final s = v.toString().trim().toLowerCase();
+    return s == 'true' || s == '1';
   }
 
   static int _toInt(Object? v) {

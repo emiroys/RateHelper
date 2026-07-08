@@ -5,15 +5,6 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-
-    <!-- Weekly "log last week's earnings" reminder (flutter_local_notifications).
-         RECEIVE_BOOT_COMPLETED re-arms the scheduled alarm after a reboot.
-         The reminder is scheduled with AndroidScheduleMode.inexactAllowWhileIdle
-         (a weekly nudge needs no second-precision), so the SCHEDULE_EXACT_ALARM /
-         USE_EXACT_ALARM permissions are intentionally NOT declared — they would
-         only add battery cost and an Android 12+ runtime prompt for no benefit. -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
     <!-- Self-update manifest fetch on app launch. -->
     <uses-permission android:name="android.permission.INTERNET"/>

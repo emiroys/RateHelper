@@ -6,8 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 WeekEarning buildWeek({
   double netIncome = 5000,
   double cashReceived = 398,
-  double? acceptanceRateReported = 85,
-  double? cancellationRateReported = 2,
+  bool hasRentalDiscount = true,
   double fuelPumpPaid = 298.9555555556,
   double onlineHours = 40,
   int tripCount = 130,
@@ -22,8 +21,7 @@ WeekEarning buildWeek({
     cashReceived: cashReceived,
     onlineHours: onlineHours,
     tripCount: tripCount,
-    acceptanceRateReported: acceptanceRateReported,
-    cancellationRateReported: cancellationRateReported,
+    hasRentalDiscount: hasRentalDiscount,
     fuelPumpPaid: fuelPumpPaid,
   );
 }
@@ -67,9 +65,8 @@ void main() {
       expect(buildWeek().netProfit, closeTo(3280.94, 0.001));
     });
 
-    test('rental requirement fallback when acceptance rate is low', () {
-      // 130 trips needs 80% acceptance for 700 PLN tier. With 75%, falls back to 900 PLN tier.
-      final w = buildWeek(acceptanceRateReported: 75);
+    test('rental fallback when hasRentalDiscount is false', () {
+      final w = buildWeek(hasRentalDiscount: false);
       expect(w.rentalFee, 900);
       expect(w.netProfit, closeTo(3080.94, 0.001));
     });
@@ -174,8 +171,7 @@ void main() {
           cashReceived: 300,
           onlineHours: 40,
           tripCount: 130,
-          acceptanceRateReported: 85,
-          cancellationRateReported: 2,
+          hasRentalDiscount: true,
           fuelPumpPaid: 277.7777777778,
         );
 
@@ -185,8 +181,7 @@ void main() {
       final e = decoded.first;
       expect(e.netIncome, 4000);
       expect(e.cashReceived, 300);
-      expect(e.acceptanceRateReported, 85);
-      expect(e.cancellationRateReported, 2);
+      expect(e.hasRentalDiscount, true);
       expect(e.rentalFee, 700);
       expect(e.fuelPumpPaid, closeTo(277.7777777778, 0.001));
       expect(e.fuelAfterDiscount, closeTo(250, 0.001));
@@ -255,8 +250,7 @@ void main() {
         cashReceived: 0,
         onlineHours: 30,
         tripCount: 100,
-        acceptanceRateReported: 90,
-        cancellationRateReported: 1,
+        hasRentalDiscount: true,
         fuelReceipts: receipts,
       );
       expect(e.fuelPumpPaidTotal, 350);
@@ -305,7 +299,7 @@ void main() {
       expect(decoded.cashReceived, closeTo(300.50, 0.001));
     });
 
-    test('legacy JSON without rate reporting fields decodes with null rates and falls back in rental tier', () {
+    test('legacy JSON decodes with default hasRentalDiscount true', () {
       final legacy = {
         'id': 'legacy0',
         'weekStart': DateTime(2026, 6, 22).toIso8601String(),
@@ -318,44 +312,33 @@ void main() {
         'fuelPumpPaid': 300,
       };
       final decoded = WeekEarning.fromJson(legacy)!;
-      expect(decoded.acceptanceRateReported, isNull);
-      expect(decoded.cancellationRateReported, isNull);
-      // Without rate reporting, 130 trips falls back to 0-99 requirement tier -> 900 PLN base rate.
-      expect(decoded.rentalFee, 900);
+      expect(decoded.hasRentalDiscount, isTrue);
+      expect(decoded.rentalFee, 700);
     });
   });
 
-  group('rental tier lookup with rate requirements', () {
-    test('brackets map trip counts and rates to expected fee', () {
-      expect(expectedRentalFee(0), 900);
-      expect(expectedRentalFee(99), 900);
-      expect(expectedRentalFee(100, 80, 5), 700);
-      expect(expectedRentalFee(149, 80, 5), 700);
-      expect(expectedRentalFee(150, 70, 5), 500);
-      expect(expectedRentalFee(199, 70, 5), 500);
-      expect(expectedRentalFee(200, 60, 5), 300);
-      expect(expectedRentalFee(249, 60, 5), 300);
-      expect(expectedRentalFee(250, 50, 5), 100);
-      expect(expectedRentalFee(5000, 50, 5), 100);
-    });
-
-    test('fallback when rate requirements not met', () {
-      // 150 trips requires 70% accept, 5% cancel for 500 PLN tier.
-      // If accept is 65%, fails 150-199 (70%), fails 100-149 (80%), falls back to 0-99 (900 PLN).
-      expect(expectedRentalFee(150, 65, 5), 900);
-      // If cancellation is 6% (> 5%), fails all requirement tiers and falls back to 900 PLN regardless of trip count.
-      expect(expectedRentalFee(250, 90, 6), 900);
+  group('rental tier lookup by trip count', () {
+    test('brackets map trip counts to expected fee', () {
+      expect(expectedRentalFee(0, DriverMode.solo), 900);
+      expect(expectedRentalFee(99, DriverMode.solo), 900);
+      expect(expectedRentalFee(100, DriverMode.solo), 700);
+      expect(expectedRentalFee(149, DriverMode.solo), 700);
+      expect(expectedRentalFee(150, DriverMode.solo), 500);
+      expect(expectedRentalFee(199, DriverMode.solo), 500);
+      expect(expectedRentalFee(200, DriverMode.solo), 300);
+      expect(expectedRentalFee(249, DriverMode.solo), 300);
+      expect(expectedRentalFee(250, DriverMode.solo), 100);
+      expect(expectedRentalFee(5000, DriverMode.solo), 100);
     });
 
     test('expectedRentalTier returns the matching bracket object', () {
-      expect(expectedRentalTier(130, 85, 2).fee, 700);
-      expect(expectedRentalTier(130, 85, 2).minTrips, 100);
-      expect(expectedRentalTier(40).fee, 900);
+      expect(expectedRentalTier(130, DriverMode.solo).fee, 700);
+      expect(expectedRentalTier(130, DriverMode.solo).minTrips, 100);
+      expect(expectedRentalTier(40, DriverMode.solo).fee, 900);
     });
 
     test('negative trip count falls back to the lowest bracket', () {
-      expect(expectedRentalFee(-1), 900);
-      expect(expectedRentalTier(-5).fee, 900);
+      expect(expectedRentalFee(-1, DriverMode.solo), 900);
     });
 
     test('tiers are contiguous and ascending in minTrips', () {
@@ -365,17 +348,21 @@ void main() {
     });
 
     test('rentalTierRangeLabel formats bounded and open-ended brackets', () {
-      expect(rentalTierRangeLabel(expectedRentalTier(130, 85, 2)), '100-149');
-      expect(rentalTierRangeLabel(expectedRentalTier(50)), '0-99');
-      expect(rentalTierRangeLabel(expectedRentalTier(300, 50, 5)), '250+');
+      expect(rentalTierRangeLabel(expectedRentalTier(130, DriverMode.solo)), '100-149');
+      expect(rentalTierRangeLabel(expectedRentalTier(50, DriverMode.solo)), '0-99');
+      expect(rentalTierRangeLabel(expectedRentalTier(300, DriverMode.solo)), '250+');
     });
   });
 
-  group('computed rentalFee (rental always charged)', () {
-    test('rentalFee is dynamically computed from trip count and rates', () {
+  group('computed rentalFee (rental always charged or base fee if no discount)', () {
+    test('rentalFee is dynamically computed from trip count when hasRentalDiscount is true', () {
       expect(buildWeek(tripCount: 0).rentalFee, 900);
-      expect(buildWeek(tripCount: 130, acceptanceRateReported: 85, cancellationRateReported: 2).rentalFee, 700);
-      expect(buildWeek(tripCount: 200, acceptanceRateReported: 60, cancellationRateReported: 5).rentalFee, 300);
+      expect(buildWeek(tripCount: 130).rentalFee, 700);
+      expect(buildWeek(tripCount: 200).rentalFee, 300);
+    });
+
+    test('rentalFee uses base fee when hasRentalDiscount is false', () {
+      expect(buildWeek(tripCount: 200, hasRentalDiscount: false).rentalFee, 900);
     });
   });
 
@@ -385,26 +372,25 @@ void main() {
     });
 
     test('expectedRentalTier returns brackets from RENTAL_TIERS_PAIRED when mode is paired', () {
-      activeDriverMode = DriverMode.paired;
-      expect(expectedRentalTier(0).feePerDriver, 450);
-      expect(expectedRentalTier(0).totalCarFee, 900);
+      expect(expectedRentalTier(0, DriverMode.paired).feePerDriver, 450);
+      expect(expectedRentalTier(0, DriverMode.paired).totalCarFee, 900);
 
-      expect(expectedRentalTier(120, 80, 5).feePerDriver, 350);
-      expect(expectedRentalTier(120, 80, 5).totalCarFee, 700);
+      expect(expectedRentalTier(120, DriverMode.paired).feePerDriver, 350);
+      expect(expectedRentalTier(120, DriverMode.paired).totalCarFee, 700);
 
-      expect(expectedRentalTier(170, 70, 5).feePerDriver, 250);
-      expect(expectedRentalTier(170, 70, 5).totalCarFee, 500);
+      expect(expectedRentalTier(170, DriverMode.paired).feePerDriver, 250);
+      expect(expectedRentalTier(170, DriverMode.paired).totalCarFee, 500);
 
-      expect(expectedRentalTier(220, 60, 5).feePerDriver, 150);
-      expect(expectedRentalTier(220, 60, 5).totalCarFee, 300);
+      expect(expectedRentalTier(220, DriverMode.paired).feePerDriver, 150);
+      expect(expectedRentalTier(220, DriverMode.paired).totalCarFee, 300);
 
-      expect(expectedRentalTier(270, 50, 5).feePerDriver, 50);
-      expect(expectedRentalTier(270, 50, 5).totalCarFee, 100);
+      expect(expectedRentalTier(270, DriverMode.paired).feePerDriver, 50);
+      expect(expectedRentalTier(270, DriverMode.paired).totalCarFee, 100);
     });
 
     test('WeekEarning rentalFee uses feePerDriver and totalCarRentalFee uses totalCarFee in paired mode', () {
       activeDriverMode = DriverMode.paired;
-      final week = buildWeek(tripCount: 170, acceptanceRateReported: 75, cancellationRateReported: 3);
+      final week = buildWeek(tripCount: 170);
       expect(week.rentalFee, 250);
       expect(week.totalCarRentalFee, 500);
     });
@@ -489,8 +475,7 @@ void main() {
           cashReceived: 0,
           onlineHours: hours,
           tripCount: 100,
-          acceptanceRateReported: null,
-          cancellationRateReported: null,
+          hasRentalDiscount: true,
           fuelPumpPaid: 0,
         );
 
@@ -521,8 +506,7 @@ void main() {
         cashReceived: 0,
         onlineHours: onlineHours,
         tripCount: 100,
-        acceptanceRateReported: null,
-        cancellationRateReported: null,
+        hasRentalDiscount: true,
         fuelPumpPaid: 0,
       );
     }
@@ -615,8 +599,7 @@ void main() {
       netIncome: 100,
       fuelPumpPaid: 200,
       tripCount: 130,
-      acceptanceRateReported: 85,
-      cancellationRateReported: 2,
+      hasRentalDiscount: true,
       cashReceived: 0,
       onlineHours: 10,
     );
@@ -717,8 +700,7 @@ void main() {
         cashReceived: 0,
         onlineHours: 40,
         tripCount: 100,
-        acceptanceRateReported: null,
-        cancellationRateReported: null,
+        hasRentalDiscount: true,
         fuelPumpPaid: 0,
       );
       final months = aggregateByMonth([straddling]);
@@ -736,8 +718,7 @@ void main() {
         cashReceived: 0,
         onlineHours: 40,
         tripCount: 100,
-        acceptanceRateReported: null,
-        cancellationRateReported: null,
+        hasRentalDiscount: true,
         fuelPumpPaid: 0,
       );
       final years = aggregateByYear([straddling]);
@@ -750,10 +731,9 @@ void main() {
     double liveBreakEven({
       required double fuelPumpPaid,
       required int tripCount,
-      double? acceptanceRateReported,
-      double? cancellationRateReported,
+      DriverMode mode = DriverMode.solo,
     }) {
-      final rental = expectedRentalFee(tripCount, acceptanceRateReported, cancellationRateReported);
+      final rental = expectedRentalFee(tripCount, mode);
       return calculateBreakEven(
         fixedCosts:
             computeFuelAfterDiscount(fuelPumpPaid) + rental,
@@ -764,8 +744,6 @@ void main() {
       final v = liveBreakEven(
         fuelPumpPaid: 0,
         tripCount: 130,
-        acceptanceRateReported: 85,
-        cancellationRateReported: 2,
       );
       expect(v.isFinite, isTrue);
       expect(v, greaterThan(0));
@@ -774,16 +752,16 @@ void main() {
 
     test('break-even rises as the live fuel figure increases', () {
       final low = liveBreakEven(
-          fuelPumpPaid: 100, tripCount: 130, acceptanceRateReported: 85, cancellationRateReported: 2);
+          fuelPumpPaid: 100, tripCount: 130);
       final high = liveBreakEven(
-          fuelPumpPaid: 500, tripCount: 130, acceptanceRateReported: 85, cancellationRateReported: 2);
+          fuelPumpPaid: 500, tripCount: 130);
       expect(high, greaterThan(low));
     });
 
     test('uses the pump figure directly, not any stored history', () {
       // 300 pump -> 270 fuel; fixedCosts = 270 + 700 = 970.
       final v = liveBreakEven(
-          fuelPumpPaid: 300, tripCount: 130, acceptanceRateReported: 85, cancellationRateReported: 2);
+          fuelPumpPaid: 300, tripCount: 130);
       expect(v, closeTo(calculateBreakEven(fixedCosts: 970), 0.001));
     });
   });
@@ -798,8 +776,7 @@ void main() {
           cashReceived: 0,
           onlineHours: 40,
           tripCount: 100,
-          acceptanceRateReported: null,
-          cancellationRateReported: null,
+          hasRentalDiscount: true,
           fuelPumpPaid: 0,
         );
 
@@ -852,11 +829,10 @@ void main() {
     void roundTrip({
       required double fuelPumpPaid,
       required int tripCount,
-      double? acceptanceRateReported,
-      double? cancellationRateReported,
+      DriverMode mode = DriverMode.solo,
     }) {
       final fuel = computeFuelAfterDiscount(fuelPumpPaid);
-      final rental = expectedRentalFee(tripCount, acceptanceRateReported, cancellationRateReported);
+      final rental = expectedRentalFee(tripCount, mode);
       final fixedCosts = fuel + rental;
 
       final breakEven = calculateBreakEven(fixedCosts: fixedCosts);
@@ -865,13 +841,12 @@ void main() {
         id: 'be',
         weekStart: DateTime(2026, 6, 22),
         weekEnd: DateTime(2026, 6, 28),
-        driverMode: DriverMode.solo,
+        driverMode: mode,
         netIncome: breakEven,
         cashReceived: 0,
         onlineHours: 1,
         tripCount: tripCount,
-        acceptanceRateReported: acceptanceRateReported,
-        cancellationRateReported: cancellationRateReported,
+        hasRentalDiscount: true,
         fuelPumpPaid: fuelPumpPaid,
       );
 
@@ -883,12 +858,10 @@ void main() {
       roundTrip(
         fuelPumpPaid: 277.7777777778, // -> 250 after discount
         tripCount: 130,
-        acceptanceRateReported: 85,
-        cancellationRateReported: 2,
       );
     });
 
-    test('typical fuel, lowest tier (no rates reported)', () {
+    test('typical fuel, lowest tier', () {
       roundTrip(
         fuelPumpPaid: 277.7777777778,
         tripCount: 50,
@@ -899,8 +872,6 @@ void main() {
       roundTrip(
         fuelPumpPaid: 500, // -> 450 after discount
         tripCount: 130,
-        acceptanceRateReported: 85,
-        cancellationRateReported: 2,
       );
     });
 
@@ -908,8 +879,6 @@ void main() {
       roundTrip(
         fuelPumpPaid: 100, // -> 90 after discount
         tripCount: 200,
-        acceptanceRateReported: 75,
-        cancellationRateReported: 3,
       );
     });
 
@@ -937,8 +906,7 @@ void main() {
         cashReceived: 0,
         onlineHours: 0,
         tripCount: 100,
-        acceptanceRateReported: null,
-        cancellationRateReported: null,
+        hasRentalDiscount: true,
         fuelPumpPaid: 0,
       );
       final month = aggregateByMonth([zeroHours]).single;
@@ -960,7 +928,7 @@ void main() {
 
     test('immutable driverMode: solo-mode week retains solo rental fee after global mode switches to paired', () {
       activeDriverMode = DriverMode.solo;
-      final week = buildWeek(tripCount: 130, acceptanceRateReported: 85, cancellationRateReported: 2);
+      final week = buildWeek(tripCount: 130);
       expect(week.driverMode, DriverMode.solo);
       expect(week.rentalFee, 700); // solo tier 100-149
 
