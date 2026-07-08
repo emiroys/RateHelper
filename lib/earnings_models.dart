@@ -14,10 +14,6 @@ const double SETTLEMENT_FEE_RATE = 0.03;
 // ignore: constant_identifier_names
 const double FUEL_PARTNER_DISCOUNT = 0.10;
 
-/// Fixed weekly partnership (administrative) fee in PLN. Never changes, so it
-/// is a constant applied automatically rather than an editable field.
-// ignore: constant_identifier_names
-const double ADMINISTRATIVE_COST = 40.0;
 
 /// Rounds a PLN amount to 2 decimal places (whole cents). Applied at every
 /// intermediate monetary step so chained double math (VAT + commission + fuel
@@ -177,7 +173,7 @@ List<EarningsWarning> crossCheckWarnings({required double hourlyRate}) {
 ///   netIncome - fixedCosts - netIncome*VAT = 0
 ///   => netIncome * (1 - VAT) = fixedCosts
 ///
-/// [fixedCosts] is the turnover-independent portion: ADMINISTRATIVE_COST + fuel + rental.
+/// [fixedCosts] is the turnover-independent portion: fuel + rental.
 double calculateBreakEven({required double fixedCosts}) {
   final double denominator = 1 - FLAT_VAT_RATE - SETTLEMENT_FEE_RATE;
   return round2(fixedCosts / denominator);
@@ -511,7 +507,6 @@ class WeekEarning {
   /// always add up exactly to this figure (no off-by-a-cent display drift).
   double get netProfit => round2(
         netIncome -
-            ADMINISTRATIVE_COST -
             fuelAfterDiscount -
             vat -
             rentalFee -

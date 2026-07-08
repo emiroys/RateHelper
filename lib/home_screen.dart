@@ -18,6 +18,7 @@ import 'crash_logger.dart';
 import 'earnings_models.dart';
 import 'earnings_screen.dart';
 import 'env.dart';
+import 'models/weekly_archive_entry.dart';
 import 'l10n.dart';
 import 'log.dart';
 import 'onboarding_screen.dart';
@@ -493,24 +494,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   tz.TZDateTime _nowWarsaw() => tz.TZDateTime.now(_warsaw);
 
-  String _formatDateRange(tz.TZDateTime monday4am) {
-    final months = S.months;
-    final weekStart = monday4am;
-    final weekEnd = tz.TZDateTime(
-      _warsaw,
-      weekStart.year,
-      weekStart.month,
-      weekStart.day + 6,
-      4, 0, 0,
-    );
-    final startMonth = months[weekStart.month];
-    final endMonth = months[weekEnd.month];
-    if (weekStart.month == weekEnd.month) {
-      return '${weekStart.day}-${weekEnd.day} $endMonth';
-    }
-    return '${weekStart.day} $startMonth - ${weekEnd.day} $endMonth';
-  }
-
   Future<void> _loadAndCheckReset() async {
     if (_isLoadingOrResetting) return;
     _isLoadingOrResetting = true;
@@ -624,11 +607,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final aRate = total == 0 ? 100.0 : (accepted / total) * 100;
     final cRate = totalTrips == 0 ? 0.0 : (canceled / totalTrips) * 100;
 
-    final rangeLabel = boundary != null
-        ? _formatDateRange(boundary)
-        : _formatDateRange(_lastMonday4amWarsaw(_nowWarsaw()));
+    final weekStart = boundary ?? _lastMonday4amWarsaw(_nowWarsaw());
+    final weekEnd = tz.TZDateTime(
+      _warsaw,
+      weekStart.year,
+      weekStart.month,
+      weekStart.day + 6,
+      4, 0, 0,
+    );
 
-    return '$rangeLabel: %${aRate.toStringAsFixed(2)} ${S.archiveAccept} | %${cRate.toStringAsFixed(2)} ${S.archiveCancel}';
+    final entry = WeeklyArchiveEntry(
+      weekStart: weekStart,
+      weekEnd: weekEnd,
+      acceptRate: aRate,
+      cancelRate: cRate,
+      acceptedCount: accepted,
+      rejectedCount: rejected,
+      completedTrips: completed,
+    );
+    return entry.encode();
   }
 
   void _scheduleSave() {
@@ -2058,11 +2055,13 @@ class _HistorySheet extends StatefulWidget {
 class _HistorySheetState extends State<_HistorySheet>
     with SingleTickerProviderStateMixin {
   static const _keyTapHistory = 'tapHistory';
+  static const _keyArchive = 'weekly_archive';
   static const _emerald = Color(0xFF10B981);
   static const _crimson = Color(0xFFEF4444);
 
   late final TabController _tabController;
   late List<Map<String, dynamic>> _taps;
+  late List<String> _archive;
   bool _todayOnly = true;
 
   @override
@@ -2070,8 +2069,9 @@ class _HistorySheetState extends State<_HistorySheet>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _taps = List<Map<String, dynamic>>.from(widget.taps);
+    _archive = List<String>.from(widget.archive);
     _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) setState(() {});
+      setState(() {});
     });
   }
 
@@ -2161,6 +2161,52 @@ class _HistorySheetState extends State<_HistorySheet>
     setState(() => _taps = []);
   }
 
+  Future<void> _confirmClearWeeklyArchive() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          S.weeklyTab,
+          style: GoogleFonts.dmSans(
+            color: Colors.white,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        content: Text(
+          S.weeklyArchiveClearConfirm,
+          style: GoogleFonts.dmSans(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              S.cancel,
+              style: GoogleFonts.dmSans(color: Colors.white54),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(
+              S.weeklyArchiveClear,
+              style: GoogleFonts.dmSans(
+                color: _crimson,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyArchive);
+    setState(() => _archive = []);
+  }
+
   @override
   Widget build(BuildContext context) {
     final maxHeight = MediaQuery.of(context).size.height * 0.72;
@@ -2202,6 +2248,24 @@ class _HistorySheetState extends State<_HistorySheet>
                     icon: const Icon(Icons.delete_outline_rounded, size: 18),
                     label: Text(
                       S.tapHistoryClear,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      foregroundColor: _crimson,
+                      disabledForegroundColor: Colors.white24,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  )
+                else
+                  TextButton.icon(
+                    onPressed: _archive.isEmpty ? null : _confirmClearWeeklyArchive,
+                    icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                    label: Text(
+                      S.weeklyArchiveClear,
                       style: GoogleFonts.dmSans(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -2353,7 +2417,7 @@ class _HistorySheetState extends State<_HistorySheet>
   }
 
   Widget _buildWeeklyTab() {
-    if (widget.archive.isEmpty) {
+    if (_archive.isEmpty) {
       return Align(
         alignment: Alignment.topCenter,
         child: Text(
@@ -2364,15 +2428,86 @@ class _HistorySheetState extends State<_HistorySheet>
     }
 
     return ListView.separated(
-      itemCount: widget.archive.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
-      itemBuilder: (_, i) => Text(
-        widget.archive[i],
+      itemCount: _archive.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (_, i) => _ArchiveCard(rawEntry: _archive[i]),
+    );
+  }
+}
+
+class _ArchiveCard extends StatelessWidget {
+  const _ArchiveCard({required this.rawEntry});
+
+  static const _emerald = Color(0xFF10B981);
+  static const _crimson = Color(0xFFEF4444);
+
+  final String rawEntry;
+
+  @override
+  Widget build(BuildContext context) {
+    final entry = WeeklyArchiveEntry.parse(rawEntry);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        border: Border.all(color: const Color(0x0DFFFFFF)),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            entry.getFormattedDateRange(),
+            style: GoogleFonts.dmSans(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _buildStatChip(
+                label: '%${entry.acceptRate.toStringAsFixed(0)} ${S.archiveAccept}',
+                color: entry.acceptRate >= 80 ? _emerald : _crimson,
+              ),
+              const SizedBox(width: 8),
+              _buildStatChip(
+                label: '%${entry.cancelRate.toStringAsFixed(0)} ${S.archiveCancel}',
+                color: entry.cancelRate <= 5 ? _emerald : _crimson,
+              ),
+            ],
+          ),
+          if (!entry.isLegacy) ...[
+            const SizedBox(height: 10),
+            Text(
+              '${S.accepted}: ${entry.acceptedCount} · ${S.rejected}: ${entry.rejectedCount}',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 12,
+                color: Colors.white54,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatChip({required String label, required Color color}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
         style: GoogleFonts.dmSans(
-          color: Colors.white,
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          height: 1.3,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
         ),
       ),
     );

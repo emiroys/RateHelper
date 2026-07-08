@@ -1,3 +1,5 @@
+import '../l10n.dart';
+
 class EventModel {
   final String title;
   final String venue;
@@ -13,8 +15,8 @@ class EventModel {
 
   factory EventModel.fromJson(Map<String, dynamic> json) {
     return EventModel(
-      title: json['title']?.toString() ?? 'Bilinmeyen Etkinlik',
-      venue: json['venue']?.toString() ?? 'Bilinmeyen Mekan',
+      title: json['title']?.toString() ?? S.unknownEvent,
+      venue: json['venue']?.toString() ?? S.unknownVenue,
       date: DateTime.tryParse(json['date']?.toString() ?? '') ?? DateTime.now(),
       surgeLevel: json['surgeLevel']?.toString() ?? 'Low',
     );

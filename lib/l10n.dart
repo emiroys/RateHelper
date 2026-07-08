@@ -173,6 +173,12 @@ class S {
         'All tap records will be deleted. Are you sure?',
         'Wszystkie zapisy dotknięć zostaną usunięte. Na pewno?',
       );
+  static String get weeklyArchiveClear => _p('Temizle', 'Clear', 'Wyczyść');
+  static String get weeklyArchiveClearConfirm => _p(
+        'Tüm haftalık kayıtlar silinecek. Emin misin?',
+        'All weekly archive records will be deleted. Are you sure?',
+        'Wszystkie cotygodniowe wpisy zostaną usunięte. Na pewno?',
+      );
   static String get filterToday => _p('Bugün', 'Today', 'Dziś');
   static String get filterAll => _p('Tümü', 'All', 'Wszystko');
   static String get tapAcceptShort => _p('Kabul', 'Accept', 'Akceptacja');
@@ -643,6 +649,51 @@ class S {
     final m = dt.minute.toString().padLeft(2, '0');
     return '$dayName, $h:$m';
   }
+
+  // --- Fix 2: Lifetime trip counter reset / edit ---
+  static String get resetLifetimeTrips => _p('Sıfırla', 'Reset', 'Resetuj');
+  static String get resetLifetimeTripsTitle => _p('Yolculuk Sayacını Sıfırla', 'Reset Trip Counter', 'Zresetuj licznik przejazdów');
+  static String get resetLifetimeTripsConfirm => _p(
+        'Yolculuk sayacını sıfırlamak istediğine emin misin?',
+        'Are you sure you want to reset the trip counter?',
+        'Czy na pewno chcesz zresetować licznik przejazdów?',
+      );
+  static String get editLifetimeTripsTitle => _p('Yolculuk Sayısını Düzenle', 'Edit Trip Count', 'Edytuj liczbę przejazdów');
+  static String get editLifetimeTripsDesc => _p(
+        'ERES takibi ile eşitlemek için mevcut toplam yolculuk sayısını girin.',
+        'Enter current total trip count to sync with ERES tracking.',
+        'Wprowadź aktualną całkowitą liczbę przejazdów, aby zsynchronizować z ERES.',
+      );
+  static String get editLifetimeTripsLabel => _p('Toplam yolculuk sayısı', 'Total trip count', 'Całkowita liczba przejazdów');
+
+  // --- Fix 3: Events module localization ---
+  static String get eventRadarTitle => _p('ETKİNLİK RADARI', 'EVENT RADAR', 'RADAR WYDARZEŃ');
+  static String get refresh => _p('Yenile', 'Refresh', 'Odśwież');
+  static String get eventsReadError => _p(
+        'Etkinlik verileri şu an okunamıyor.',
+        'Event data cannot be loaded at the moment.',
+        'Dane o wydarzeniach są obecnie niedostępne.',
+      );
+  static String get eventsEmptyDesc => _p(
+        'Yaklaşan büyük bir etkinlik bulunamadı.',
+        'No upcoming major events found.',
+        'Nie znaleziono nadchodzących dużych wydarzeń.',
+      );
+  static String get radarDemandTitle => _p('Kraków • Talep Yoğunluğu', 'Kraków • Demand Intensity', 'Kraków • Nasilenie popytu');
+  static String radarDemandSubtitle(int count) => _p(
+        'Önümüzdeki günlerde planlanan $count büyük etkinlik yolcu taleplerini ve çarpanları artıracaktır.',
+        '$count major scheduled events in the upcoming days will increase passenger demand and surge.',
+        'Zaplanowane na najbliższe dni $count duże wydarzenia zwiększą popyt pasażerów i mnożniki.',
+      );
+  static String get surgeHigh => _p('Yüksek Yoğunluk', 'High Intensity', 'Wysokie nasilenie');
+  static String get surgeMedium => _p('Orta Yoğunluk', 'Medium Intensity', 'Średnie nasilenie');
+  static String get surgeLow => _p('Düşük Yoğunluk', 'Low Intensity', 'Niskie nasilenie');
+  static String get eventsEmptyTitle => _p('Etkinlik Bulunamadı', 'No Events Found', 'Nie znaleziono wydarzeń');
+  static String get tryAgain => _p('Tekrar Deneyin', 'Try Again', 'Spróbuj ponownie');
+  static String get connectionError => _p('Bağlantı Hatası', 'Connection Error', 'Błąd połączenia');
+  static String get reload => _p('Yeniden Yükle', 'Reload', 'Załaduj ponownie');
+  static String get unknownEvent => _p('Bilinmeyen Etkinlik', 'Unknown Event', 'Nieznane wydarzenie');
+  static String get unknownVenue => _p('Bilinmeyen Mekan', 'Unknown Venue', 'Nieznane miejsce');
 
   static List<String> get months {
     switch (_lang) {

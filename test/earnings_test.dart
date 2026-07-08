@@ -61,29 +61,23 @@ void main() {
     });
   });
 
-  group('administrative cost', () {
-    test('ADMINISTRATIVE_COST constant is fixed at 40 PLN', () {
-      expect(ADMINISTRATIVE_COST, 40.0);
-    });
-  });
-
   group('net profit', () {
-    test('netIncome - admin - fuel - vat - rental - settlementFee = 3240.94', () {
-      // 5000 - 40(admin) - 269.06(fuel) - 600(vat) - 700(rental) - 150(settlement) = 3240.94
-      expect(buildWeek().netProfit, closeTo(3240.94, 0.001));
+    test('netIncome - fuel - vat - rental - settlementFee = 3280.94', () {
+      // 5000 - 269.06(fuel) - 600(vat) - 700(rental) - 150(settlement) = 3280.94
+      expect(buildWeek().netProfit, closeTo(3280.94, 0.001));
     });
 
     test('rental requirement fallback when acceptance rate is low', () {
       // 130 trips needs 80% acceptance for 700 PLN tier. With 75%, falls back to 900 PLN tier.
       final w = buildWeek(acceptanceRateReported: 75);
       expect(w.rentalFee, 900);
-      expect(w.netProfit, closeTo(3040.94, 0.001));
+      expect(w.netProfit, closeTo(3080.94, 0.001));
     });
   });
 
   group('bank deposit vs cash in hand', () {
-    test('bankDeposit = netProfit - cashReceived = 2842.94', () {
-      expect(buildWeek().bankDeposit, closeTo(2842.94, 0.001));
+    test('bankDeposit = netProfit - cashReceived = 2882.94', () {
+      expect(buildWeek().bankDeposit, closeTo(2882.94, 0.001));
     });
 
     test('cashInHand equals the cash received', () {
@@ -100,7 +94,7 @@ void main() {
     test('netProfit / online hours', () {
       final w = buildWeek(onlineHours: 40);
       expect(w.hourlyRate, closeTo(w.netProfit / 40, 0.001));
-      expect(w.hourlyRate, closeTo(81.0235, 0.01));
+      expect(w.hourlyRate, closeTo(82.0235, 0.01));
     });
 
     test('25 sa 59 dk online -> decimal 25.9833', () {
@@ -629,12 +623,12 @@ void main() {
 
     test('netProfit can be negative (not clamped or abs-ed)', () {
       expect(bad.netProfit, lessThan(0));
-      expect(bad.netProfit, closeTo(-835.0, 0.001));
+      expect(bad.netProfit, closeTo(-795.0, 0.001));
     });
 
     test('formatPln keeps the minus sign for a negative profit', () {
       expect(formatPln(bad.netProfit), startsWith('-'));
-      expect(formatPln(bad.netProfit), '-835,00');
+      expect(formatPln(bad.netProfit), '-795,00');
     });
 
     test('a negative hourlyRate stays negative (not abs-ed)', () {
@@ -654,7 +648,6 @@ void main() {
     test('breakdown components sum EXACTLY to netProfit (no cent drift)', () {
       final w = buildWeek();
       final recomputed = round2(w.netIncome -
-          ADMINISTRATIVE_COST -
           w.fuelAfterDiscount -
           w.vat -
           w.rentalFee -
@@ -763,7 +756,7 @@ void main() {
       final rental = expectedRentalFee(tripCount, acceptanceRateReported, cancellationRateReported);
       return calculateBreakEven(
         fixedCosts:
-            ADMINISTRATIVE_COST + computeFuelAfterDiscount(fuelPumpPaid) + rental,
+            computeFuelAfterDiscount(fuelPumpPaid) + rental,
       );
     }
 
@@ -776,7 +769,7 @@ void main() {
       );
       expect(v.isFinite, isTrue);
       expect(v, greaterThan(0));
-      expect(v, closeTo(calculateBreakEven(fixedCosts: 40 + 700), 0.001));
+      expect(v, closeTo(calculateBreakEven(fixedCosts: 700), 0.001));
     });
 
     test('break-even rises as the live fuel figure increases', () {
@@ -788,10 +781,10 @@ void main() {
     });
 
     test('uses the pump figure directly, not any stored history', () {
-      // 300 pump -> 270 fuel; fixedCosts = 40 + 270 + 700 = 1010.
+      // 300 pump -> 270 fuel; fixedCosts = 270 + 700 = 970.
       final v = liveBreakEven(
           fuelPumpPaid: 300, tripCount: 130, acceptanceRateReported: 85, cancellationRateReported: 2);
-      expect(v, closeTo(calculateBreakEven(fixedCosts: 1010), 0.001));
+      expect(v, closeTo(calculateBreakEven(fixedCosts: 970), 0.001));
     });
   });
 
@@ -864,7 +857,7 @@ void main() {
     }) {
       final fuel = computeFuelAfterDiscount(fuelPumpPaid);
       final rental = expectedRentalFee(tripCount, acceptanceRateReported, cancellationRateReported);
-      final fixedCosts = ADMINISTRATIVE_COST + fuel + rental;
+      final fixedCosts = fuel + rental;
 
       final breakEven = calculateBreakEven(fixedCosts: fixedCosts);
 

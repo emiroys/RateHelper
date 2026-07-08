@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'l10n.dart';
 import 'models/event_model.dart';
 import 'services/event_service.dart';
 
@@ -60,21 +61,24 @@ class _RadarScreenState extends State<RadarScreen> {
               ),
               child: const Icon(Icons.radar_rounded, color: _emerald, size: 20),
             ),
-            const SizedBox(width: 12),
-            Text(
-              'ETKİNLİK RADARI',
-              style: GoogleFonts.dmSans(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: 0.5,
+            Expanded(
+              child: Text(
+                S.eventRadarTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.dmSans(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
               ),
             ),
           ],
         ),
         actions: [
           IconButton(
-            tooltip: 'Yenile',
+            tooltip: S.refresh,
             icon: const Icon(Icons.refresh_rounded, color: Colors.white70),
             onPressed: () {
               EventService.clearCache();
@@ -96,12 +100,12 @@ class _RadarScreenState extends State<RadarScreen> {
             }
 
             if (snapshot.hasError) {
-              return _buildErrorState('Etkinlik verileri şu an okunamıyor.');
+              return _buildErrorState(S.eventsReadError);
             }
 
             final events = snapshot.data ?? [];
             if (events.isEmpty) {
-              return _buildEmptyState('Yaklaşan büyük bir etkinlik bulunamadı.');
+              return _buildEmptyState(S.eventsEmptyDesc);
             }
 
             return ListView.separated(
@@ -156,7 +160,9 @@ class _RadarScreenState extends State<RadarScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Kraków • Talep Yoğunluğu',
+                  S.radarDemandTitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.dmSans(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
@@ -165,7 +171,7 @@ class _RadarScreenState extends State<RadarScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Önümüzdeki günlerde planlanan $count büyük etkinlik yolcu taleplerini ve çarpanları artıracaktır.',
+                  S.radarDemandSubtitle(count),
                   style: GoogleFonts.dmSans(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
@@ -187,16 +193,16 @@ class _RadarScreenState extends State<RadarScreen> {
     switch (event.surgeLevel.toLowerCase()) {
       case 'high':
         surgeColor = _crimson;
-        surgeLabel = 'Yüksek Yoğunluk';
+        surgeLabel = S.surgeHigh;
         break;
       case 'medium':
         surgeColor = _amber;
-        surgeLabel = 'Orta Yoğunluk';
+        surgeLabel = S.surgeMedium;
         break;
       case 'low':
       default:
         surgeColor = _emerald;
-        surgeLabel = 'Düşük Yoğunluk';
+        surgeLabel = S.surgeLow;
         break;
     }
 
@@ -217,8 +223,11 @@ class _RadarScreenState extends State<RadarScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -231,12 +240,16 @@ class _RadarScreenState extends State<RadarScreen> {
                   children: [
                     const Icon(Icons.calendar_today_rounded, size: 14, color: Colors.white70),
                     const SizedBox(width: 6),
-                    Text(
-                      event.formattedDateTime,
-                      style: GoogleFonts.jetBrainsMono(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
+                    Flexible(
+                      child: Text(
+                        event.formattedDateTime,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ],
@@ -268,12 +281,16 @@ class _RadarScreenState extends State<RadarScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      surgeLabel,
-                      style: GoogleFonts.dmSans(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: surgeColor,
+                    Flexible(
+                      child: Text(
+                        surgeLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: surgeColor,
+                        ),
                       ),
                     ),
                   ],
@@ -284,6 +301,8 @@ class _RadarScreenState extends State<RadarScreen> {
           const SizedBox(height: 16),
           Text(
             event.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.dmSans(
               fontSize: 18,
               fontWeight: FontWeight.w800,
@@ -310,6 +329,8 @@ class _RadarScreenState extends State<RadarScreen> {
                 Expanded(
                   child: Text(
                     event.venue,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.dmSans(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -425,7 +446,7 @@ class _RadarScreenState extends State<RadarScreen> {
             ),
             const SizedBox(height: 20),
             Text(
-              'Etkinlik Bulunamadı',
+              S.eventsEmptyTitle,
               style: GoogleFonts.dmSans(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -460,7 +481,7 @@ class _RadarScreenState extends State<RadarScreen> {
               },
               icon: const Icon(Icons.refresh_rounded, size: 18),
               label: Text(
-                'Tekrar Deneyin',
+                S.tryAgain,
                 style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
               ),
             ),
@@ -488,7 +509,7 @@ class _RadarScreenState extends State<RadarScreen> {
             ),
             const SizedBox(height: 20),
             Text(
-              'Bağlantı Hatası',
+              S.connectionError,
               style: GoogleFonts.dmSans(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -523,7 +544,7 @@ class _RadarScreenState extends State<RadarScreen> {
               },
               icon: const Icon(Icons.refresh_rounded, size: 18),
               label: Text(
-                'Yeniden Yükle',
+                S.reload,
                 style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
               ),
             ),

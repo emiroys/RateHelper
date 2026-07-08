@@ -313,6 +313,106 @@ class _EarningsScreenState extends State<EarningsScreen> {
     }
   }
 
+  Future<void> _resetLifetimeTrips() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: Text(
+          S.resetLifetimeTripsTitle,
+          style: GoogleFonts.dmSans(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          S.resetLifetimeTripsConfirm,
+          style: GoogleFonts.dmSans(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(S.cancel, style: GoogleFonts.dmSans(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(
+              S.resetLifetimeTrips,
+              style: GoogleFonts.dmSans(color: const Color(0xFFE57373), fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      final prefs = await _getPrefs();
+      await prefs.setInt(kLifetimeTripsKey, 0);
+      if (mounted) {
+        setState(() => _cachedLifetimeTrips = 0);
+      }
+    }
+  }
+
+  Future<void> _editLifetimeTrips() async {
+    final controller = TextEditingController(text: _cachedLifetimeTrips.toString());
+    final newCount = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: Text(
+          S.editLifetimeTripsTitle,
+          style: GoogleFonts.dmSans(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              S.editLifetimeTripsDesc,
+              style: GoogleFonts.dmSans(color: Colors.white70, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              style: GoogleFonts.dmSans(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: S.editLifetimeTripsLabel,
+                labelStyle: GoogleFonts.dmSans(color: Colors.white54),
+                enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Color(0xFFFFD700))),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(S.cancel, style: GoogleFonts.dmSans(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () {
+              final parsed = int.tryParse(controller.text.trim());
+              if (parsed != null && parsed >= 0) {
+                Navigator.pop(context, parsed);
+              } else {
+                Navigator.pop(context);
+              }
+            },
+            child: Text(
+              S.save,
+              style: GoogleFonts.dmSans(color: const Color(0xFFFFD700), fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (newCount != null) {
+      final prefs = await _getPrefs();
+      await prefs.setInt(kLifetimeTripsKey, newCount);
+      if (mounted) {
+        setState(() => _cachedLifetimeTrips = newCount);
+      }
+    }
+  }
+
   WeekEarning? _entryForOffset(int offset) {
     final start = weekStartForOffset(offset);
     for (final e in _entries) {
@@ -893,6 +993,8 @@ class _EarningsScreenState extends State<EarningsScreen> {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
           child: _FreeWeekProgressCard(
             lifetimeTrips: _cachedLifetimeTrips,
+            onReset: _resetLifetimeTrips,
+            onEdit: _editLifetimeTrips,
           ),
         ),
       ),
@@ -976,9 +1078,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
               // historical average — consistent with the live entry-form
               // preview and every other fuel figure in the app.
               breakEven: calculateBreakEven(
-                fixedCosts: ADMINISTRATIVE_COST +
-                    entry.fuelAfterDiscount +
-                    entry.rentalFee,
+                fixedCosts: entry.fuelAfterDiscount + entry.rentalFee,
               ),
             ),
           ),
@@ -2476,7 +2576,6 @@ class _BreakdownCard extends StatelessWidget {
                 style: GoogleFonts.dmSans(fontSize: 11, color: Colors.white38, fontStyle: FontStyle.italic),
               ),
             ),
-          _line(S.adminCost, -ADMINISTRATIVE_COST),
           if (entry.fuelReceipts.isEmpty)
             _line(S.fuelDiscounted, -entry.fuelAfterDiscount)
           else
@@ -3369,9 +3468,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
   /// clear this week before the week pays for itself.
   Widget _breakEvenReference() {
     final threshold = calculateBreakEven(
-      fixedCosts: ADMINISTRATIVE_COST +
-          _currentFuelAfterDiscount() +
-          _currentRentalFee(),
+      fixedCosts: _currentFuelAfterDiscount() + _currentRentalFee(),
     );
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 12),
@@ -3689,9 +3786,15 @@ class _ReminderSettingsSheetState extends State<_ReminderSettingsSheet> {
 }
 
 class _FreeWeekProgressCard extends StatelessWidget {
-  const _FreeWeekProgressCard({required this.lifetimeTrips});
+  const _FreeWeekProgressCard({
+    required this.lifetimeTrips,
+    required this.onReset,
+    required this.onEdit,
+  });
 
   final int lifetimeTrips;
+  final VoidCallback onReset;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -3720,6 +3823,42 @@ class _FreeWeekProgressCard extends StatelessWidget {
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: onEdit,
+                borderRadius: BorderRadius.circular(4),
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(Icons.edit_outlined, size: 17, color: _gold),
+                ),
+              ),
+              const SizedBox(width: 8),
+              InkWell(
+                onTap: onReset,
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _gold.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: _gold.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.restart_alt, size: 13, color: _gold),
+                      const SizedBox(width: 4),
+                      Text(
+                        S.resetLifetimeTrips,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _gold,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
