@@ -1,92 +1,249 @@
-# RateHelper — Kurulum Rehberi
+# RateHelper — Kurulum ve Kullanım Rehberi
 
-Bu kısa rehber, telefonuna RateHelper APK’sını yüklediğinde **iki Android iznini** açmana yardım eder. Bunlar olmadan uygulama Uber Driver’ın üstünde **görünmez** veya vardiya sırasında **arka planda öldürülür**.
+Bu rehber, RateHelper’i telefonuna kurduktan sonra **doğru çalışması için gereken izinleri** ve **günlük kullanımı** adım adım anlatır.
 
-> Tahmini süre: 60 saniye.
+> **Hedef cihaz:** Android (Samsung Galaxy S24 Ultra ve benzeri flagship’ler için optimize edilmiştir)  
+> **Tahmini kurulum süresi:** 2–3 dakika
 
 ---
 
 ## 1) APK’yı yükle
 
-1. Sana gönderilen `ratehelper.apk` dosyasını telefonuna kopyala (WhatsApp, USB, e-posta — fark etmez).
-2. Dosyaya dokun. Telefon "Bilinmeyen kaynaklardan yükleme" izni isteyecektir → **İzin Ver** → tekrar APK’ya dön → **Yükle**.
-3. İlk açılışta uygulama seni otomatik olarak **Kurulum** ekranına götürür.
+1. Sana gönderilen APK dosyasını telefona kopyala (WhatsApp, USB, e-posta — fark etmez).  
+   Dosya adı genelde `app-arm64-v8a-release.apk` veya `ratehelper.apk` olur.
+2. Dosyaya dokun. Telefon **“Bilinmeyen kaynaklardan yükleme”** izni isterse → **İzin Ver** → tekrar APK’ya dön → **Yükle**.
+3. İlk açılışta uygulama seni otomatik olarak **RateHelper Kurulumu** ekranına götürür.
+
+> Kurulum ekranını daha sonra tekrar okumak için: ana ekranda sağ üst **⋮ menü** → **Kurulum Rehberi**.
 
 ---
 
-## 2) Adım 1 — "Diğer uygulamaların üzerine çizim" izni
+## 2) İlk kurulum — iki zorunlu izin
 
-Kurulum ekranında **"İZNİ AÇ"** butonuna bas. Android’in sistem ayarları açılır.
+RateHelper’in Uber Driver’ın üstünde çalışabilmesi ve vardiya boyunca arka planda öldürülmemesi için **iki Android izni** şarttır.
 
-- Listede **RateHelper** uygulamasını bul.
-- Yanındaki anahtarı **AÇIK** konuma getir.
-- Geri tuşu ile RateHelper’e dön.
+### Adım 1 — Üzerine çizim izni
 
-Adım kartında yeşil bir ✓ göründüyse bu adımı tamamladın.
+Kurulum ekranında **“İZNİ AÇ”** butonuna bas. Android ayarları açılır.
 
----
+1. Listede **RateHelper** uygulamasını bul.
+2. Anahtarı **AÇIK** konuma getir.
+3. Geri tuşu ile RateHelper’e dön.
 
-## 3) Adım 2 — Pil optimizasyonunu kapat
+Adım kartında yeşil **VERİLDİ** göründüyse tamam.
 
-Bu adım telefonun markasına göre değişir. Doğru markayı seç, ardından uygulama içindeki **"AYARLARI AÇ"** butonuna bas.
+### Adım 2 — Pil optimizasyonunu kapat
 
-### Samsung (One UI)
+Telefon markana göre pil ayarını aç. Kurulum ekranındaki marka seçiciden doğru markayı seç, ardından **“AYARLARI AÇ”** butonuna bas.
 
-`Ayarlar` → `Cihaz bakımı` → `Pil` → `Arka plan kullanım sınırları` → `Asla uyutulmayacak uygulamalar` → **+** → listeden **RateHelper**’i seç.
+#### Samsung (One UI)
 
-### Xiaomi / Redmi / POCO (MIUI / HyperOS)
+`Ayarlar` → `Cihaz bakımı` → `Pil` → `Arka plan kullanım sınırları` → `Asla uyutulmayacak uygulamalar` → **+** → **RateHelper**’i ekle.
 
-İki yer var, ikisini de yap:
+#### Xiaomi / Redmi / POCO (MIUI / HyperOS)
 
-1. `Ayarlar` → `Uygulamalar` → `RateHelper` → `Pil tasarrufu` → **Kısıtlama yok**.
-2. Aynı sayfada `Otomatik başlatma` → **AÇIK**.
+İkisini de yap:
 
-### Huawei / Honor (EMUI)
+1. `Ayarlar` → `Uygulamalar` → `RateHelper` → `Pil tasarrufu` → **Kısıtlama yok**
+2. Aynı sayfada `Otomatik başlatma` → **AÇIK**
 
-`Ayarlar` → `Uygulamalar` → `RateHelper` → `Pil` → `Uygulama başlatma` → **Otomatik yönet** seçeneğini KAPAT → ardından açılan üç anahtarı (`Otomatik başlat`, `İkincil başlatma`, `Arka planda çalışma`) hepsini **AÇ**.
+#### Huawei / Honor (EMUI)
 
-### OnePlus / Oppo / Realme (OxygenOS / ColorOS)
+`Ayarlar` → `Uygulamalar` → `RateHelper` → `Pil` → `Uygulama başlatma` → **Otomatik yönet** seçeneğini **KAPAT** → açılan üç anahtarın (`Otomatik başlat`, `İkincil başlatma`, `Arka planda çalışma`) **hepsini AÇ**.
+
+#### OnePlus / Oppo / Realme (OxygenOS / ColorOS)
 
 `Ayarlar` → `Pil` → `Pil optimizasyonu` → **RateHelper** → **Optimize etme**.
 
-Bonus: Son uygulamalar (Recents) ekranını aç, RateHelper kartının üst kısmındaki kilit ikonuna dokun. Bu kart artık temizlemede silinmeyecek.
+**Ek:** Son uygulamalar (Recents) ekranında RateHelper kartının üstündeki **kilit** ikonuna dokun — temizlemede silinmesin.
 
-### Diğer markalar
+#### Diğer markalar
 
-Telefonun `Ayarlar` → `Pil` veya `Uygulamalar` altında **RateHelper**’i ara, pil optimizasyonunu **KAPAT** veya **"Kısıtlanmamış"** olarak işaretle.
+`Ayarlar` → `Pil` veya `Uygulamalar` altında **RateHelper**’i bul; pil optimizasyonunu **KAPAT** veya **“Kısıtlanmamış”** olarak işaretle.
 
----
+### Kurulumu bitir
 
-## 4) "BİTİR" → RateHelper’i başlat
-
-1. Ana ekrandaki üst-sağ köşedeki **Picture-in-picture** ikonuna bas: ekrana siyah/yuvarlak butonlar gelecek.
-2. **Yeşil ➕** = Kabul edilen yolculuk. **Kırmızı ➖** = Reddedilen istek.
-3. Butonların ortasındaki tutamağı sürükleyerek pil hücresini taşıyabilirsin.
+Her iki adım tamamsa alttaki **BİTİR** butonuna bas. Ana ekrana geçersin.
 
 ---
 
-## 5) Sorun çıkarsa
+## 3) Ana ekran — sayaçlar
 
-Uygulama beklenmedik şekilde kapanırsa:
+Ana ekranda dört büyük sayaç vardır:
 
-1. RateHelper’i tekrar aç.
-2. Sağ üstteki üç-nokta menü → **Çökme Kayıtları**.
-3. **KOPYALA** butonuna bas. Yapıştırdığını WhatsApp üzerinden bana gönder.
+| Sayaç | Anlamı |
+| --- | --- |
+| **Kabul Edilen** | Kabul ettiğin yolculuk istekleri |
+| **Reddedilen** | Reddettiğin istekler |
+| **Tamamlanan** | Bitirdiğin yolculuklar |
+| **İptal Edilen** | İptal edilen yolculuklar |
 
-Çökme kayıtları uygulamanın **dahili** (sandbox) depolama alanında tutulur; dosya yöneticisi veya dış depolama yolundan erişilemez. Kayıtları okumak ve paylaşmak için yalnızca uygulama içindeki **Çökme Kayıtları → KOPYALA** akışını kullan.
+**Kabul oranı** ve **iptal oranı** otomatik hesaplanır. Oran hedefinin altına düşersen ekranda turuncu/kırmızı uyarı ve **kaç kabul gerektiği** gösterilir.
+
+### Sayaç düzenleme
+
+Yanlış sayı mı girdin? Sayaç değerine **dokun** veya **uzun bas** → açılan kutuya doğru sayıyı yaz → **KAYDET**.
+
+### Otomatik tamamla
+
+**“Otomatik tamamla”** anahtarını açarsan, kabul sayısına her **+1** eklediğinde tamamlanan yolculuk sayısı da otomatik artar.
+
+### Haftayı sıfırla
+
+Hafta bittiğinde **HAFTAYI SIFIRLA** butonuna bas. Sayacı sıfırlamadan önce o haftanın özeti arşive kaydedilir.
 
 ---
 
-## 6) Geliştirici notları (sadece kurucu için)
+## 4) Yüzen widget (Uber üstünde sayaç)
+
+Vardiyadayken Uber’i kapatmadan sayaç tutmak için küçük bir **yüzen pill** kullanılır.
+
+### Widget’ı aç / kapat
+
+Ekranın altındaki menüde ortadaki büyük butona bas:
+
+- **▶ Başlat** → widget açılır, Uber’in üstünde görünür
+- **⏹ Durdur** → widget kapanır
+
+### Widget kullanımı
+
+| Buton | İşlev |
+| --- | --- |
+| **Yeşil ➕** | Kabul edilen istek (+1) |
+| **Kırmızı ➖** | Reddedilen istek (+1) |
+| **Ortadaki %** | Anlık kabul oranın |
+
+Widget’ı **sürükleyerek** ekranda istediğin yere taşıyabilirsin. Uber’in dokunmatik alanlarını kapatmaması için küçük tutulmuştur (276×80 dp).
+
+> Widget kapalıyken sayaç tutmak için ana ekrana dönüp büyük **+ / −** butonlarını kullan.
+
+---
+
+## 5) Alt menü (5 buton)
+
+| Simge | Ad | Ne işe yarar? |
+| --- | --- | --- |
+| 🌐 | **Dil** | Türkçe / İngilizce / Lehçe seç |
+| ▶/⏹ | **Başlat / Durdur** | Yüzen widget’ı aç veya kapat |
+| 📋 | **Kayıtlar** | Dokunma geçmişi + haftalık arşiv |
+| 📡 | **Radar** | Kraków’da yaklaşan etkinlikler (talep yoğunluğu) |
+| 💰 | **Kazanç** | Haftalık gelir, gider ve kâr takibi |
+
+---
+
+## 6) Kayıtlar ekranı
+
+**Kayıtlar** butonuna basınca alttan açılan panelde **iki sekme** vardır:
+
+### Dokunma geçmişi
+
+Her **+ / −** basımının saati listelenir. **Bugün** / **Tümü** filtresi vardır. Temizlemek için sağ üstteki silme ikonunu kullan.
+
+### Haftalık arşiv
+
+Her **HAFTAYI SIFIRLA** işleminde o haftanın kabul/iptal oranları buraya kaydedilir. Eski kayıtlar da okunabilir.
+
+---
+
+## 7) Kazanç takibi (💰)
+
+**Kazanç** ekranı haftalık Uber gelirini, yakıt, kira, vergi ve net kârını hesaplar. Tüm veriler **telefonda kalır** — buluta gönderilmez.
+
+### İlk açılış
+
+1. **Tek Sürücü** mi yoksa **İki Sürücü (Paylaşımlı)** mı kullandığını seç — kira tabloları buna göre değişir.
+2. Haftalık formu doldur: **Net Gelir**, **Alınan Nakit**, **Çevrimiçi Süre**, **Yolculuk Sayısı**, yakıt fişleri vb.
+
+### Görünümler
+
+Üstte **Haftalık / Aylık / Yıllık** seçici vardır. Aylık görünümde en iyi hafta kartı ve grafikler gösterilir.
+
+### PDF dışa aktarma
+
+Sağ üstteki paylaş ikonundan **PDF Olarak Dışa Aktar** → tarih aralığı seç → muhasebecine veya kendine gönder.
+
+### Ücretsiz kira haftası sayacı
+
+2000 yolculuğa ulaştığında kira indirimi hakkı kazanırsın. Bu sayaç **asla geriye gitmez** — eski haftalar silinse bile.
+
+---
+
+## 8) Etkinlik Radarı (📡)
+
+Kraków’da konser, maç ve büyük etkinlikleri listeler. Yoğun talep (surge) beklentisi olan günleri önceden görmen için.
+
+- Liste **internetten** güncellenir (yalnızca public etkinlik verisi; finansal verin gönderilmez).
+- Aşağı çekerek **Yenile** yapabilirsin.
+- Veri bir saat boyunca önbellekte tutulur.
+
+---
+
+## 9) Direksiyon tuşu ile sayma (isteğe bağlı, Beta)
+
+Ellerini direksiyondan ayırmadan sayaç tutmak istersen:
+
+1. Ana ekranda **“Direksiyon Tuşu ile Sayma (Beta)”** anahtarını **AÇ**.
+2. **Erişilebilirlik izni** istenirse → **AYARLARA GİT** → RateHelper servisini **AÇ**.
+3. Kullanım:
+   - **Sonraki şarkı / oynat-dur** tuşuna **800 ms basılı tut** → kabul sayacı +1
+   - **Önceki şarkı** tuşuna **800 ms basılı tut** → red sayacı +1
+   - **Kısa basış** → müzik uygulaman (Spotify vb.) normal çalışmaya devam eder
+
+> Bu özellik Android **Erişilebilirlik** servisi kullanır. İstemezsen anahtarı kapalı bırak — uygulamanın geri kalanı normal çalışır.
+
+---
+
+## 10) Sürücü modu değiştirme
+
+Araba paylaşımlı mı kullanıyorsun?
+
+Ana ekranda sağ üst **⋮ menü** → **Tek Sürücü** veya **İki Sürücü (Paylaşımlı)** seç.
+
+> Geçmiş haftaların kayıtlı modu değişmez; yalnızca yeni kayıtlar yeni moda göre hesaplanır.
+
+---
+
+## 11) Sorun çıkarsa
+
+### Uygulama kapanıyor veya widget kayboluyor
+
+1. **Kurulum Rehberi**’ni tekrar oku (⋮ menü) — pil optimizasyonu ve overlay izni hâlâ açık mı kontrol et.
+2. Widget’ı **Durdur** → tekrar **Başlat**.
+3. Samsung’da Recents’te RateHelper kartını **kilitle**.
+
+### Çökme kaydı gönderme
+
+1. Ana ekranda sağ üst **⋮ menü** → **Çökme Kayıtları**
+2. **KOPYALA** butonuna bas
+3. Yapıştırdığını WhatsApp üzerinden geliştiriciye gönder
+
+> Çökme kayıtları uygulamanın **dahili** (sandbox) alanında tutulur. Dosya yöneticisiyle erişilemez — yalnızca uygulama içindeki **KOPYALA** yolunu kullan.
+
+### Güncelleme (OTA)
+
+Uygulama yeni sürüm olduğunda alttan bildirim çıkar. **İndir** dediğinde GitHub’dan APK iner. Aynı imzayla yüklenmiş olması gerekir — resmi APK dışında kaynak kullanma.
+
+---
+
+## 12) Geliştirici notları (sadece kurucu / maintainer)
 
 Üretim derlemesi:
 
 ```bash
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs
+flutter test
 flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbols/
 ```
 
 - `--obfuscate` → Dart AOT sembollerini siler.
-- `--split-debug-info` → orijinal sembolleri proje dışında tutar (geri tracing için sakla).
+- `--split-debug-info` → sembolleri proje dışında tutar (geri izleme için sakla).
 - `--split-per-abi` → APK boyutunu ~8 MB / mimari seviyesine düşürür.
 
-`android/key.properties` mevcutsa imzalama otomatiktir. Yoksa debug anahtarı kullanılır ve **kullanıcı güncelleyemez** (Android imza eşleşmezliği reddeder). Aynı anahtarı her sürümde yeniden kullan.
+`android/key.properties` mevcutsa imzalama otomatiktir. Yoksa debug anahtarı kullanılır ve kullanıcı **güncelleme yükleyemez** (imza uyuşmazlığı). Her sürümde aynı keystore kullan.
+
+Detaylı mimari: [`README.md`](README.md) · Agent notları: [`agent-learnings.md`](agent-learnings.md)
+
+---
+
+> **RateHelper** — Sürücü koltuğundan yazıldı, Kraków yollarında gerçek kazancın için.

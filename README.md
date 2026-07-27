@@ -279,7 +279,7 @@ android/app/src/main/kotlin/com/ratehelper/app/
 ## Licencja i kontakt
 
 Projekt open-source udostępniany na zasadach wolnego oprogramowania.  
-Dedykowana instrukcja konfiguracji dla kierowców bez znajomości programowania: [`SETUP_GUIDE_TR.md`](SETUP_GUIDE_TR.md).
+Instrukcje konfiguracji dla kierowców: [`SETUP_GUIDE_PL.md`](SETUP_GUIDE_PL.md) (polski) · [`SETUP_GUIDE_TR.md`](SETUP_GUIDE_TR.md) (turecki).
 
 ---
 
