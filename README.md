@@ -31,7 +31,7 @@
 
 ### Główne zasady projektowe
 
-- **100% Local, Zero Cloud:** Wszystkie dane finansowe i statystyki przechowywane są wyłącznie w piaskownicy Androida (`SharedPreferences`). Brak zewnętrznej telemetrii i kont użytkowników.
+- **100% Local Finance:** Wszystkie dane finansowe i statystyki przechowywane są wyłącznie w piaskownicy Androida (`SharedPreferences`). Brak zewnętrznej telemetrii i kont użytkowników. Jedyny ruch sieciowy: aktualizacje APK, publiczny radar wydarzeń Kraków.
 - **Driving-First UI:** Ekstremalny ciemny motyw (True Dark), gigantyczne punkty dotykowe (XL Targets) oraz haptyka zwrotna dostosowana do obsługi urządzenia w uchwycie samochodowym.
 - **Trójjęzyczność:** Pełna lokalizacja interfejsu w językach: Tureckim (domyślny), Polskim oraz Angielskim.
 
@@ -43,7 +43,7 @@
 | --- | --- | --- |
 | **Pływająca Nakładka** | Widget 276×80 dp wiszący bezpośrednio nad aplikacją Uber/Bolt Driver, pozwalający na rejestrację kliknięć bez opuszczania nawigacji. | Osobny izolat Flutter (`OverlayIsolate`) sprzężony z natywnym `WindowManager` w Javie. |
 | **3-Stanowy Alert AR** | Inteligentne monitorowanie wskaźnika akceptacji (AR) z dynamicznym systemem wczesnego ostrzegania (Zielony/Żółty/Czerwony). | Algorytm sprawdzający bufor bezpieczeństwa `AMBER_BUFFER = 2.0%` wokół progu wybranego celu. |
-| **Silnik Księgowy** | Precyzyjny kalkulator rentowności tygodniowej z automatycznym odliczaniem podatków, prowizji, paliwa i amortyzacji. | Pełne mapowanie podatku ryczałtowego/VAT (12%), prowizji partnera (3%) oraz stałych kosztów administracyjnych (40 PLN). |
+| **Silnik Księgowy** | Precyzyjny kalkulator rentowności tygodniowej z automatycznym odliczaniem podatków, prowizji rozliczeniowej i paliwa. | Mapowanie VAT ryczałtowego (12%), opłaty rozliczeniowej partnera (3%) oraz progów najmu zależnych od liczby kursów. |
 | **Tryby Jazdy (1 vs 2)** | Elastyczne przełączanie profilu kosztów w zależności od tego, czy kierowca jeździ sam, czy dzieli auto na zmiany. | Dynamiczne tabele progowe `RENTAL_TIERS` i `RENTAL_TIERS_PAIRED` działające w sposób odporny na modyfikacje wsteczne. |
 | **Surge Radar (OTA)** | Kalendarz masowych imprez w Krakowie (Tauron Arena, mecze Wisły/Cracovii) przewidujący skoki mnożników. | Bezpieczne pobieranie pliku manifestu z repozytorium GitHub bez konieczności aktualizacji całej aplikacji (Zero-Update OTA). |
 | **Obsługa Bluetooth** | Logowanie zleceń (Akceptacja/Odrzucenie) za pomocą fabrycznych przycisków multimedialnych na kierownicy pojazdu. | Natywna usługa `AccessibilityService` przechwytująca zdarzenia `KeyEvent` w tle systemu Android. |
@@ -106,18 +106,17 @@ Kalkulator zysku netto operuje na architekturze ciągłego przeliczania wartośc
 
 ```
 Zysk Netto = Przychód Netto Uber
-            − Stała Opłata Administracyjna (40.00 PLN)
             − Paliwo po Rabacie Partnerskim (Suma Rachunków × 0.90)
             − Podatek VAT Ryczałtowy (Przychód Netto × 0.12)
-            − Prowizja Rozliczeniowa Partnera (Przychód Netto × 0.03)
+            − Opłata Rozliczeniowa Partnera (Przychód Netto × 0.03)
             − Indywidualny Koszt Wynajmu (rentalFee wyliczone z tabel progowych)
 ```
 
 #### Próg rentowności (Break-Even)
 
-Aplikacja dynamicznie wskazuje kwotę obrotu, od której kierowca zaczyna zarabiać na czysto:
+Aplikacja dynamicznie wskazuje kwotę obrotu, od której kierowca zaczyna zarabiać na czysto (koszty stałe = paliwo po rabacie + najem bieżącego tygodnia):
 
-$$\text{Break-Even} = \frac{\text{Koszty Stałe (Najem + Admin + Paliwo)}}{\text{1} - \text{FLAT\_VAT\_RATE (0.12)} - \text{SETTLEMENT\_FEE\_RATE (0.03)}} = \frac{\text{Koszty Stałe}}{\text{0.85}}$$
+$$\text{Break-Even} = \frac{\text{Paliwo po Rabacie} + \text{Najem}}{\text{1} - \text{FLAT\_VAT\_RATE (0.12)} - \text{SETTLEMENT\_FEE\_RATE (0.03)}} = \frac{\text{Koszty Stałe}}{\text{0.85}}$$
 
 Dodatkowo, formularz paliwowy pozwala na **wielokrotne wprowadzanie rachunków (Multi-Receipt Logging)** w ciągu jednego tygodnia. Każdy paragon otrzymuje unikalne ID generowane ze znacznika czasu i sumy kontrolnej kwoty, co eliminuje błędy duplikacji danych.
 
@@ -129,27 +128,29 @@ RateHelper wspiera zaawansowany podział progów najmu pojazdu, dopasowany do re
 - **Tryb Paired (2 Kierowców):** Koszt najmu dzielony jest na pół, a progi liczby przejazdów zostają przesunięte w celu odzwierciedlenia skróconego czasu pracy pojedynczego kierowcy.
 
 ```
-RENTAL_TIERS (Solo):
-┌─────────────┬────────────────┬─────────┬──────────────┐
-│ Liczba Kursów│ Koszt Kierowcy │ Min. AR%│ Maks. Anul.% │
-├─────────────┼────────────────┼─────────┼──────────────┤
-│ 0 – 99      │ 900 PLN        │ —       │ —            │
-│ 100 – 149   │ 700 PLN        │ 80%     │ 5%           │
-│ 150 – 199   │ 500 PLN        │ 70%     │ 5%           │
-│ 200 – 249   │ 300 PLN        │ 60%     │ 5%           │
-│ 250+        │ 100 PLN        │ 50%     │ 5%           │
-└─────────────┴────────────────┴─────────┴──────────────┘
+RENTAL_TIERS (Solo) — aplikacja wylicza opłatę wyłącznie z liczby kursów:
+┌─────────────┬────────────────┐
+│ Liczba Kursów│ Koszt Kierowcy │
+├─────────────┼────────────────┤
+│ 0 – 99      │ 900 PLN        │
+│ 100 – 149   │ 700 PLN        │
+│ 150 – 199   │ 500 PLN        │
+│ 200 – 249   │ 300 PLN        │
+│ 250+        │ 100 PLN        │
+└─────────────┴────────────────┘
+(Wyłączony rabat najmu: stała opłata 900 PLN)
 
 RENTAL_TIERS_PAIRED (Tryb Współdzielony):
-┌─────────────┬────────────────┬───────────────┬─────────┬──────────────┐
-│ Liczba Kursów│ Koszt Kierowcy │ Koszt Pojazdu │ Min. AR%│ Maks. Anul.% │
-├─────────────┼────────────────┼───────────────┼─────────┼──────────────┤
-│ 0 – 119     │ 450 PLN        │ 900 PLN       │ —       │ —            │
-│ 120 – 169   │ 350 PLN        │ 700 PLN       │ 80%     │ 5%           │
-│ 170 – 219   │ 250 PLN        │ 500 PLN       │ 70%     │ 5%           │
-│ 220 – 269   │ 150 PLN        │ 300 PLN       │ 60%     │ 5%           │
-│ 270+        │ 50 PLN         │ 100 PLN       │ 50%     │ 5%           │
-└─────────────┴────────────────┴───────────────┴─────────┴──────────────┘
+┌─────────────┬────────────────┬───────────────┐
+│ Liczba Kursów│ Koszt Kierowcy │ Koszt Pojazdu │
+├─────────────┼────────────────┼───────────────┤
+│ 0 – 119     │ 450 PLN        │ 900 PLN       │
+│ 120 – 169   │ 350 PLN        │ 700 PLN       │
+│ 170 – 219   │ 250 PLN        │ 500 PLN       │
+│ 220 – 269   │ 150 PLN        │ 300 PLN       │
+│ 270+        │ 50 PLN         │ 100 PLN       │
+└─────────────┴────────────────┴───────────────┘
+(Wyłączony rabat najmu: 450 PLN na kierowcę)
 ```
 
 **Reguła Nienaruszalności Historii (Fix #1):** Wybrany tryb jazdy (`driverMode`) jest zapisywany w strukturze JSON trwale w momencie zamknięcia tygodnia. Zmiana globalnego przełącznika w ustawieniach aplikacji nigdy nie rekalkuluje wstecznie zysków z poprzednich miesięcy.
@@ -176,7 +177,7 @@ Natywna usługa systemowa `MediaKeyAccessibilityService.kt` pozwala na bezwzroko
 
 | Zagrożenie | Zastosowana Architektura Obronna |
 | --- | --- |
-| **Wyciek danych finansowych** | Całkowity brak modułów sieciowych odpowiedzialnych za analitykę, reklamy czy synchronizację w chmurze. Dane nigdy nie opuszczają urządzenia. |
+| **Wyciek danych finansowych** | Brak synchronizacji finansów w chmurze — dane księgowe i liczniki pozostają w `SharedPreferences` na urządzeniu. Jedyny ruch sieciowy: publiczny manifest OTA, radar wydarzeń (`krakow_events.json`) i pobieranie APK. |
 | **Inżynieria wsteczna bazy** | Flaga `android:allowBackup=false` w manifestu uniemożliwia pobranie struktury SharedPreferences poprzez debugowanie ADB lub lokalne backupy systemowe. |
 | **Ataki typu MITM (OTA)** | Klasa `StrictSecurityHttpOverrides` wymusza rygorystyczną weryfikację łańcucha certyfikatów TLS podczas sprawdzania aktualizacji i pobierania radaru wydarzeń. |
 | **Paste-Bombing & Crash** | Filtry tekstowe `LengthLimitingTextInputFormatter(7)` oraz walidacja matematyczna do wartości maksymalnej 999 999,00 PLN zabezpieczają przed wprowadzeniem błędnych struktur niszczących wykresy. |
@@ -226,10 +227,10 @@ flutter pub get
 dart run build_runner build --delete-conflicting-outputs
 ```
 
-5. **Uruchomienie pakietu testów regresyjnych (Finanse, Progi, Zaokrąglenia, Daty):**
+5. **Uruchomienie pakietu testów regresyjnych (137 testów — finanse, progi, daty, archiwum, widgety):**
 
 ```bash
-flutter test test/earnings_test.dart test/logic_test.dart
+flutter test
 ```
 
 6. **Kompilacja bezpiecznej wersji APK ze stripowaniem symboli debugowania i obfuskacją kodu Dart:**
@@ -252,16 +253,19 @@ lib/
 ├── home_screen.dart           # Kokpit wskaźników, licznik odzysku, mechanizm aktualizacji OTA
 ├── earnings_models.dart       # Silnik matematyczny, struktury JSON, progi Solo/Paired
 ├── earnings_screen.dart       # Formularze księgowe, izolowane odświeżanie list, wykresy i drogomierz
-├── earnings_pdf_export.dart   # Generator zestawień miesięcznych PDF ze stripowaniem emotikonów
+├── earnings_pdf_export.dart   # Generator zestawień miesięcznych PDF (pdf + share_plus)
 ├── radar_screen.dart          # Interfejs graficzny Radaru Wydarzeń Kraków
 ├── overlay_widget.dart        # Kod UI nakładki (Izolat okna) z optymalizacją RepaintBoundary
 ├── overlay_sync.dart          # Komunikacja międzyizolatowa i wymuszanie przeładowania pamięci
 ├── onboarding_screen.dart     # Menadżer uprawnień systemowych (Overlay / Battery)
+├── fonts.dart                 # Stałe nazw rodzin czcionek (DM Sans, JetBrains Mono)
+├── app_text_styles.dart       # Współdzielone obiekty TextStyle (T.*) — bez google_fonts
 ├── l10n.dart                  # Słownik tłumaczeń (TR/EN/PL) i lokalne formatowanie walut
 ├── secure_http.dart           # Zabezpieczenia certyfikatów i protokołu TLS
 ├── crash_logger.dart          # Dziennik awarii i błędów krytycznych
 ├── models/
-│   └── event_model.dart       # Model wydarzenia masowego (Radar OTA)
+│   ├── event_model.dart       # Model wydarzenia masowego (Radar OTA)
+│   └── weekly_archive_entry.dart  # Archiwum tygodniowe v2 JSON + parser legacy
 └── services/
     └── event_service.dart     # Pobieranie i cache manifestu krakow_events.json
 
