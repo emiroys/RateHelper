@@ -304,4 +304,77 @@ void main() {
       expect(72.0 < req + AMBER_BUFFER, isFalse);
     });
   });
+
+  group('maxAdditionalCancellations', () {
+    test('returns 0 when completedTrips is 0', () {
+      expect(
+        maxAdditionalCancellations(completedTrips: 0, currentCancellations: 0),
+        0,
+      );
+    });
+
+    test('returns -1 when already over limit', () {
+      expect(
+        maxAdditionalCancellations(completedTrips: 20, currentCancellations: 2), // 10%
+        -1,
+      );
+    });
+
+    test('returns correct budget well under limit', () {
+      // 100 trips, 0 cancellations. Limit 5%.
+      // 5 cancellations: 5 / 105 = 4.76% (< 5%)
+      // 6 cancellations: 6 / 106 = 5.66% (>= 5%)
+      // So max is 5.
+      expect(
+        maxAdditionalCancellations(completedTrips: 100, currentCancellations: 0),
+        5,
+      );
+    });
+
+    test('returns correct budget near boundary', () {
+      // 95 trips, 0 cancellations.
+      // 5 cancellations: 5 / 100 = 5.0% (>= 5% ceiling)
+      // 4 cancellations: 4 / 99 = 4.04% (< 5%)
+      // So max is 4.
+      expect(
+        maxAdditionalCancellations(completedTrips: 95, currentCancellations: 0),
+        4,
+      );
+    });
+
+    test('returns correct budget when some cancellations already exist', () {
+      // 100 trips total, 1 is a cancellation. (Current rate = 1%)
+      // 4 more cancellations: 5 / 104 = 4.8% (< 5%)
+      // 5 more cancellations: 6 / 105 = 5.7% (>= 5%)
+      // So max is 4.
+      expect(
+        maxAdditionalCancellations(completedTrips: 100, currentCancellations: 1),
+        4,
+      );
+    });
+
+    test('invariant: maxAdditionalCancellations < 0 must exactly match cancellationRate >= 5.0', () {
+      for (int completed = 0; completed <= 100; completed++) {
+        for (int canceled = 0; canceled <= 50; canceled++) {
+          final total = completed + canceled;
+          if (total == 0) continue;
+
+          final rate = cancellationRate(completed, canceled);
+          final isRateOverLimit = rate >= 5.0;
+
+          final budget = maxAdditionalCancellations(
+            completedTrips: total,
+            currentCancellations: canceled,
+            ceiling: 5.0,
+          );
+
+          final isBudgetOverLimit = budget != null && budget < 0;
+
+          expect(isBudgetOverLimit, isRateOverLimit,
+            reason: 'Mismatch at completed: $completed, canceled: $canceled (rate: $rate, budget: $budget)');
+        }
+      }
+    });
+  });
 }
+

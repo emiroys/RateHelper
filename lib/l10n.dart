@@ -83,6 +83,18 @@ class S {
         'Bezpiecznie, ale blisko: seria odrzuceń może obniżyć stawkę poniżej wymogu.',
       );
 
+  static String maxAdditionalCancellations(int n) => _p(
+        'Bu haftaki %5 iptal sınırını aşmadan en fazla $n iptal daha hakkın var.',
+        'You can afford up to $n more cancellations without breaching the 5% limit.',
+        'Możesz anulować jeszcze maksymalnie $n razy, nie przekraczając limitu 5%.',
+      );
+      
+  static String get cancellationLimitExceeded => _p(
+        'İptal oranın sınırın üzerinde, kademen risk altında.',
+        'Your cancellation rate is over the limit, your tier is at risk.',
+        'Twój wskaźnik anulowań przekracza limit, Twój próg jest zagrożony.',
+      );
+
   static String get tripGoalTitle => _p(
         'Haftalık Yolculuk Hedefi',
         'Weekly Trip Goal',

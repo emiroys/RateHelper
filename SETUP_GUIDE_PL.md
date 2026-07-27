@@ -3,7 +3,10 @@
 Ten przewodnik krok po kroku wyjaśnia, **jakie uprawnienia Androida** trzeba włączyć oraz **jak korzystać z aplikacji** na co dzień.
 
 > **Docelowe urządzenie:** Android (zoptymalizowane pod flagowce typu Samsung Galaxy S24 Ultra)  
-> **Szacowany czas konfiguracji:** 2–3 minuty
+> **Szacowany czas konfiguracji:** 2–3 minuty  
+> **Wersja turecka:** [`SETUP_GUIDE_TR.md`](SETUP_GUIDE_TR.md)
+
+> **Przewodnik konfiguracji w aplikacji** (menu **⋮**) pokazuje tylko **dwa kroki uprawnień** (nakładka + bateria). Ten plik to **pełna instrukcja obsługi**.
 
 ---
 
@@ -78,7 +81,31 @@ Na ekranie głównym są cztery duże liczniki:
 | **Ukończone** | Zakończone przejazdy |
 | **Anulowane** | Anulowane przejazdy |
 
-**Wskaźnik akceptacji** i **wskaźnik anulowań** liczą się automatycznie. Gdy spadniesz poniżej celu, zobaczysz pomarańczowe/czerwone ostrzeżenie i informację, **ile akceptacji z rzędu** potrzebujesz.
+**Wskaźnik akceptacji** i **wskaźnik anulowań** liczą się automatycznie.
+
+### Kolorowe ostrzeżenia (3 stany)
+
+Kolor karty akceptacji zależy od wybranego **Tygodniowego Celu Przejazdów**:
+
+| Kolor | Znaczenie |
+| --- | --- |
+| **Zielony** | Jesteś powyżej wymaganego progu |
+| **Bursztynowy** | Bezpiecznie, ale blisko — seria odrzuceń może obniżyć próg poniżej wymogu |
+| **Czerwony** | Poniżej celu — ekran pokazuje, **ile akceptacji z rzędu** potrzebujesz |
+
+### Tygodniowy cel przejazdów
+
+Dotknij chipu celu u góry → wybierz **Tygodniowy Cel Przejazdów**. Każdy próg odpowiada minimalnej liczbie przejazdów i akceptacji wymaganej przez ERES do zniżki czynszu (np. 100–149 przejazdów, min. 80% akceptacji). Opcja **Brak Wymag.** służy tylko do liczenia.
+
+> Progi zależą od trybu **Jeden kierowca** / **Dwóch kierowców (Dzielony)** (zmiana w menu **⋮**).
+
+### Karta budżetu anulowań
+
+Gdy cel jest wybrany (oprócz Brak Wymag.), ekran pokazuje, ile anulowań możesz jeszcze wykonać w ramach limitu **5%**. Po przekroczeniu — czerwone ostrzeżenie.
+
+### Cofnij (undo)
+
+Ikona **↩ cofnij** w lewym górnym rogu cofa **jedną** ostatnią zmianę licznika.
 
 ### Edycja licznika
 
@@ -91,6 +118,18 @@ Włącz przełącznik **„Automatyczne ukończenie”** — przy każdym **+1**
 ### Reset tygodnia
 
 Po zakończeniu tygodnia naciśnij **RESETUJ TYDZIEŃ**. Podsumowanie tygodnia trafi do archiwum, zanim liczniki wrócą do zera.
+
+> Automatyczna granica tygodnia: **poniedziałek 04:00** (czas warszawski). Strefa czasowa telefonu nie ma znaczenia — aplikacja używa `Europe/Warsaw`.
+
+---
+
+## 3b) Menu górne (⋮)
+
+| Pozycja | Funkcja |
+| --- | --- |
+| **Przewodnik konfiguracji** | Ponownie pokazuje dwa kroki uprawnień (nakładka + bateria) |
+| **Dziennik awarii** | Kopiuj / wyczyść log błędów |
+| **Jeden kierowca / Dwóch kierowców** | Zmiana trybu (tabele czynszu + progi celu) |
 
 ---
 
@@ -242,7 +281,7 @@ flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbo
 
 Jeśli istnieje `android/key.properties`, podpisywanie jest automatyczne. Bez niego używany jest klucz debug — użytkownik **nie zaktualizuje** aplikacji (niezgodność podpisu). Używaj tego samego keystore w każdej wersji.
 
-Architektura: [`README.md`](README.md) · Notatki agenta: [`agent-learnings.md`](agent-learnings.md)
+Architektura: [`README.md`](README.md) · Notatki agenta: [`agent-learnings.md`](agent-learnings.md) · Przewodnik turecki: [`SETUP_GUIDE_TR.md`](SETUP_GUIDE_TR.md)
 
 ---
 

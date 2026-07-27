@@ -72,6 +72,21 @@ int? calculateNeededForRecovery({
   return math.max(1, n);
 }
 
+int? maxAdditionalCancellations({
+  required int completedTrips,
+  required int currentCancellations,
+  double ceiling = 5.0,
+}) {
+  if (completedTrips == 0) return 0;
+  if ((currentCancellations / completedTrips) * 100 >= ceiling) return -1;
+  
+  int n = 0;
+  while (((currentCancellations + n + 1) / (completedTrips + n + 1)) * 100 < ceiling) {
+    n++;
+  }
+  return n;
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -178,6 +193,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         acceptedRequests: acceptedRequests,
         rejectedRequests: rejectedRequests,
         requiredAcceptRate: _selectedGoal.requiredAcceptRate,
+      );
+
+  int? get maxCancellationsBudget => maxAdditionalCancellations(
+        completedTrips: totalAcceptedTrips,
+        currentCancellations: canceledTrips,
       );
 
   Color get _acceptRateColor {
@@ -1404,7 +1424,63 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ],
 
+              if (_selectedGoal != TripGoal.tier0) ...[
+                Builder(
+                  builder: (context) {
+                    final budget = maxCancellationsBudget;
+                    if (budget == null) return const SizedBox.shrink();
+                    
+                    final isOverLimit = budget < 0;
+                    final isZeroBudget = budget == 0;
+                    
+                    final textColor = isOverLimit 
+                      ? _crimson 
+                      : (isZeroBudget ? _amber : _emerald);
+                      
+                    final icon = isOverLimit 
+                      ? Icons.warning_amber_rounded 
+                      : (isZeroBudget ? Icons.shield_outlined : Icons.info_outline_rounded);
+                      
+                    final text = isOverLimit 
+                      ? S.cancellationLimitExceeded 
+                      : S.maxAdditionalCancellations(budget);
+                      
+                    return Column(
+                      children: [
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: _cardColor,
+                            border: _cardBorder,
+                            borderRadius: _cardRadius,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(icon, color: textColor, size: 20),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  text,
+                                  style: TextStyle(fontFamily: AppFonts.dmSans, 
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: textColor,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                ),
+              ],
+
               const SizedBox(height: 32),
+
 
               _sectionHeader(S.requests),
               const SizedBox(height: 12),

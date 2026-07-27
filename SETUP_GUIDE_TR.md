@@ -3,7 +3,10 @@
 Bu rehber, RateHelper’i telefonuna kurduktan sonra **doğru çalışması için gereken izinleri** ve **günlük kullanımı** adım adım anlatır.
 
 > **Hedef cihaz:** Android (Samsung Galaxy S24 Ultra ve benzeri flagship’ler için optimize edilmiştir)  
-> **Tahmini kurulum süresi:** 2–3 dakika
+> **Tahmini kurulum süresi:** 2–3 dakika  
+> **Lehçe sürüm:** [`SETUP_GUIDE_PL.md`](SETUP_GUIDE_PL.md)
+
+> **Uygulama içi “Kurulum Rehberi”** (⋮ menü) yalnızca **iki izin adımını** (overlay + pil) gösterir. Bu dosya **tam kullanım kılavuzudur**.
 
 ---
 
@@ -78,7 +81,31 @@ Ana ekranda dört büyük sayaç vardır:
 | **Tamamlanan** | Bitirdiğin yolculuklar |
 | **İptal Edilen** | İptal edilen yolculuklar |
 
-**Kabul oranı** ve **iptal oranı** otomatik hesaplanır. Oran hedefinin altına düşersen ekranda turuncu/kırmızı uyarı ve **kaç kabul gerektiği** gösterilir.
+**Kabul oranı** ve **iptal oranı** otomatik hesaplanır.
+
+### Renkli uyarılar (3 durum)
+
+Kabul oranı kartının rengi seçtiğin **Haftalık Yolculuk Hedefi**’ne göre değişir:
+
+| Renk | Anlamı |
+| --- | --- |
+| **Yeşil** | Hedef oranın üstündesin |
+| **Turuncu** | Güvende ama sınırda — birkaç ret üst üste gelirse kademeyi kaybedebilirsin |
+| **Kırmızı** | Hedefin altındasın — ekranda **kaç kabul gerektiği** yazılır |
+
+### Haftalık yolculuk hedefi
+
+Üstteki hedef çipine dokun → **Haftalık Yolculuk Hedefi** seç. Her kademe, ERES kira indirimi için gereken minimum yolculuk sayısı ve kabul oranını temsil eder (ör. 100–149 yolculuk, min. %80 kabul). **Gereksinim Yok** seçeneği yalnızca sayaç tutmak içindir.
+
+> Hedef, **Tek Sürücü** / **İki Sürücü** moduna göre farklı eşikler kullanır (⋮ menüden değiştirilir).
+
+### İptal hakkı kartı
+
+Hedef seçiliyken (Gereksinim Yok hariç) ekranda **%5 iptal sınırına** kadar kaç iptal daha yapabileceğin gösterilir. Sınır aşıldıysa kırmızı uyarı çıkar.
+
+### Geri al (undo)
+
+Sol üstteki **↩ geri** ikonu son sayaç değişikliğini **bir adım** geri alır.
 
 ### Sayaç düzenleme
 
@@ -91,6 +118,18 @@ Yanlış sayı mı girdin? Sayaç değerine **dokun** veya **uzun bas** → aç�
 ### Haftayı sıfırla
 
 Hafta bittiğinde **HAFTAYI SIFIRLA** butonuna bas. Sayacı sıfırlamadan önce o haftanın özeti arşive kaydedilir.
+
+> Otomatik haftalık sıfırlama sınırı: **Pazartesi 04:00** (Varşova saati). Cihazın saat dilimi fark etmez — uygulama `Europe/Warsaw` kullanır.
+
+---
+
+## 3b) Üst menü (⋮)
+
+| Menü | İşlev |
+| --- | --- |
+| **Kurulum Rehberi** | İki izin adımını tekrar gösterir (overlay + pil) |
+| **Çökme Kayıtları** | Hata günlüğünü kopyala / temizle |
+| **Tek Sürücü / İki Sürücü** | Sürücü modunu değiştir (kira tabloları + hedef eşikleri) |
 
 ---
 
@@ -242,7 +281,7 @@ flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbo
 
 `android/key.properties` mevcutsa imzalama otomatiktir. Yoksa debug anahtarı kullanılır ve kullanıcı **güncelleme yükleyemez** (imza uyuşmazlığı). Her sürümde aynı keystore kullan.
 
-Detaylı mimari: [`README.md`](README.md) · Agent notları: [`agent-learnings.md`](agent-learnings.md)
+Detaylı mimari: [`README.md`](README.md) · Agent notları: [`agent-learnings.md`](agent-learnings.md) · Lehçe rehber: [`SETUP_GUIDE_PL.md`](SETUP_GUIDE_PL.md)
 
 ---
 

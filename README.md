@@ -17,11 +17,12 @@
    - [Moduł II: Natywna Nakładka na Żywo (Pill Overlay)](#moduł-ii-natywna-nakładka-na-żywo-pill-overlay)
    - [Moduł III: Zaawansowany Silnik Księgowy (Kary/Zyski)](#moduł-iii-zaawansowany-silnik-księgowy-karyzyski)
    - [Moduł IV: Tryb Solo vs. Paired (Podział Kosztów)](#moduł-iv-tryb-solo-vs-paired-podział-kosztów)
-   - [Moduł V: Radar Wydarzeń (OTA Surge Radar)](#moduł-v-radar-wydarzeń-ota-surge-radar)
+   - [Moduł V: Radar Wydarzeń (Kraków)](#moduł-v-radar-wydarzeń-kraków)
    - [Moduł VI: Integracja Sprzętowa (Bluetooth Media Keys)](#moduł-vi-integracja-sprzętowa-bluetooth-media-keys)
 5. [Bezpieczeństwo, Prywatność i Integralność Danych](#5-bezpieczeństwo-prywatność-i-integralność-danych)
 6. [Budowanie ze źródeł i pokrycie testowe](#6-budowanie-ze-źródeł-i-pokrycie-testowe)
 7. [Mapa plików projektu](#7-mapa-plików-projektu)
+8. [Dokumentacja dla kierowców i agentów](#8-dokumentacja-dla-kierowców-i-agentów)
 
 ---
 
@@ -45,9 +46,13 @@
 | **3-Stanowy Alert AR** | Inteligentne monitorowanie wskaźnika akceptacji (AR) z dynamicznym systemem wczesnego ostrzegania (Zielony/Żółty/Czerwony). | Algorytm sprawdzający bufor bezpieczeństwa `AMBER_BUFFER = 2.0%` wokół progu wybranego celu. |
 | **Silnik Księgowy** | Precyzyjny kalkulator rentowności tygodniowej z automatycznym odliczaniem podatków, prowizji rozliczeniowej i paliwa. | Mapowanie VAT ryczałtowego (12%), opłaty rozliczeniowej partnera (3%) oraz progów najmu zależnych od liczby kursów. |
 | **Tryby Jazdy (1 vs 2)** | Elastyczne przełączanie profilu kosztów w zależności od tego, czy kierowca jeździ sam, czy dzieli auto na zmiany. | Dynamiczne tabele progowe `RENTAL_TIERS` i `RENTAL_TIERS_PAIRED` działające w sposób odporny na modyfikacje wsteczne. |
-| **Surge Radar (OTA)** | Kalendarz masowych imprez w Krakowie (Tauron Arena, mecze Wisły/Cracovii) przewidujący skoki mnożników. | Bezpieczne pobieranie pliku manifestu z repozytorium GitHub bez konieczności aktualizacji całej aplikacji (Zero-Update OTA). |
+| **Surge Radar** | Kalendarz masowych imprez w Krakowie (Tauron Arena, mecze Wisły/Cracovii) przewidujący skoki mnożników. | Pobieranie publicznego `krakow_events.json` z GitHub; cache RAM 1 h; top 5 nadchodzących wydarzeń. |
 | **Obsługa Bluetooth** | Logowanie zleceń (Akceptacja/Odrzucenie) za pomocą fabrycznych przycisków multimedialnych na kierownicy pojazdu. | Natywna usługa `AccessibilityService` przechwytująca zdarzenia `KeyEvent` w tle systemu Android. |
 | **Niezależny Drogomierz** | Niezatracalny licznik podróży całkowitych monitorujący postęp do darmowego tygodnia najmu (próg 2000 kursów). | Zdecouple'owany licznik oparty na przyrostach różnicowych (delta), odporny na dwuletnie czyszczenie historii (FIFO). |
+| **Eksport PDF** | Miesięczne/roczne zestawienia zarobków do księgowej (ryczałt). | `earnings_pdf_export.dart` — `pdf` + `share_plus`; czcionki DM Sans z bundla (TR/PL). |
+| **Archiwum tygodniowe v2** | Historia resetów tygodnia z pełnymi licznikami i wskaźnikami. | JSON `v2` w `weekly_archive_entry.dart`; kompatybilność wsteczna ze starymi wpisami tekstowymi. |
+| **Czcionki bundlowane** | Zero pobierania fontów w runtime (cold install bez internetu). | `fonts.dart` + `app_text_styles.dart`; pakiet `google_fonts` usunięty. |
+| **Aktualizacja OTA (APK)** | Powiadomienie o nowej wersji + pobieranie APK z GitHub Releases. | Manifest Gist (`update.json`) + semver; arm64 split APK. |
 
 ---
 
@@ -92,9 +97,24 @@ Wszelkie operacje zapisu w głównym izolacie wywołują natychmiastowe powiadom
 Główny pulpit zarządza czterema krytycznymi licznikami: **Zaakceptowane**, **Odrzucone**, **Ukończone** oraz **Anulowane**.
 
 - **Wskaźnik Akceptacji (AR):** Wzór: $\text{AR} = \frac{\text{zaakceptowane}}{\text{zaakceptowane} + \text{odrzucone}} \times 100$.
-- **3-Stanowy system wizualny:** Jeśli wskaźnik zbliża się do krytycznego progu, karta zmienia kolor na bursztynowy (`AMBER_BUFFER = 2.0%`), dając kierowcy przestrzeń na odrzucenie kilku gorszych zleceń bez natychmiastowego wypadnięcia z progu zniżkowego. Gdy spada poniżej celu, system aktywuje kolor karmazynowy i wylicza dokładną liczbę ($X$) kolejnych koniecznych akceptacji pod rząd według wzoru matematycznego:
+- **Tygodniowy cel przejazdów (`TripGoal`):** Chip u góry ekranu; progi powiązane z tabelami ERES (solo vs paired). Pref: `trip_goal_tier`.
+
+| Tier | Solo (min. kursów) | Paired (min. kursów) | Min. AR% |
+| --- | --- | --- | --- |
+| tier0 | 0 | 0 | — |
+| tier1 | 100 | 120 | 80 |
+| tier2 | 150 | 170 | 70 |
+| tier3 | 200 | 220 | 60 |
+| tier4 | 250 | 270 | 50 |
+
+- **3-Stanowy system wizualny:** Bufor `AMBER_BUFFER = 2.0%` wokół progu celu — zielony / bursztynowy (`S.safeButClose`) / karmazynowy. Poniżej progu wyliczana jest liczba ($X$) kolejnych akceptacji:
 
 $$X = \max\left(1,\ \left\lfloor \frac{r \cdot \text{rejected} - (1-r) \cdot \text{accepted}}{1-r} \right\rfloor + 1\right)$$
+
+- **Budżet anulowań:** Przy celu ≠ tier0 — karta pokazuje, ile anulowań mieści się w limicie **5%** (`maxAdditionalCancellations`).
+- **Reset tygodnia:** Ręczny (`RESETUJ TYDZIEŃ`) lub automatyczny w **poniedziałek 04:00** (`Europe/Warsaw`). Archiwum zapisuje wpis JSON v2 przed zerowaniem liczników.
+- **Nawigacja dolna (5 przycisków):** Język · Widget (Uruchom/Zatrzymaj) · Logi · Radar · Zarobki.
+- **Cofnij (undo):** Jednokrokowe cofnięcie ostatniej zmiany licznika (ikona ↩ w AppBar).
 
 ### Moduł II: Natywna Nakładka na Żywo (Pill Overlay)
 
@@ -155,7 +175,7 @@ RENTAL_TIERS_PAIRED (Tryb Współdzielony):
 
 **Reguła Nienaruszalności Historii (Fix #1):** Wybrany tryb jazdy (`driverMode`) jest zapisywany w strukturze JSON trwale w momencie zamknięcia tygodnia. Zmiana globalnego przełącznika w ustawieniach aplikacji nigdy nie rekalkuluje wstecznie zysków z poprzednich miesięcy.
 
-### Moduł V: Radar Wydarzeń (Surge Radar OTA)
+### Moduł V: Radar Wydarzeń (Kraków)
 
 W celu maksymalizacji stawek godzinowych, aplikacja została wyposażona w asynchroniczny moduł pobierania danych o imprezach masowych w Krakowie. Dane pobierane są bezpośrednio z surowego pliku JSON hostowanego w repozytorium GitHub (`krakow_events.json`).
 
@@ -227,11 +247,19 @@ flutter pub get
 dart run build_runner build --delete-conflicting-outputs
 ```
 
-5. **Uruchomienie pakietu testów regresyjnych (137 testów — finanse, progi, daty, archiwum, widgety):**
+5. **Uruchomienie pakietu testów regresyjnych (137 testów):**
 
 ```bash
 flutter test
 ```
+
+| Plik testowy | Zakres |
+| --- | --- |
+| `test/earnings_test.dart` | 90 — finanse, progi, JSON, tryb solo/paired |
+| `test/logic_test.dart` | 38 — AR, semver, reset tygodnia |
+| `test/weekly_archive_test.dart` | 5 — archiwum v2 + legacy |
+| `test/event_model_test.dart` | 1 — lokalizacja fallback |
+| `test/widget_test.dart` | 3 — overlay, earnings form |
 
 6. **Kompilacja bezpiecznej wersji APK ze stripowaniem symboli debugowania i obfuskacją kodu Dart:**
 
@@ -272,14 +300,35 @@ lib/
 android/app/src/main/kotlin/com/ratehelper/app/
 ├── MainActivity.kt            # MethodChannel, obsługa zdarzeń MediaKey
 └── MediaKeyAccessibilityService.kt  # Przechwytywanie przycisków Bluetooth (long press 800 ms)
+
+test/
+├── earnings_test.dart
+├── logic_test.dart
+├── weekly_archive_test.dart
+├── event_model_test.dart
+└── widget_test.dart
 ```
+
+---
+
+## 8. Dokumentacja dla kierowców i agentów
+
+| Dokument | Odbiorca | Zawartość |
+| --- | --- | --- |
+| [`SETUP_GUIDE_PL.md`](SETUP_GUIDE_PL.md) | Kierowca (PL) | Pełna instrukcja: instalacja, widget, zarobki, radar, kierownica, troubleshooting |
+| [`SETUP_GUIDE_TR.md`](SETUP_GUIDE_TR.md) | Kierowca (TR) | Ta sama struktura po turecku |
+| [`agent-learnings.md`](agent-learnings.md) | Agent / maintainer | Kanoniczna wiedza o kodzie, pułapki, changelog |
+
+> **Przewodnik w aplikacji** (menu ⋮ → Przewodnik konfiguracji) pokazuje **tylko dwa kroki uprawnień** (nakładka + bateria). Pełna obsługa jest w plikach markdown powyżej.
 
 ---
 
 ## Licencja i kontakt
 
-Projekt open-source udostępniany na zasadach wolnego oprogramowania.  
-Instrukcje konfiguracji dla kierowców: [`SETUP_GUIDE_PL.md`](SETUP_GUIDE_PL.md) (polski) · [`SETUP_GUIDE_TR.md`](SETUP_GUIDE_TR.md) (turecki).
+Projekt open-source udostępniany na zasadach wolnego oprogramowania.
+
+**Kierowcy:** [`SETUP_GUIDE_PL.md`](SETUP_GUIDE_PL.md) · [`SETUP_GUIDE_TR.md`](SETUP_GUIDE_TR.md)  
+**Developerzy:** [`agent-learnings.md`](agent-learnings.md)
 
 ---
 
