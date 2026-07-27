@@ -127,11 +127,10 @@ class MediaKeyAccessibilityService : AccessibilityService() {
     }
 
     private fun handleLongPress(accepted: Boolean) {
-        vibrate()
         val key = if (accepted) "accepted" else "rejected"
 
-        // Mutually exclusive routing:
-        // 1. If overlay is active, send IPC ONLY to overlay engine so it doesn't double count in main app
+        // 1. Overlay engine alive -> deliver there
+        var delivered = false
         if (OverlayService.isRunning) {
             try {
                 val engine = FlutterEngineCache.getInstance().get("myCachedEngine")
@@ -142,22 +141,29 @@ class MediaKeyAccessibilityService : AccessibilityService() {
                         JSONMessageCodec.INSTANCE
                     )
                     channel.send(mapOf("action" to "media_key_increment", "key" to key))
-                    return
+                    delivered = true
                 }
-            } catch (e: Exception) {
-                // Fall through to MainActivity broadcast if engine cache fails
-            }
+            } catch (e: Exception) {}
+        }
+        
+        if (delivered) {
+            vibrate()
+            return
         }
 
-        // 2. If overlay is NOT active, send broadcast to MainActivity
+        // 2 & 3. Nobody home: persist a pending tap the app reconciles on next launch/resume.
+        val prefs = getSharedPreferences("ratehelper_pending_taps", Context.MODE_PRIVATE)
+        prefs.edit().putInt(key, prefs.getInt(key, 0) + 1).apply()
+
+        // Also broadcast just in case MainActivity is alive but engine is not.
         try {
             sendBroadcast(Intent("com.ratehelper.app.MEDIA_KEY_INCREMENT").apply {
                 setPackage(packageName)
                 putExtra("key", key)
             })
-        } catch (e: Exception) {
-            // Ignore broadcast failure
-        }
+        } catch (e: Exception) {}
+
+        vibrate()
     }
 
     private fun vibrate() {

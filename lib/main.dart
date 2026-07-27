@@ -5,12 +5,13 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:timezone/data/latest.dart' as tz;
 
-import 'crash_logger.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+
 import 'home_screen.dart';
+import 'crash_logger.dart';
+import 'fonts.dart';
 import 'l10n.dart';
 import 'log.dart';
 import 'onboarding_screen.dart';
@@ -23,21 +24,21 @@ Future<void> main() async {
   HttpOverrides.global = StrictSecurityHttpOverrides();
 
   // Parallelize independent boot work: timezone DB load, prefs warmup,  // and crash-logger file probe all hit different I/O queues.
-  final results = await Future.wait<Object?>([
-    Future<void>(() => tz.initializeTimeZones()),
-    SharedPreferences.getInstance(),
-    CrashLogger.install(),
+  // Each boot task is independent and non-fatal: timezone falls back to
+  // device-local math, prefs to defaults, crash logging to logcat-only.
+  await Future.wait<void>([
+    Future<void>(() => tz.initializeTimeZones()).catchError((Object e) {}),
+    CrashLogger.install().catchError((Object e) {}),
   ]);
+  
+  SharedPreferences? prefs;
+  try {
+    prefs = await SharedPreferences.getInstance();
+  } catch (_) {/* run with defaults; HomeScreen re-tries lazily */}
 
-  // Prefer bundled / cached fonts; never block first paint on a network
-  // round-trip for diacritics. If the user is offline on cold install the
-  // app degrades to the platform default font instead of stuck loading.
-  GoogleFonts.config.allowRuntimeFetching = false;
+  final bool seenOnboarding = prefs?.getBool(_kKeyOnboardingComplete) ?? false;
 
-  final prefs = results[1] as SharedPreferences;
-  final bool seenOnboarding = prefs.getBool(_kKeyOnboardingComplete) ?? false;
-
-  final savedLangStr = prefs.getString('appLanguage');
+  final savedLangStr = prefs?.getString('appLanguage');
   if (savedLangStr != null) {
     for (final l in AppLang.values) {
       if (l.name == savedLangStr) {
@@ -62,8 +63,10 @@ void overlayMain() {
     () {
       WidgetsFlutterBinding.ensureInitialized();
       HttpOverrides.global = StrictSecurityHttpOverrides();
-      GoogleFonts.config.allowRuntimeFetching = false;
       DartPluginRegistrant.ensureInitialized();
+      // Each isolate has its own statics: without this, CrashLogger._file
+      // is null here and every overlay error is silently dropped in release.
+      unawaited(CrashLogger.install());
       FlutterError.onError = (FlutterErrorDetails details) {
         FlutterError.presentError(details);
         loge(
@@ -97,7 +100,7 @@ void overlayMain() {
               surface: Colors.transparent,
               primary: Colors.white,
             ),
-            textTheme: GoogleFonts.dmSansTextTheme(ThemeData.dark().textTheme),
+            textTheme: ThemeData.dark().textTheme.apply(fontFamily: AppFonts.dmSans),
           ),
           builder: (BuildContext context, Widget? child) {
             return Directionality(
@@ -163,7 +166,7 @@ class _RateHelperAppState extends State<RateHelperApp> {
           primary: Colors.white,
         ),
         useMaterial3: true,
-        textTheme: GoogleFonts.dmSansTextTheme(ThemeData.dark().textTheme),
+        textTheme: ThemeData.dark().textTheme.apply(fontFamily: AppFonts.dmSans),
       ),
       home: _needsOnboarding
           ? OnboardingScreen(onDone: _completeOnboarding)

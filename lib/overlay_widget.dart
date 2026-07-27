@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:rate_helper/fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'l10n.dart';
@@ -46,7 +46,9 @@ class _OverlayWidgetState extends State<OverlayWidget> {
 
   SharedPreferences? _prefs;
   StreamSubscription<dynamic>? _syncSub;
-  bool _incrementInFlight = false;
+  int _pendingWriteCount = 0;
+  bool get _incrementInFlight => _pendingWriteCount > 0;
+  Future<void> _pendingWrite = Future<void>.value();
 
   int _accepted = 0;
   int _rejected = 0;
@@ -217,26 +219,33 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     await prefs.setString(_keyTapHistory, jsonEncode(list));
   }
 
-  Future<void> _increment(String key) async {
-    if (_incrementInFlight) return;
-    _incrementInFlight = true;
+  Future<void> _increment(String key) {
+    _pendingWriteCount++;
     final accepted = key == _keyAccepted;
 
     logd('overlay tap', name: 'overlay');
 
-    var nextAccepted = _accepted;
-    var nextRejected = _rejected;
-    if (accepted) {
-      nextAccepted = (nextAccepted + 1).clamp(0, 99999);
-    } else {
-      nextRejected = (nextRejected + 1).clamp(0, 99999);
-    }
-
     setState(() {
-      _accepted = nextAccepted;
-      _rejected = nextRejected;
+      if (accepted) {
+        _accepted = (_accepted + 1).clamp(0, 99999);
+      } else {
+        _rejected = (_rejected + 1).clamp(0, 99999);
+      }
     });
 
+    _pendingWrite = _pendingWrite.then((_) => _persistCounts(accepted)).whenComplete(() {
+      if (mounted) {
+        setState(() {
+          _pendingWriteCount--;
+        });
+      } else {
+        _pendingWriteCount--;
+      }
+    });
+    return _pendingWrite;
+  }
+
+  Future<void> _persistCounts(bool accepted) async {
     try {
       final prefs = await _getPrefs();
       await _appendTapHistory(
@@ -244,8 +253,8 @@ class _OverlayWidgetState extends State<OverlayWidget> {
         accepted ? 'accepted' : 'rejected',
       );
 
-      await prefs.setInt(_keyAccepted, nextAccepted);
-      await prefs.setInt(_keyRejected, nextRejected);
+      await prefs.setInt(_keyAccepted, _accepted);
+      await prefs.setInt(_keyRejected, _rejected);
 
       if (accepted && (prefs.getBool(_keyAutoComplete) ?? false)) {
         final completed = prefs.getInt(_keyCompleted) ?? 0;
@@ -258,8 +267,6 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     } catch (e, s) {
       loge('overlay write failed', name: 'overlay', error: e, stack: s);
       await _loadCounts();
-    } finally {
-      _incrementInFlight = false;
     }
   }
 
@@ -376,7 +383,7 @@ class _AcceptRateDisplay extends StatelessWidget {
             maxLines: 1,
             softWrap: false,
             textAlign: TextAlign.center,
-            style: GoogleFonts.dmSans(
+            style: TextStyle(fontFamily: AppFonts.dmSans, 
               fontSize: 36,
               fontWeight: FontWeight.w900,
               color: color,

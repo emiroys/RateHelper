@@ -1,7 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:rate_helper/models/event_model.dart';
+import 'package:rate_helper/log.dart';
 
 class EventService {
   static const String _eventsUrl =
@@ -11,6 +12,8 @@ class EventService {
   static List<EventModel>? _cachedEvents;
   static DateTime? _cacheTimestamp;
   static const Duration _cacheValidity = Duration(hours: 1);
+
+  static Future<List<EventModel>>? _inFlight;
 
   static void clearCache() {
     _cachedEvents = null;
@@ -27,25 +30,58 @@ class EventService {
       }
     }
 
+    if (_inFlight != null) return _inFlight!;
+
+    _inFlight = _fetchWithRetry();
     try {
-      final client = HttpClient();
+      final result = await _inFlight!;
+      return result;
+    } finally {
+      _inFlight = null;
+    }
+  }
+
+  static Future<List<EventModel>> _fetchWithRetry() async {
+    Object? lastError;
+    StackTrace? lastStack;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(const Duration(seconds: 2));
+      }
+      try {
+        return await _fetchOnce();
+      } catch (e, s) {
+        lastError = e;
+        lastStack = s;
+      }
+    }
+
+    loge('EventService fetch failed', name: 'events', error: lastError, stack: lastStack);
+    // Stale real data beats fresh fake data; no cache -> propagate the
+    // failure so RadarScreen's error state (with retry) finally renders.
+    if (_cachedEvents != null) return _cachedEvents!;
+    Error.throwWithStackTrace(lastError!, lastStack!);
+  }
+
+  static Future<List<EventModel>> _fetchOnce() async {
+    final client = HttpClient();
+    try {
       client.connectionTimeout = const Duration(seconds: 8);
       final uri = Uri.parse(_eventsUrl);
-      final request = await client.getUrl(uri);
+      final request = await client.getUrl(uri).timeout(const Duration(seconds: 8));
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final response = await request.close();
+      
+      final response = await request.close().timeout(const Duration(seconds: 10));
 
       if (response.statusCode != HttpStatus.ok) {
-        if (_cachedEvents != null) return _cachedEvents!;
-        return _getFallbackEvents();
+        throw HttpException('HTTP ${response.statusCode}');
       }
 
-      final body = await response.transform(utf8.decoder).join();
+      final body = await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 10));
       final decoded = jsonDecode(body);
 
       if (decoded is! List) {
-        if (_cachedEvents != null) return _cachedEvents!;
-        return _getFallbackEvents();
+        throw const FormatException('Expected JSON array');
       }
 
       final now = DateTime.now();
@@ -60,7 +96,9 @@ class EventService {
               events.add(event);
             }
           } catch (e) {
-            debugPrint('Error parsing event item: $e');
+            // Debug-only: a single malformed item is non-fatal and must not
+            // spam release logcat once per item on every 30-min refetch.
+            logd('Error parsing event item: $e', name: 'events');
           }
         }
       }
@@ -71,61 +109,11 @@ class EventService {
       // Return the top 5 upcoming events
       final top5 = events.take(5).toList();
 
-      if (top5.isNotEmpty) {
-        _cachedEvents = top5;
-        _cacheTimestamp = DateTime.now();
-        return top5;
-      } else {
-        // If all events were in the past or list was empty, return fallback data
-        // to keep the dashboard informative during testing
-        final fallback = _getFallbackEvents();
-        _cachedEvents = fallback;
-        _cacheTimestamp = DateTime.now();
-        return fallback;
-      }
-    } catch (e) {
-      debugPrint('EventService fetch error: $e');
-      if (_cachedEvents != null) return _cachedEvents!;
-      final fallback = _getFallbackEvents();
-      _cachedEvents = fallback;
+      _cachedEvents = top5;
       _cacheTimestamp = DateTime.now();
-      return fallback;
+      return top5;
+    } finally {
+      client.close(force: true);
     }
-  }
-
-  static List<EventModel> _getFallbackEvents() {
-    final now = DateTime.now();
-    return [
-      EventModel(
-        title: "Wisła Kraków vs. KS Cracovia - Derby",
-        venue: "Stadion Miejski im. Henryka Reymana",
-        date: now.add(const Duration(days: 1, hours: 18)),
-        surgeLevel: "High",
-      ),
-      EventModel(
-        title: "Dawid Podsiadło - Stadium Tour Concert",
-        venue: "Tauron Arena Kraków",
-        date: now.add(const Duration(days: 2, hours: 20)),
-        surgeLevel: "High",
-      ),
-      EventModel(
-        title: "Kraków Tech & AI Summit 2026",
-        venue: "ICE Kraków Congress Centre",
-        date: now.add(const Duration(days: 4, hours: 9)),
-        surgeLevel: "Medium",
-      ),
-      EventModel(
-        title: "International Food & Wine Festival",
-        venue: "Tauron Arena Kraków",
-        date: now.add(const Duration(days: 6, hours: 12)),
-        surgeLevel: "Medium",
-      ),
-      EventModel(
-        title: "Local Indie Band Showcase",
-        venue: "Klub Studio",
-        date: now.add(const Duration(days: 8, hours: 21)),
-        surgeLevel: "Low",
-      ),
-    ];
   }
 }

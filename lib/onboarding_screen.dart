@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:rate_helper/fonts.dart';
 
 import 'l10n.dart';
 import 'log.dart';
@@ -133,15 +133,19 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Future<void> _refreshStatus() async {
-    final overlay = await FlutterOverlayWindow.isPermissionGranted();
-    final battery = await SystemBridge.isIgnoringBatteryOptimizations();
-    final brand = await SystemBridge.detectBrand();
-    if (!mounted) return;
-    setState(() {
-      _overlayGranted = overlay;
-      _batteryIgnored = battery;
-      _brand = brand;
-    });
+    try {
+      final overlay = await FlutterOverlayWindow.isPermissionGranted();
+      final battery = await SystemBridge.isIgnoringBatteryOptimizations();
+      final brand = await SystemBridge.detectBrand();
+      if (!mounted) return;
+      setState(() {
+        _overlayGranted = overlay;
+        _batteryIgnored = battery;
+        _brand = brand;
+      });
+    } on PlatformException catch (e, s) {
+      loge('Failed to refresh status', name: 'onboarding', error: e, stack: s);
+    }
   }
 
   Future<void> _requestOverlay() async {
@@ -167,7 +171,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         elevation: 0,
         title: Text(
           S.onboardingTitle,
-          style: GoogleFonts.dmSans(
+          style: TextStyle(fontFamily: AppFonts.dmSans, 
             color: Colors.white,
             fontWeight: FontWeight.w900,
             letterSpacing: 0.2,
@@ -178,7 +182,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             onPressed: widget.onDone,
             child: Text(
               S.skip,
-              style: GoogleFonts.dmSans(color: Colors.white54),
+              style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white54),
             ),
           ),
         ],
@@ -191,7 +195,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             children: [
               Text(
                 S.onboardingIntro,
-                style: GoogleFonts.dmSans(
+                style: TextStyle(fontFamily: AppFonts.dmSans, 
                   color: Colors.white70,
                   fontSize: 14,
                   height: 1.45,
@@ -259,7 +263,7 @@ class _StepCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: GoogleFonts.dmSans(
+                  style: TextStyle(fontFamily: AppFonts.dmSans, 
                     color: Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
@@ -273,7 +277,7 @@ class _StepCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             body,
-            style: GoogleFonts.dmSans(
+            style: TextStyle(fontFamily: AppFonts.dmSans, 
               color: Colors.white70,
               fontSize: 13,
               height: 1.45,
@@ -322,7 +326,7 @@ class _BatteryCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   S.stepBatteryTitle,
-                  style: GoogleFonts.dmSans(
+                  style: TextStyle(fontFamily: AppFonts.dmSans, 
                     color: Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
@@ -336,7 +340,7 @@ class _BatteryCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             S.stepBatteryBody,
-            style: GoogleFonts.dmSans(
+            style: TextStyle(fontFamily: AppFonts.dmSans, 
               color: Colors.white70,
               fontSize: 13,
               height: 1.45,
@@ -364,7 +368,7 @@ class _BatteryCard extends StatelessWidget {
             ),
             child: Text(
               brand.steps,
-              style: GoogleFonts.dmSans(
+              style: TextStyle(fontFamily: AppFonts.dmSans, 
                 color: Colors.white,
                 fontSize: 13,
                 height: 1.5,
@@ -408,7 +412,7 @@ class _BrandChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Text(
             label,
-            style: GoogleFonts.dmSans(
+            style: TextStyle(fontFamily: AppFonts.dmSans, 
               color: selected ? Colors.white : Colors.white60,
               fontSize: 12,
               fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
@@ -450,7 +454,7 @@ class _BigCta extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: GoogleFonts.dmSans(
+          style: TextStyle(fontFamily: AppFonts.dmSans, 
             color: enabled ? color : Colors.white38,
             fontSize: 14,
             fontWeight: FontWeight.w900,

@@ -187,6 +187,8 @@ class S {
       _p('RateHelper Aktif', 'RateHelper Active', 'RateHelper Aktywny');
   static String get overlayOff =>
       _p('RateHelper Kapatıldı', 'RateHelper Closed', 'RateHelper Wyłączony');
+  static String get overlayToggleFailed => 
+      _p('Widget başlatılamadı. Tekrar deneyin.', 'Failed to start widget. Try again.', 'Nie udało się uruchomić widżetu. Spróbuj ponownie.');
   static String get archiveAccept => _p('Kabul', 'Accept', 'Akceptacja');
   static String get archiveCancel => _p('İptal', 'Cancel', 'Anulowanie');
   static String get overlayTitle =>

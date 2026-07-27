@@ -3,6 +3,10 @@ allprojects {
         google()
         mavenCentral()
     }
+    // Workaround for path_provider's :jni module requiring kotlin-android DSL
+    if (project.name == "jni") {
+        apply(plugin = "org.jetbrains.kotlin.android")
+    }
 }
 
 val newBuildDir: Directory =

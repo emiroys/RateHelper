@@ -18,14 +18,8 @@
 # Flutter framework — keep all engine + embedding + plugin host classes
 # These are looked up reflectively by the Android side at runtime
 # ------------------------------------------------------------------------------
--keep class io.flutter.app.** { *; }
--keep class io.flutter.plugin.** { *; }
--keep class io.flutter.util.** { *; }
--keep class io.flutter.view.** { *; }
--keep class io.flutter.** { *; }
--keep class io.flutter.plugins.** { *; }
--keep class io.flutter.embedding.** { *; }
--keep class io.flutter.embedding.engine.** { *; }
+# Flutter's engine AAR ships consumer rules that keep what the engine needs.
+# We only add what OUR code touches reflectively/cross-engine:
 -keep class io.flutter.embedding.engine.dart.DartExecutor$DartEntrypoint { *; }
 -keep class io.flutter.embedding.engine.FlutterEngineGroup { *; }
 -keep class io.flutter.embedding.engine.FlutterEngineCache { *; }
@@ -78,12 +72,10 @@
 -dontwarn io.flutter.plugins.sharedpreferences.**
 
 # ------------------------------------------------------------------------------
-# wakelock_plus + flutter_timezone (used by main app)
+# wakelock_plus (used by main app)
 # ------------------------------------------------------------------------------
 -keep class dev.fluttercommunity.plus.wakelock.** { *; }
--keep class net.wolverinebeach.flutter_timezone.** { *; }
 -dontwarn dev.fluttercommunity.plus.wakelock.**
--dontwarn net.wolverinebeach.flutter_timezone.**
 
 # ------------------------------------------------------------------------------
 # package_info_plus — reads versionName/versionCode via reflection at runtime.
@@ -119,9 +111,9 @@
 # Resources — keep R class fields so getIdentifier("ic_launcher", "mipmap", pkg)
 # in OverlayService.java can resolve the notification icon at runtime.
 # ------------------------------------------------------------------------------
--keep class **.R { *; }
--keep class **.R$* { *; }
--keepclassmembers class **.R$* {
+# Only our own R.mipmap is looked up by name (OverlayService notification
+# icon). Keeping every library's R class disables resource shrinking.
+-keepclassmembers class com.ratehelper.app.R$mipmap {
     public static <fields>;
 }
 
@@ -129,7 +121,6 @@
 # Kotlin metadata + reflection
 # ------------------------------------------------------------------------------
 -keep class kotlin.Metadata { *; }
--keep class kotlin.reflect.** { *; }
 -dontwarn kotlin.**
 -dontwarn kotlinx.**
 

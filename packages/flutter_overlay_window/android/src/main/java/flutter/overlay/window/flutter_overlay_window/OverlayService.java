@@ -99,11 +99,27 @@ public class OverlayService extends Service implements View.OnTouchListener {
         NotificationManager notificationManager = (NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
         notificationManager.cancel(OverlayConstants.NOTIFICATION_ID);
         instance = null;
+        
+        // Mirror of appIsResumed() in onStartCommand: tell the overlay
+        // isolate it is backgrounded so the VM applies idle/background
+        // behavior instead of believing it is a foreground app forever.
+        FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+        if (engine != null) {
+            engine.getLifecycleChannel().appIsPaused();
+        }
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // START_STICKY restarts deliver a NULL intent, and WindowSetup's
+        // static config did not survive process death anyway — a blind
+        // restart cannot restore the pill. Stop cleanly; the user re-opens
+        // from the app. This also breaks the NPE -> restart -> NPE loop.
+        if (intent == null) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         mResources = getApplicationContext().getResources();
         int startX = intent.getIntExtra("startX", OverlayConstants.DEFAULT_XY);
         int startY = intent.getIntExtra("startY", OverlayConstants.DEFAULT_XY);
@@ -113,10 +129,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 windowManager.removeView(flutterView);
                 windowManager = null;
                 flutterView.detachFromFlutterEngine();
-                stopSelf();
             }
+            stopSelf();
             isRunning = false;
-            return START_STICKY;
+            return START_NOT_STICKY;
         }
         if (windowManager != null) {
             windowManager.removeView(flutterView);
@@ -186,7 +202,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         flutterView.setOnTouchListener(this);
         windowManager.addView(flutterView, params);
         moveOverlay(dx, dy, null);
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
 
@@ -358,7 +374,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             NotificationChannel serviceChannel = new NotificationChannel(
                     OverlayConstants.CHANNEL_ID,
                     "Foreground Service Channel",
-                    NotificationManager.IMPORTANCE_DEFAULT
+                    NotificationManager.IMPORTANCE_LOW
             );
             NotificationManager manager = getSystemService(NotificationManager.class);
             assert manager != null;

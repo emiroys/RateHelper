@@ -8,7 +8,10 @@ import 'package:flutter_overlay_window/src/overlay_config.dart';
 class FlutterOverlayWindow {
   FlutterOverlayWindow._();
 
-  static final StreamController _controller = StreamController();
+  // Broadcast: allows listeners to cancel and re-subscribe across State
+  // lifecycles, and never buffers events when no listener is attached
+  // (a single-subscription controller buffers pre-listen events forever).
+  static final StreamController _controller = StreamController.broadcast();
   static const MethodChannel _channel =
       MethodChannel("x-slayer/overlay_channel");
   static const MethodChannel _overlayChannel =

@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'log.dart';
 
 /// Flat VAT rate applied directly to [WeekEarning.netIncome]. This constant
 /// 12% deduction approximates the operator's real bank deposits closely
@@ -34,8 +36,14 @@ enum DriverMode {
   static const askedKey = 'driver_mode_asked';
 }
 
-/// Global active driver mode, backed by SharedPreferences.
-DriverMode activeDriverMode = DriverMode.solo;
+/// Single source of truth; widgets that display mode-dependent values
+/// subscribe with ValueListenableBuilder instead of relying on callers
+/// to remember manual setState choreography.
+final ValueNotifier<DriverMode> driverModeNotifier =
+    ValueNotifier<DriverMode>(DriverMode.solo);
+
+DriverMode get activeDriverMode => driverModeNotifier.value;
+set activeDriverMode(DriverMode m) => driverModeNotifier.value = m;
 
 DriverMode get driverMode => activeDriverMode;
 
@@ -645,7 +653,12 @@ String formatHoursHm(double hours) {
 
 /// Decodes the stored JSON list into [WeekEarning] objects. Returns an empty
 /// list on any parse failure.
-List<WeekEarning> decodeEarnings(String? raw) {
+/// Set when the last decode failed; the raw blob was preserved under
+/// [kEarningsCorruptBackupKey] for manual recovery instead of being
+/// silently overwritten by the next persist.
+const String kEarningsCorruptBackupKey = 'earnings_history_corrupt_backup';
+
+List<WeekEarning> decodeEarnings(String? raw, {void Function(String raw)? onCorrupt}) {
   if (raw == null || raw.isEmpty) return [];
   try {
     final decoded = jsonDecode(raw);
@@ -658,7 +671,14 @@ List<WeekEarning> decodeEarnings(String? raw) {
       }
     }
     return result;
-  } catch (_) {
+  } catch (e, s) {
+    // loge() honors the release logging policy: crash-file only in release
+    // (never logcat), mirrored to developer.log in debug. A FormatException
+    // from jsonDecode embeds raw JSON excerpts — financial data that must
+    // never reach the system log.
+    loge('earnings decode failed — quarantining raw blob',
+        name: 'earnings', error: e, stack: s);
+    onCorrupt?.call(raw);
     return [];
   }
 }

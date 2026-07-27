@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:rate_helper/fonts.dart';
 
 import 'l10n.dart';
 import 'models/event_model.dart';
@@ -66,7 +66,7 @@ class _RadarScreenState extends State<RadarScreen> {
                 S.eventRadarTitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.dmSans(
+                style: TextStyle(fontFamily: AppFonts.dmSans, 
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
                   color: Colors.white,
@@ -133,10 +133,10 @@ class _RadarScreenState extends State<RadarScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           colors: [
-            const Color(0xFF1A2E26),
-            const Color(0xFF161616),
+            Color(0xFF1A2E26),
+            Color(0xFF161616),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -163,7 +163,7 @@ class _RadarScreenState extends State<RadarScreen> {
                   S.radarDemandTitle,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.dmSans(
+                  style: TextStyle(fontFamily: AppFonts.dmSans, 
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
@@ -172,7 +172,7 @@ class _RadarScreenState extends State<RadarScreen> {
                 const SizedBox(height: 4),
                 Text(
                   S.radarDemandSubtitle(count),
-                  style: GoogleFonts.dmSans(
+                  style: TextStyle(fontFamily: AppFonts.dmSans, 
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                     color: Colors.white70,
@@ -245,7 +245,7 @@ class _RadarScreenState extends State<RadarScreen> {
                         event.formattedDateTime,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.jetBrainsMono(
+                        style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
@@ -286,7 +286,7 @@ class _RadarScreenState extends State<RadarScreen> {
                         surgeLabel,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.dmSans(
+                        style: TextStyle(fontFamily: AppFonts.dmSans, 
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           color: surgeColor,
@@ -303,7 +303,7 @@ class _RadarScreenState extends State<RadarScreen> {
             event.title,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.dmSans(
+            style: TextStyle(fontFamily: AppFonts.dmSans, 
               fontSize: 18,
               fontWeight: FontWeight.w800,
               color: Colors.white,
@@ -331,7 +331,7 @@ class _RadarScreenState extends State<RadarScreen> {
                     event.venue,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.dmSans(
+                    style: TextStyle(fontFamily: AppFonts.dmSans, 
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: Colors.white70,
@@ -447,7 +447,7 @@ class _RadarScreenState extends State<RadarScreen> {
             const SizedBox(height: 20),
             Text(
               S.eventsEmptyTitle,
-              style: GoogleFonts.dmSans(
+              style: TextStyle(fontFamily: AppFonts.dmSans, 
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
                 color: Colors.white,
@@ -457,7 +457,7 @@ class _RadarScreenState extends State<RadarScreen> {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: GoogleFonts.dmSans(
+              style: TextStyle(fontFamily: AppFonts.dmSans, 
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
                 color: Colors.white54,
@@ -482,7 +482,7 @@ class _RadarScreenState extends State<RadarScreen> {
               icon: const Icon(Icons.refresh_rounded, size: 18),
               label: Text(
                 S.tryAgain,
-                style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+                style: TextStyle(fontFamily: AppFonts.dmSans, fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -510,7 +510,7 @@ class _RadarScreenState extends State<RadarScreen> {
             const SizedBox(height: 20),
             Text(
               S.connectionError,
-              style: GoogleFonts.dmSans(
+              style: TextStyle(fontFamily: AppFonts.dmSans, 
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
                 color: Colors.white,
@@ -520,7 +520,7 @@ class _RadarScreenState extends State<RadarScreen> {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: GoogleFonts.dmSans(
+              style: TextStyle(fontFamily: AppFonts.dmSans, 
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
                 color: Colors.white54,
@@ -545,7 +545,7 @@ class _RadarScreenState extends State<RadarScreen> {
               icon: const Icon(Icons.refresh_rounded, size: 18),
               label: Text(
                 S.reload,
-                style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+                style: TextStyle(fontFamily: AppFonts.dmSans, fontWeight: FontWeight.w600),
               ),
             ),
           ],

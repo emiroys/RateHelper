@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:rate_helper/fonts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -23,6 +23,7 @@ import 'l10n.dart';
 import 'log.dart';
 import 'onboarding_screen.dart';
 import 'overlay_sync.dart';
+import 'services/event_service.dart';
 import 'overlay_widget.dart';
 import 'radar_screen.dart';
 
@@ -107,7 +108,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _allowedApkUrlPrefix =
       'https://github.com/emiroys/ratehelper/releases/';
 
-  static final _warsaw = tz.getLocation('Europe/Warsaw');
+  static tz.Location get _warsaw {
+    try {
+      return tz.getLocation('Europe/Warsaw');
+    } catch (_) {
+      // Fallback if tz.initializeTimeZones() failed in main.dart
+      return tz.local;
+    }
+  }
 
   static const _cardColor = Color(0xFF1A1A1A);
   static const _emerald = Color(0xFF10B981);
@@ -122,6 +130,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _versionLabel = '';
   bool _showRawVersion = false;
   String? _debugBuildSignature;
+  
+  late Widget _staticFooter = const SizedBox.shrink();
+  late Widget _cachedBottomBar = const SizedBox.shrink();
 
   int acceptedRequests = 0;
   int rejectedRequests = 0;
@@ -187,6 +198,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
+    _updateCachedBottomBar();
     try {
       _overlayListenerSub = FlutterOverlayWindow.overlayListener.listen((event) {
         if (OverlaySync.shouldReloadCounters(event)) {
@@ -198,9 +210,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     _kSysChannel.setMethodCallHandler((call) async {
       if (call.method == 'onMediaKeyIncrement') {
-        final keyStr = call.arguments as String?;
-        final key = keyStr == 'accepted' ? _keyAccepted : _keyRejected;
-        _change(key, 1);
+        _drainPendingTaps();
       }
     });
     _init();
@@ -236,9 +246,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         _currentLang = lang;
         _versionLabel = 'v${info.version}+${info.buildNumber}';
+        _updateStaticFooter();
       });
     }
-    unawaited(_checkForUpdate());
+    unawaited(_checkForUpdate(info.version));
     _loadAndCheckReset();
     unawaited(_refreshOverlayState());
   }
@@ -285,14 +296,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Text(
               'Güvenlik Uyarısı',
-              style: GoogleFonts.dmSans(
+              style: TextStyle(fontFamily: AppFonts.dmSans, 
                 color: Colors.white,
                 fontWeight: FontWeight.w900,
               ),
             ),
             content: Text(
               'Bu uygulama değiştirilmiş. Güvenliğiniz için kapatılıyor.',
-              style: GoogleFonts.dmSans(color: Colors.white70, height: 1.4),
+              style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white70, height: 1.4),
             ),
           ),
         ),
@@ -365,13 +376,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // allowlist if we let HttpClient chase the Location header.
       client.autoUncompress = true;
 
-      final request = await client.getUrl(manifestUri);
+      final request = await client.getUrl(manifestUri).timeout(const Duration(seconds: 8));
       request.followRedirects = false;
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final response = await request.close();
+      final response = await request.close().timeout(const Duration(seconds: 10));
       if (response.statusCode != HttpStatus.ok) return null;
 
-      final body = await response.transform(utf8.decoder).join();
+      final body = await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 10));
       final decoded = jsonDecode(body);
       if (decoded is! Map) return null;
 
@@ -406,9 +417,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _checkForUpdate() async {
-    final info = await PackageInfo.fromPlatform();
-    final currentVersion = info.version.trim();
+  Future<void> _checkForUpdate(String currentVersion) async {
 
     final manifest = await _fetchUpdateManifest();
     if (!mounted || manifest == null) return;
@@ -435,6 +444,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    // Detach the media-key handler so the static channel cannot retain
+    // this State or invoke setState() on it after disposal.
+    _kSysChannel.setMethodCallHandler(null);
     _overlayListenerSub?.cancel();
     _saveDebounce?.cancel();
     _flushSave();
@@ -449,23 +461,64 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       WakelockPlus.enable();
       _reloadAndSync();
     } else if (state == AppLifecycleState.paused) {
-      _flushSave();
+      // Kick the write before the OS freezes us. shared_preferences
+      // updates its in-memory map synchronously and flushes to disk
+      // async — starting it here (instead of behind a reload() round
+      // trip) minimizes the kill-race window for the last taps.
+      if (_saveDebounce?.isActive ?? false) {
+        _saveDebounce!.cancel();
+        unawaited(_saveDataNow());
+      }
       WakelockPlus.disable();
     }
   }
 
+  @override
+  void didHaveMemoryPressure() {
+    // Drop every re-creatable cache so the OS keeps our process alive
+    // instead of killing it (a cold start costs far more battery than
+    // re-fetching events or re-decoding the logo).
+    EventService.clearCache();
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+  }
+
   Future<void> _reloadAndSync() async {
+    // Settle any debounced in-app delta FIRST; otherwise the disk read
+    // below overwrites memory+baseline and the pending taps evaporate.
+    if (_saveDebounce?.isActive ?? false) {
+      _saveDebounce!.cancel();
+      await _saveDataNow(); // merges delta into disk before we re-read it
+    }
     final prefs = await _getPrefs();
     await prefs.reload();
     if (!mounted) return;
     _loadAndCheckReset();
+    await _drainPendingTaps();
     unawaited(_refreshOverlayState());
+  }
+
+  Future<void> _drainPendingTaps() async {
+    try {
+      final Map<dynamic, dynamic>? result = await _kSysChannel.invokeMethod('drainPendingTaps');
+      if (result != null) {
+        final int accepted = result['accepted'] as int? ?? 0;
+        final int rejected = result['rejected'] as int? ?? 0;
+        if (accepted > 0) _change(_keyAccepted, accepted);
+        if (rejected > 0) _change(_keyRejected, rejected);
+      }
+    } catch (e, s) {
+      loge('Failed to drain pending taps', name: 'home', error: e, stack: s);
+    }
   }
 
   Future<void> _refreshOverlayState() async {
     final active = await FlutterOverlayWindow.isActive();
     if (!mounted || active == _overlayActive) return;
-    setState(() => _overlayActive = active);
+    setState(() {
+      _overlayActive = active;
+      _updateCachedBottomBar();
+    });
   }
 
   void _flushSave() {
@@ -571,11 +624,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     unawaited(OverlaySync.notifyCountersChanged());
   }
 
+  /// Keep 2 years of weekly snapshots, matching kMaxEarningEntries.
+  static const int _maxArchiveEntries = 104;
+
   Future<void> _performReset(SharedPreferences prefs, [tz.TZDateTime? boundary]) async {
     final snap = _buildArchiveEntry(prefs, boundary);
     if (snap != null) {
-      final archive = prefs.getStringList(_keyArchive) ?? [];
+      var archive = prefs.getStringList(_keyArchive) ?? [];
       archive.add(snap);
+      if (archive.length > _maxArchiveEntries) {
+        archive = archive.sublist(archive.length - _maxArchiveEntries);
+      }
       await prefs.setStringList(_keyArchive, archive);
     }
 
@@ -759,7 +818,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           title,
-          style: GoogleFonts.dmSans(
+          style: TextStyle(fontFamily: AppFonts.dmSans, 
             color: Colors.white,
             fontWeight: FontWeight.w900,
           ),
@@ -769,7 +828,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           keyboardType: TextInputType.number,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           autofocus: true,
-          style: GoogleFonts.dmSans(
+          style: TextStyle(fontFamily: AppFonts.dmSans, 
             color: Colors.white,
             fontSize: 24,
             fontWeight: FontWeight.w700,
@@ -788,14 +847,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(
               S.cancel,
-              style: GoogleFonts.dmSans(color: Colors.white54),
+              style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white54),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(
               S.save,
-              style: GoogleFonts.dmSans(
+              style: TextStyle(fontFamily: AppFonts.dmSans, 
                 color: _emerald,
                 fontWeight: FontWeight.w900,
               ),
@@ -878,14 +937,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _toggleOverlay() async {
-    final active = await FlutterOverlayWindow.isActive();
+    try {
+      final active = await FlutterOverlayWindow.isActive();
 
-    if (active) {
-      await FlutterOverlayWindow.closeOverlay();
-      if (!mounted) return;
-      setState(() => _overlayActive = false);
-      return;
-    }
+      if (active) {
+        await FlutterOverlayWindow.closeOverlay();
+        if (!mounted) return;
+        setState(() {
+          _overlayActive = false;
+          _updateCachedBottomBar();
+        });
+        return;
+      }
 
     final granted = await FlutterOverlayWindow.isPermissionGranted();
     if (!granted) {
@@ -907,10 +970,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       overlayTitle: 'RateHelper',
     );
 
-    await OverlaySync.notifyCountersChanged();
+      await OverlaySync.notifyCountersChanged();
 
-    if (!mounted) return;
-    setState(() => _overlayActive = true);
+      if (!mounted) return;
+      setState(() {
+        _overlayActive = true;
+        _updateCachedBottomBar();
+      });
+    } on PlatformException catch (e, s) {
+      loge('overlay toggle failed', name: 'home', error: e, stack: s);
+      if (!mounted) return;
+      // Re-derive truth from the plugin instead of guessing:
+      unawaited(_refreshOverlayState());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(S.overlayToggleFailed),
+          backgroundColor: const Color(0xFF1A1A1A),
+        ),
+      );
+    }
   }
 
   List<Map<String, dynamic>> _parseTapHistory(String? raw) {
@@ -988,7 +1066,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             children: [
               Text(
                 S.crashLogTitle,
-                style: GoogleFonts.dmSans(
+                style: TextStyle(fontFamily: AppFonts.dmSans, 
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 2,
@@ -1003,7 +1081,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 child: SingleChildScrollView(
                   child: SelectableText(
                     body,
-                    style: GoogleFonts.jetBrainsMono(
+                    style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
                       color: Colors.white,
                       fontSize: 11,
                       height: 1.4,
@@ -1029,7 +1107,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       },
                       child: Text(
                         S.crashLogCopy,
-                        style: GoogleFonts.dmSans(
+                        style: TextStyle(fontFamily: AppFonts.dmSans, 
                           color: Colors.white,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1.5,
@@ -1046,7 +1124,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       },
                       child: Text(
                         S.crashLogClear,
-                        style: GoogleFonts.dmSans(
+                        style: TextStyle(fontFamily: AppFonts.dmSans, 
                           color: _crimson,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1.5,
@@ -1071,28 +1149,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           S.resetWeekTitle,
-          style: GoogleFonts.dmSans(
+          style: TextStyle(fontFamily: AppFonts.dmSans, 
             color: Colors.white,
             fontWeight: FontWeight.w900,
           ),
         ),
         content: Text(
           S.resetConfirm,
-          style: GoogleFonts.dmSans(color: Colors.white70),
+          style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(
               S.cancel,
-              style: GoogleFonts.dmSans(color: Colors.white54),
+              style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white54),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(
               S.reset,
-              style: GoogleFonts.dmSans(
+              style: TextStyle(fontFamily: AppFonts.dmSans, 
                 color: _crimson,
                 fontWeight: FontWeight.w900,
               ),
@@ -1150,7 +1228,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             const SizedBox(width: 10),
             Text(
               'RateHelper',
-              style: GoogleFonts.dmSans(
+              style: TextStyle(fontFamily: AppFonts.dmSans, 
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
                 color: Colors.white,
@@ -1203,21 +1281,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 value: 'setup',
                 child: Text(
                   S.setupGuide,
-                  style: GoogleFonts.dmSans(color: Colors.white),
+                  style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white),
                 ),
               ),
               PopupMenuItem(
                 value: 'crash',
                 child: Text(
                   S.crashLogTitle,
-                  style: GoogleFonts.dmSans(color: Colors.white),
+                  style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white),
                 ),
               ),
               PopupMenuItem(
                 value: 'driver_mode',
                 child: Text(
                   S.driverModeLabel(activeDriverMode == DriverMode.paired),
-                  style: GoogleFonts.dmSans(color: Colors.white),
+                  style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white),
                 ),
               ),
             ],
@@ -1235,7 +1313,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 20,
                 4,
                 20,
-                120 + MediaQuery.of(context).padding.bottom,
+                120 + MediaQuery.paddingOf(context).bottom,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1279,12 +1357,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.trending_up_rounded, color: _amber, size: 20),
+                      const Icon(Icons.trending_up_rounded, color: _amber, size: 20),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           S.recovery(recovery, _selectedGoal.requiredAcceptRate!),
-                          style: GoogleFonts.dmSans(
+                          style: TextStyle(fontFamily: AppFonts.dmSans, 
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: _amber,
@@ -1308,12 +1386,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.shield_outlined, color: _amber, size: 20),
+                      const Icon(Icons.shield_outlined, color: _amber, size: 20),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           S.safeButClose,
-                          style: GoogleFonts.dmSans(
+                          style: TextStyle(fontFamily: AppFonts.dmSans, 
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: _amber,
@@ -1396,7 +1474,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   alignment: Alignment.center,
                   child: Text(
                     S.resetWeek,
-                    style: GoogleFonts.dmSans(
+                    style: TextStyle(fontFamily: AppFonts.dmSans, 
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 2,
@@ -1407,13 +1485,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
 
               const SizedBox(height: 20),
-
-              Center(child: _buildDesignerSignature()),
-
-              const SizedBox(height: 12),
-              Center(child: _buildReleaseInfoRow()),
-
-              const SizedBox(height: 16),
+              _staticFooter,
                 ],
               ),
             ),
@@ -1425,9 +1497,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 16,
                 0,
                 16,
-                24 + MediaQuery.of(context).padding.bottom,
+                24 + MediaQuery.paddingOf(context).bottom,
               ),
-              child: _buildBottomActionBar(),
+              child: _cachedBottomBar,
             ),
           ),
         ],
@@ -1489,17 +1561,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _openRadar() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const RadarScreen()),
+  bool _navInFlight = false;
+
+  Future<void> _pushGuarded(Widget Function() builder) async {
+    if (_navInFlight) return; // swallow the accidental second tap
+    _navInFlight = true;
+    try {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => builder()),
+      );
+    } finally {
+      _navInFlight = false;
+    }
+  }
+
+  void _openRadar() => unawaited(_pushGuarded(() => const RadarScreen()));
+
+  Future<void> _openEarnings() async {
+    await _pushGuarded(() => const EarningsScreen());
+    if (mounted) setState(() {});
+  }
+
+  void _updateStaticFooter() {
+    _staticFooter = Column(
+      children: [
+        Center(child: _buildDesignerSignature()),
+        const SizedBox(height: 12),
+        Center(child: _buildReleaseInfoRow()),
+        const SizedBox(height: 16),
+      ],
     );
   }
 
-  Future<void> _openEarnings() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const EarningsScreen()),
-    );
-    if (mounted) setState(() {});
+  void _updateCachedBottomBar() {
+    _cachedBottomBar = _buildBottomActionBar();
   }
 
   Widget _buildDesignerSignature() {
@@ -1515,7 +1610,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         children: [
           Text(
             'KK4181R',
-            style: GoogleFonts.jetBrainsMono(
+            style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
               fontSize: 11,
               color: _designerGold,
               letterSpacing: 2.5,
@@ -1526,7 +1621,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           const SizedBox(height: 3),
           Text(
             S.designer,
-            style: GoogleFonts.dmSans(
+            style: TextStyle(fontFamily: AppFonts.dmSans, 
               fontSize: 9,
               fontWeight: FontWeight.w600,
               letterSpacing: 1.5,
@@ -1553,7 +1648,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Text(
               'RateHelper — ${S.releaseName}',
               textAlign: TextAlign.center,
-              style: GoogleFonts.jetBrainsMono(
+              style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
                 fontSize: 10,
                 color: const Color(0x77FFFFFF),
                 letterSpacing: 1.2,
@@ -1567,7 +1662,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ? '${S.version} $_versionLabel'
                     : _versionLabel,
                 textAlign: TextAlign.center,
-                style: GoogleFonts.jetBrainsMono(
+                style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
                   fontSize: 8,
                   color: _showRawVersion
                       ? const Color(0x77FFFFFF)
@@ -1585,7 +1680,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               SelectableText(
                 'SIG: $_debugBuildSignature',
                 textAlign: TextAlign.center,
-                style: GoogleFonts.jetBrainsMono(
+                style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
                   fontSize: 8,
                   color: const Color(0x55FFFFFF),
                   letterSpacing: 0.5,
@@ -1616,7 +1711,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Expanded(
               child: Text(
                 S.tripGoalChip(_selectedGoal.minTrips, _selectedGoal.requiredAcceptRate),
-                style: GoogleFonts.dmSans(
+                style: TextStyle(fontFamily: AppFonts.dmSans, 
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: Colors.white,
@@ -1649,7 +1744,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   child: Text(
                     S.tripGoalTitle,
-                    style: GoogleFonts.dmSans(
+                    style: TextStyle(fontFamily: AppFonts.dmSans, 
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: Colors.white,
@@ -1670,7 +1765,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                     title: Text(
                       S.tripGoalOption(goal.minTrips, goal.requiredAcceptRate),
-                      style: GoogleFonts.dmSans(
+                      style: TextStyle(fontFamily: AppFonts.dmSans, 
                         fontSize: 14,
                         fontWeight: _selectedGoal == goal ? FontWeight.w800 : FontWeight.w500,
                         color: _selectedGoal == goal ? Colors.white : Colors.white70,
@@ -1715,7 +1810,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             label,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.dmSans(
+            style: TextStyle(fontFamily: AppFonts.dmSans, 
               fontSize: 10,
               fontWeight: FontWeight.w700,
               letterSpacing: 2,
@@ -1731,7 +1826,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   value,
-                  style: GoogleFonts.dmSans(
+                  style: TextStyle(fontFamily: AppFonts.dmSans, 
                     fontSize: 36,
                     fontWeight: FontWeight.w900,
                     color: color,
@@ -1751,7 +1846,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       padding: const EdgeInsets.only(left: 4),
       child: Text(
         title,
-        style: GoogleFonts.dmSans(
+        style: TextStyle(fontFamily: AppFonts.dmSans, 
           fontSize: 12,
           fontWeight: FontWeight.w800,
           letterSpacing: 1.5,
@@ -1774,7 +1869,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Expanded(
             child: Text(
               S.autoCompleteTrips,
-              style: GoogleFonts.dmSans(
+              style: TextStyle(fontFamily: AppFonts.dmSans, 
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: Colors.white70,
@@ -1805,7 +1900,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Expanded(
             child: Text(
               S.steeringWheelCounter,
-              style: GoogleFonts.dmSans(
+              style: TextStyle(fontFamily: AppFonts.dmSans, 
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: Colors.white70,
@@ -1825,37 +1920,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _setSteeringWheelCounter(bool enabled) async {
     if (enabled) {
-      final bool isServiceActive = await _kSysChannel.invokeMethod('isAccessibilityServiceEnabled') ?? false;
-      if (!isServiceActive) {
-        if (!mounted) return;
-        final bool? open = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: const Color(0xFF1E2430),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Text(
-              S.steeringWheelDialogTitle,
-              style: GoogleFonts.dmSans(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-            content: Text(
-              S.steeringWheelDialogDesc,
-              style: GoogleFonts.dmSans(color: Colors.white70),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text(S.cancel, style: GoogleFonts.dmSans(color: Colors.white54)),
+      try {
+        final bool isServiceActive = await _kSysChannel.invokeMethod('isAccessibilityServiceEnabled') ?? false;
+        if (!isServiceActive) {
+          if (!mounted) return;
+          final bool? open = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: const Color(0xFF1E2430),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Text(
+                S.steeringWheelDialogTitle,
+                style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white, fontWeight: FontWeight.bold),
               ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(S.openSettings, style: GoogleFonts.dmSans(color: _emerald, fontWeight: FontWeight.bold)),
+              content: Text(
+                S.steeringWheelDialogDesc,
+                style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white70),
               ),
-            ],
-          ),
-        );
-        if (open == true) {
-          await _kSysChannel.invokeMethod('openAccessibilitySettings');
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text(S.cancel, style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white54)),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: Text(S.openSettings, style: TextStyle(fontFamily: AppFonts.dmSans, color: _emerald, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          );
+          if (open == true) {
+            await _kSysChannel.invokeMethod('openAccessibilitySettings');
+          }
         }
+      } on PlatformException catch (e, s) {
+        loge('Steering wheel check failed', name: 'home', error: e, stack: s);
+        // Do not enable it if we couldn't check permissions.
+        return;
       }
     }
     setState(() => _steeringWheelEnabled = enabled);
@@ -1884,7 +1985,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               children: [
                 Text(
                   label,
-                  style: GoogleFonts.dmSans(
+                  style: TextStyle(fontFamily: AppFonts.dmSans, 
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: Colors.white70,
@@ -1912,7 +2013,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         alignment: Alignment.centerLeft,
                         child: Text(
                           '$value',
-                          style: GoogleFonts.dmSans(
+                          style: TextStyle(fontFamily: AppFonts.dmSans, 
                             fontSize: 48,
                             fontWeight: FontWeight.w900,
                             color: Colors.white,
@@ -1926,7 +2027,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                       if (onValueTap != null) ...[
                         const SizedBox(width: 8),
-                        Icon(
+                        const Icon(
                           Icons.edit_rounded,
                           size: 22,
                           color: Colors.white38,
@@ -1998,7 +2099,7 @@ class _BottomBarAction extends StatelessWidget {
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.dmSans(
+                style: TextStyle(fontFamily: AppFonts.dmSans, 
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   color: Colors.white70,
@@ -2060,7 +2161,7 @@ class _BottomBarWidgetToggle extends StatelessWidget {
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.dmSans(
+                style: TextStyle(fontFamily: AppFonts.dmSans, 
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                   color: active ? _emerald : Colors.white70,
@@ -2098,7 +2199,7 @@ class _HistorySheetState extends State<_HistorySheet>
   static const _crimson = Color(0xFFEF4444);
 
   late final TabController _tabController;
-  late List<Map<String, dynamic>> _taps;
+  late final List<({Map<String, dynamic> raw, DateTime? local})> _parsedTaps;
   late List<String> _archive;
   bool _todayOnly = true;
 
@@ -2106,7 +2207,10 @@ class _HistorySheetState extends State<_HistorySheet>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _taps = List<Map<String, dynamic>>.from(widget.taps);
+    _parsedTaps = widget.taps.map((e) => (
+      raw: e,
+      local: DateTime.tryParse(e['timestamp']?.toString() ?? '')?.toLocal(),
+    )).toList();
     _archive = List<String>.from(widget.archive);
     _tabController.addListener(() {
       setState(() {});
@@ -2119,38 +2223,30 @@ class _HistorySheetState extends State<_HistorySheet>
     super.dispose();
   }
 
-  List<Map<String, dynamic>> get _filteredTaps {
-    if (!_todayOnly) return _taps;
+  List<({Map<String, dynamic> raw, DateTime? local})> get _filteredTaps {
+    if (!_todayOnly) return _parsedTaps;
     final now = DateTime.now();
-    return _taps.where((entry) {
-      final ts = entry['timestamp']?.toString();
-      if (ts == null) return false;
-      final dt = DateTime.tryParse(ts);
-      if (dt == null) return false;
-      final local = dt.toLocal();
-      return local.year == now.year &&
-          local.month == now.month &&
-          local.day == now.day;
+    return _parsedTaps.where((t) {
+      if (t.local == null) return false;
+      return t.local!.year == now.year &&
+          t.local!.month == now.month &&
+          t.local!.day == now.day;
     }).toList();
   }
 
-  String _tapTimeLabel(Map<String, dynamic> entry) {
-    final localTime = entry['localTime']?.toString();
+  String _tapTimeLabel(({Map<String, dynamic> raw, DateTime? local}) t) {
+    final localTime = t.raw['localTime']?.toString();
     if (localTime == null || localTime.length < 5) return '';
     final hhmm = localTime.substring(0, 5);
 
-    final ts = entry['timestamp']?.toString();
-    if (ts == null) return hhmm;
-    final dt = DateTime.tryParse(ts);
-    if (dt == null) return hhmm;
+    if (t.local == null) return hhmm;
 
-    final local = dt.toLocal();
     final now = DateTime.now();
-    final isToday = local.year == now.year &&
-        local.month == now.month &&
-        local.day == now.day;
+    final isToday = t.local!.year == now.year &&
+        t.local!.month == now.month &&
+        t.local!.day == now.day;
     if (isToday) return hhmm;
-    return '$hhmm · ${widget.formatTapDate(local)}';
+    return '$hhmm · ${widget.formatTapDate(t.local!)}';
   }
 
   Future<void> _confirmClearTapHistory() async {
@@ -2161,28 +2257,28 @@ class _HistorySheetState extends State<_HistorySheet>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           S.tapLogTab,
-          style: GoogleFonts.dmSans(
+          style: TextStyle(fontFamily: AppFonts.dmSans, 
             color: Colors.white,
             fontWeight: FontWeight.w900,
           ),
         ),
         content: Text(
           S.tapHistoryClearConfirm,
-          style: GoogleFonts.dmSans(color: Colors.white70),
+          style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(
               S.cancel,
-              style: GoogleFonts.dmSans(color: Colors.white54),
+              style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white54),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(
               S.tapHistoryClear,
-              style: GoogleFonts.dmSans(
+              style: TextStyle(fontFamily: AppFonts.dmSans, 
                 color: _crimson,
                 fontWeight: FontWeight.w900,
               ),
@@ -2196,7 +2292,7 @@ class _HistorySheetState extends State<_HistorySheet>
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyTapHistory);
-    setState(() => _taps = []);
+    setState(() => _parsedTaps.clear());
   }
 
   Future<void> _confirmClearWeeklyArchive() async {
@@ -2207,28 +2303,28 @@ class _HistorySheetState extends State<_HistorySheet>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           S.weeklyTab,
-          style: GoogleFonts.dmSans(
+          style: TextStyle(fontFamily: AppFonts.dmSans, 
             color: Colors.white,
             fontWeight: FontWeight.w900,
           ),
         ),
         content: Text(
           S.weeklyArchiveClearConfirm,
-          style: GoogleFonts.dmSans(color: Colors.white70),
+          style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(
               S.cancel,
-              style: GoogleFonts.dmSans(color: Colors.white54),
+              style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white54),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(
               S.weeklyArchiveClear,
-              style: GoogleFonts.dmSans(
+              style: TextStyle(fontFamily: AppFonts.dmSans, 
                 color: _crimson,
                 fontWeight: FontWeight.w900,
               ),
@@ -2272,7 +2368,7 @@ class _HistorySheetState extends State<_HistorySheet>
                 Expanded(
                   child: Text(
                     S.history,
-                    style: GoogleFonts.dmSans(
+                    style: TextStyle(fontFamily: AppFonts.dmSans, 
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 2,
@@ -2282,11 +2378,11 @@ class _HistorySheetState extends State<_HistorySheet>
                 ),
                 if (_tabController.index == 0)
                   TextButton.icon(
-                    onPressed: _taps.isEmpty ? null : _confirmClearTapHistory,
+                    onPressed: _parsedTaps.isEmpty ? null : _confirmClearTapHistory,
                     icon: const Icon(Icons.delete_outline_rounded, size: 18),
                     label: Text(
                       S.tapHistoryClear,
-                      style: GoogleFonts.dmSans(
+                      style: TextStyle(fontFamily: AppFonts.dmSans, 
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.5,
@@ -2304,7 +2400,7 @@ class _HistorySheetState extends State<_HistorySheet>
                     icon: const Icon(Icons.delete_outline_rounded, size: 18),
                     label: Text(
                       S.weeklyArchiveClear,
-                      style: GoogleFonts.dmSans(
+                      style: TextStyle(fontFamily: AppFonts.dmSans, 
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.5,
@@ -2324,12 +2420,12 @@ class _HistorySheetState extends State<_HistorySheet>
               indicatorColor: _emerald,
               labelColor: Colors.white,
               unselectedLabelColor: Colors.white38,
-              labelStyle: GoogleFonts.dmSans(
+              labelStyle: TextStyle(fontFamily: AppFonts.dmSans, 
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.5,
               ),
-              unselectedLabelStyle: GoogleFonts.dmSans(
+              unselectedLabelStyle: TextStyle(fontFamily: AppFonts.dmSans, 
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 1.5,
@@ -2394,7 +2490,7 @@ class _HistorySheetState extends State<_HistorySheet>
                   alignment: Alignment.topCenter,
                   child: Text(
                     S.noTapHistory,
-                    style: GoogleFonts.dmSans(
+                    style: TextStyle(fontFamily: AppFonts.dmSans, 
                       color: Colors.white54,
                       fontSize: 15,
                     ),
@@ -2405,7 +2501,7 @@ class _HistorySheetState extends State<_HistorySheet>
                   separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (_, i) {
                     final entry = entries[i];
-                    final accepted = entry['type'] == 'accepted';
+                    final accepted = entry.raw['type'] == 'accepted';
                     return Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
@@ -2429,7 +2525,7 @@ class _HistorySheetState extends State<_HistorySheet>
                           Expanded(
                             child: Text(
                               accepted ? S.tapAcceptShort : S.tapRejectShort,
-                              style: GoogleFonts.dmSans(
+                              style: TextStyle(fontFamily: AppFonts.dmSans, 
                                 color: accepted ? _emerald : _crimson,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
@@ -2438,7 +2534,7 @@ class _HistorySheetState extends State<_HistorySheet>
                           ),
                           Text(
                             _tapTimeLabel(entry),
-                            style: GoogleFonts.jetBrainsMono(
+                            style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
                               color: Colors.white70,
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
@@ -2460,7 +2556,7 @@ class _HistorySheetState extends State<_HistorySheet>
         alignment: Alignment.topCenter,
         child: Text(
           S.noHistory,
-          style: GoogleFonts.dmSans(color: Colors.white54, fontSize: 15),
+          style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white54, fontSize: 15),
         ),
       );
     }
@@ -2497,7 +2593,7 @@ class _ArchiveCard extends StatelessWidget {
         children: [
           Text(
             entry.getFormattedDateRange(),
-            style: GoogleFonts.dmSans(
+            style: TextStyle(fontFamily: AppFonts.dmSans, 
               fontSize: 14,
               fontWeight: FontWeight.w700,
               color: Colors.white,
@@ -2521,7 +2617,7 @@ class _ArchiveCard extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               '${S.accepted}: ${entry.acceptedCount} · ${S.rejected}: ${entry.rejectedCount}',
-              style: GoogleFonts.jetBrainsMono(
+              style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
                 fontSize: 12,
                 color: Colors.white54,
               ),
@@ -2542,7 +2638,7 @@ class _ArchiveCard extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: GoogleFonts.dmSans(
+        style: TextStyle(fontFamily: AppFonts.dmSans, 
           fontSize: 11,
           fontWeight: FontWeight.w700,
           color: color,
@@ -2582,7 +2678,7 @@ class _FilterChip extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: GoogleFonts.dmSans(
+          style: TextStyle(fontFamily: AppFonts.dmSans, 
             fontSize: 13,
             fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
             color: selected ? const Color(0xFF10B981) : Colors.white54,
@@ -2622,7 +2718,7 @@ class _LangOption extends StatelessWidget {
               Expanded(
                 child: Text(
                   name,
-                  style: GoogleFonts.dmSans(
+                  style: TextStyle(fontFamily: AppFonts.dmSans, 
                     fontSize: 17,
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
                     color: selected ? Colors.white : Colors.white70,

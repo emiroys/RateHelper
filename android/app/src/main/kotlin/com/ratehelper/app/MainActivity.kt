@@ -82,6 +82,16 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
+                "drainPendingTaps" -> {
+                    val prefs = getSharedPreferences("ratehelper_pending_taps", Context.MODE_PRIVATE)
+                    val accepted = prefs.getInt("accepted", 0)
+                    val rejected = prefs.getInt("rejected", 0)
+                    if (accepted > 0 || rejected > 0) {
+                        prefs.edit().clear().apply()
+                    }
+                    result.success(mapOf("accepted" to accepted, "rejected" to rejected))
+                }
+
                 else -> result.notImplemented()
             }
         }
