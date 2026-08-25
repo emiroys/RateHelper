@@ -96,8 +96,7 @@ class EventService {
               events.add(event);
             }
           } catch (e) {
-            // Debug-only: a single malformed item is non-fatal and must not
-            // spam release logcat once per item on every 30-min refetch.
+            // Debug-only: a single malformed item is non-fatal.
             logd('Error parsing event item: $e', name: 'events');
           }
         }

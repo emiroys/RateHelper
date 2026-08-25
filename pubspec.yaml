@@ -71,14 +71,9 @@ flutter:
   assets:
     - assets/logo.png
 
-  # Bundled fonts. Required because GoogleFonts.config.allowRuntimeFetching
-  # is set to `false` in main.dart — runtime download from Google Fonts is
-  # disabled so the app works on a cold install without internet. Each
-  # .ttf below carries full Unicode coverage (Turkish ş/ğ/ı, Polish ą/ł/ń,
-  # Latin-Ext, Cyrillic). google_fonts v6 picks these up automatically by
-  # scanning the AssetManifest for filenames matching `<Family>-<Variant>.ttf`,
-  # so GoogleFonts.dmSans(...) / GoogleFonts.jetBrainsMono(...) calls in code
-  # resolve to these assets without code changes.
+  # Bundled fonts, referenced in code via AppFonts. Each .ttf carries full
+  # Unicode coverage (Turkish ş/ğ/ı, Polish ą/ł/ń, Latin-Ext, Cyrillic) so
+  # the app renders correctly on a cold install without internet.
   fonts:
     - family: DM Sans
       fonts:

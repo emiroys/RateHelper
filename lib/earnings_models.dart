@@ -36,9 +36,6 @@ enum DriverMode {
   static const askedKey = 'driver_mode_asked';
 }
 
-/// Single source of truth; widgets that display mode-dependent values
-/// subscribe with ValueListenableBuilder instead of relying on callers
-/// to remember manual setState choreography.
 final ValueNotifier<DriverMode> driverModeNotifier =
     ValueNotifier<DriverMode>(DriverMode.solo);
 
@@ -373,10 +370,12 @@ class WeekEarning {
     this.hasRentalDiscount = true,
     List<FuelReceipt>? fuelReceipts,
     double? fuelPumpPaid,
-  }) : fuelReceipts = fuelReceipts ??
-            (fuelPumpPaid != null && fuelPumpPaid > 0
-                ? [FuelReceipt(timestamp: weekStart, amountPaid: fuelPumpPaid)]
-                : []);
+  }) : fuelReceipts = capFuelReceipts(
+          fuelReceipts ??
+              (fuelPumpPaid != null && fuelPumpPaid > 0
+                  ? [FuelReceipt(timestamp: weekStart, amountPaid: fuelPumpPaid)]
+                  : []),
+        );
 
   /// Stable identifier so edits/deletes target the right entry.
   final String id;
@@ -590,6 +589,15 @@ class WeekEarning {
 
 /// Maximum number of stored weeks (2 years). Oldest entries are dropped FIFO.
 const int kMaxEarningEntries = 104;
+
+/// Maximum fuel receipts stored per week. Oldest receipts are dropped FIFO.
+const int kMaxFuelReceipts = 100;
+
+/// Keeps the newest [kMaxFuelReceipts] items; a no-op when already within cap.
+List<FuelReceipt> capFuelReceipts(List<FuelReceipt> receipts) {
+  if (receipts.length <= kMaxFuelReceipts) return receipts;
+  return receipts.sublist(receipts.length - kMaxFuelReceipts);
+}
 
 /// SharedPreferences key for the earnings history JSON list.
 const String kEarningsHistoryKey = 'earnings_history';

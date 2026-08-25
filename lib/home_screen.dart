@@ -14,6 +14,9 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'app_colors.dart';
+import 'app_text_styles.dart';
+import 'app_widgets.dart';
 import 'crash_logger.dart';
 import 'earnings_models.dart';
 import 'earnings_screen.dart';
@@ -26,6 +29,8 @@ import 'overlay_sync.dart';
 import 'services/event_service.dart';
 import 'overlay_widget.dart';
 import 'radar_screen.dart';
+import 'shift_counter_store.dart';
+import 'tap_history_store.dart';
 
 enum TripGoal {
   tier0(soloMinTrips: 0, pairedMinTrips: 0, requiredAcceptRate: null),
@@ -44,14 +49,16 @@ enum TripGoal {
   final int pairedMinTrips;
   final double? requiredAcceptRate;
 
-  int get minTrips => activeDriverMode == DriverMode.paired ? pairedMinTrips : soloMinTrips;
+  int get minTrips =>
+      activeDriverMode == DriverMode.paired ? pairedMinTrips : soloMinTrips;
 }
 
 // ignore: constant_identifier_names
 const double AMBER_BUFFER = 2.0;
 const double kAmberBuffer = AMBER_BUFFER;
 
-const String kReleaseName = "2. Büyük Güncelleme"; // update manually each significant release
+const String kReleaseName =
+    "2. Büyük Güncelleme"; // update manually each significant release
 
 int? calculateNeededForRecovery({
   required int acceptedRequests,
@@ -79,9 +86,10 @@ int? maxAdditionalCancellations({
 }) {
   if (completedTrips == 0) return 0;
   if ((currentCancellations / completedTrips) * 100 >= ceiling) return -1;
-  
+
   int n = 0;
-  while (((currentCancellations + n + 1) / (completedTrips + n + 1)) * 100 < ceiling) {
+  while (((currentCancellations + n + 1) / (completedTrips + n + 1)) * 100 <
+      ceiling) {
     n++;
   }
   return n;
@@ -101,11 +109,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _keyCanceled = 'canceledTrips';
   static const _keyAutoComplete = 'autoCompleteTrips';
   static const _keySteeringWheel = 'steeringWheelEnabled';
+  static const _keyKeepScreenOn = 'keepScreenOn';
+  static const _wakelockIdleTimeout = Duration(minutes: 10);
   static const _keyTripGoal = 'trip_goal_tier';
   static const _kSysChannel = MethodChannel('com.ratehelper.app/system');
   static const _keyLastReset = 'lastResetTimestamp';
   static const _keyArchive = 'weekly_archive';
-  static const _keyTapHistory = 'tapHistory';
   static const _keyLang = 'appLanguage';
 
   /// Asset name on GitHub Releases must match this exactly (case-sensitive).
@@ -132,12 +141,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  static const _cardColor = Color(0xFF1A1A1A);
-  static const _emerald = Color(0xFF10B981);
-  static const _crimson = Color(0xFFEF4444);
-  static const _amber = Color(0xFFF59E0B);
-  static const _designerGold = Color(0xFFD4AF37);
-  static final _cardBorder = Border.all(color: const Color(0x0DFFFFFF), width: 1);
+  static const _cardColor = AppColors.card;
+  static const _emerald = AppColors.emerald;
+  static const _crimson = AppColors.crimson;
+  static const _amber = AppColors.amber;
+  static const _designerGold = AppColors.designerGold;
+  static final _cardBorder = Border.all(
+    color: AppColors.cardBorderColor,
+    width: 1,
+  );
   static final _cardRadius = BorderRadius.circular(16);
 
   SharedPreferences? _prefs;
@@ -145,16 +157,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _versionLabel = '';
   bool _showRawVersion = false;
   String? _debugBuildSignature;
-  
-  late Widget _staticFooter = const SizedBox.shrink();
-  late Widget _cachedBottomBar = const SizedBox.shrink();
 
-  int acceptedRequests = 0;
-  int rejectedRequests = 0;
-  int completedTrips = 0;
-  int canceledTrips = 0;
+  final _accepted = ValueNotifier<int>(0);
+  final _rejected = ValueNotifier<int>(0);
+  final _completed = ValueNotifier<int>(0);
+  final _canceled = ValueNotifier<int>(0);
+  final _undoAvailable = ValueNotifier<bool>(false);
+  late final Listenable _ratesListenable = Listenable.merge([
+    _accepted,
+    _rejected,
+    _completed,
+    _canceled,
+  ]);
+
+  int get acceptedRequests => _accepted.value;
+  set acceptedRequests(int v) => _accepted.value = v;
+  int get rejectedRequests => _rejected.value;
+  set rejectedRequests(int v) => _rejected.value = v;
+  int get completedTrips => _completed.value;
+  set completedTrips(int v) => _completed.value = v;
+  int get canceledTrips => _canceled.value;
+  set canceledTrips(int v) => _canceled.value = v;
   bool _autoCompleteTrips = false;
   bool _steeringWheelEnabled = false;
+  bool _keepScreenOn = false;
   TripGoal _selectedGoal = TripGoal.tier1;
 
   int? _prevAccepted;
@@ -175,8 +201,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Timer? _saveDebounce;
+  Timer? _wakelockIdleTimer;
   bool _isLoadingOrResetting = false;
   bool _overlayActive = false;
+
+  /// True while [_toggleOverlay] is round-tripping through the platform
+  /// channel, so the toggle can show progress instead of looking unresponsive.
+  bool _overlayToggleBusy = false;
   StreamSubscription<dynamic>? _overlayListenerSub;
 
   bool get _canUndo => _prevAccepted != null;
@@ -186,19 +217,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       totalRequests == 0 ? 100.0 : (acceptedRequests / totalRequests) * 100;
 
   int get totalAcceptedTrips => completedTrips + canceledTrips;
-  double get cancellationRate =>
-      totalAcceptedTrips == 0 ? 0.0 : (canceledTrips / totalAcceptedTrips) * 100;
+  double get cancellationRate => totalAcceptedTrips == 0
+      ? 0.0
+      : (canceledTrips / totalAcceptedTrips) * 100;
 
   int? get neededForRecovery => calculateNeededForRecovery(
-        acceptedRequests: acceptedRequests,
-        rejectedRequests: rejectedRequests,
-        requiredAcceptRate: _selectedGoal.requiredAcceptRate,
-      );
+    acceptedRequests: acceptedRequests,
+    rejectedRequests: rejectedRequests,
+    requiredAcceptRate: _selectedGoal.requiredAcceptRate,
+  );
 
   int? get maxCancellationsBudget => maxAdditionalCancellations(
-        completedTrips: totalAcceptedTrips,
-        currentCancellations: canceledTrips,
-      );
+    completedTrips: totalAcceptedTrips,
+    currentCancellations: canceledTrips,
+  );
 
   Color get _acceptRateColor {
     final req = _selectedGoal.requiredAcceptRate;
@@ -217,16 +249,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WakelockPlus.enable();
-    _updateCachedBottomBar();
     try {
-      _overlayListenerSub = FlutterOverlayWindow.overlayListener.listen((event) {
+      _overlayListenerSub = FlutterOverlayWindow.overlayListener.listen((
+        event,
+      ) {
         if (OverlaySync.shouldReloadCounters(event)) {
-          _reloadAndSync();
+          unawaited(_applyOverlayCounters(event));
         }
       });
     } catch (e, s) {
-      loge('overlayListener listen failed in home screen', name: 'home', error: e, stack: s);
+      loge(
+        'overlayListener listen failed in home screen',
+        name: 'home',
+        error: e,
+        stack: s,
+      );
     }
     _kSysChannel.setMethodCallHandler((call) async {
       if (call.method == 'onMediaKeyIncrement') {
@@ -266,7 +303,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         _currentLang = lang;
         _versionLabel = 'v${info.version}+${info.buildNumber}';
-        _updateStaticFooter();
       });
     }
     unawaited(_checkForUpdate(info.version));
@@ -312,18 +348,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         builder: (ctx) => PopScope(
           canPop: false,
           child: AlertDialog(
-            backgroundColor: const Color(0xFF1A1A1A),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Text(
+            backgroundColor: AppColors.card,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text(
               'Güvenlik Uyarısı',
-              style: TextStyle(fontFamily: AppFonts.dmSans, 
+              style: TextStyle(
+                fontFamily: AppFonts.dmSans,
                 color: Colors.white,
                 fontWeight: FontWeight.w900,
               ),
             ),
-            content: Text(
+            content: const Text(
               'Bu uygulama değiştirilmiş. Güvenliğiniz için kapatılıyor.',
-              style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white70, height: 1.4),
+              style: TextStyle(
+                fontFamily: AppFonts.dmSans,
+                color: AppColors.mutedText,
+                height: 1.4,
+              ),
             ),
           ),
         ),
@@ -396,13 +439,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // allowlist if we let HttpClient chase the Location header.
       client.autoUncompress = true;
 
-      final request = await client.getUrl(manifestUri).timeout(const Duration(seconds: 8));
+      final request = await client
+          .getUrl(manifestUri)
+          .timeout(const Duration(seconds: 8));
       request.followRedirects = false;
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final response = await request.close().timeout(const Duration(seconds: 10));
+      final response = await request.close().timeout(
+        const Duration(seconds: 10),
+      );
       if (response.statusCode != HttpStatus.ok) return null;
 
-      final body = await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 10));
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 10));
       final decoded = jsonDecode(body);
       if (decoded is! Map) return null;
 
@@ -438,7 +488,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _checkForUpdate(String currentVersion) async {
-
     final manifest = await _fetchUpdateManifest();
     if (!mounted || manifest == null) return;
 
@@ -452,7 +501,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       SnackBar(
         content: Text(S.updateAvailable(latest)),
         duration: const Duration(seconds: 10),
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: AppColors.card,
         action: SnackBarAction(
           label: S.updateDownload,
           textColor: _emerald,
@@ -469,8 +518,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _kSysChannel.setMethodCallHandler(null);
     _overlayListenerSub?.cancel();
     _saveDebounce?.cancel();
+    _wakelockIdleTimer?.cancel();
     _flushSave();
-    WakelockPlus.disable();
+    unawaited(_setWakelock(false));
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -478,7 +528,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      WakelockPlus.enable();
+      _applyWakelockPolicy();
       _reloadAndSync();
     } else if (state == AppLifecycleState.paused) {
       // Kick the write before the OS freezes us. shared_preferences
@@ -489,8 +539,65 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _saveDebounce!.cancel();
         unawaited(_saveDataNow());
       }
-      WakelockPlus.disable();
+      _wakelockIdleTimer?.cancel();
+      unawaited(_setWakelock(false));
     }
+  }
+
+  Future<void> _setWakelock(bool on) async {
+    try {
+      if (on) {
+        await WakelockPlus.enable();
+      } else {
+        await WakelockPlus.disable();
+      }
+    } catch (_) {}
+  }
+
+  void _applyWakelockPolicy() {
+    _wakelockIdleTimer?.cancel();
+    _wakelockIdleTimer = null;
+    if (!_keepScreenOn) {
+      unawaited(_setWakelock(false));
+      return;
+    }
+    unawaited(_setWakelock(true));
+    _wakelockIdleTimer = Timer(_wakelockIdleTimeout, () {
+      unawaited(_setWakelock(false));
+    });
+  }
+
+  void _onUserInteraction() {
+    if (!_keepScreenOn) return;
+    _applyWakelockPolicy();
+  }
+
+  Future<void> _applyOverlayCounters(Object? event) async {
+    if (_saveDebounce?.isActive ?? false) {
+      _saveDebounce!.cancel();
+      await _saveDataNow();
+      return;
+    }
+    final counters = OverlaySync.countersFromEvent(event);
+    if (counters == null) {
+      await _applyStoredCounters();
+      return;
+    }
+    if (!mounted) return;
+    acceptedRequests = counters.accepted;
+    rejectedRequests = counters.rejected;
+    completedTrips = counters.completed;
+    _syncBaseline();
+  }
+
+  Future<void> _applyStoredCounters() async {
+    final stored = await ShiftCounterStore.instance.read();
+    if (!mounted) return;
+    acceptedRequests = stored.accepted;
+    rejectedRequests = stored.rejected;
+    completedTrips = stored.completed;
+    canceledTrips = stored.canceled;
+    _syncBaseline();
   }
 
   @override
@@ -510,8 +617,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _saveDebounce!.cancel();
       await _saveDataNow(); // merges delta into disk before we re-read it
     }
-    final prefs = await _getPrefs();
-    await prefs.reload();
     if (!mounted) return;
     _loadAndCheckReset();
     await _drainPendingTaps();
@@ -520,7 +625,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _drainPendingTaps() async {
     try {
-      final Map<dynamic, dynamic>? result = await _kSysChannel.invokeMethod('drainPendingTaps');
+      final Map<dynamic, dynamic>? result = await _kSysChannel.invokeMethod(
+        'drainPendingTaps',
+      );
       if (result != null) {
         final int accepted = result['accepted'] as int? ?? 0;
         final int rejected = result['rejected'] as int? ?? 0;
@@ -535,10 +642,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _refreshOverlayState() async {
     final active = await FlutterOverlayWindow.isActive();
     if (!mounted || active == _overlayActive) return;
-    setState(() {
-      _overlayActive = active;
-      _updateCachedBottomBar();
-    });
+    setState(() => _overlayActive = active);
   }
 
   void _flushSave() {
@@ -555,7 +659,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       now.year,
       now.month,
       now.day - daysFromMonday,
-      4, 0, 0,
+      4,
+      0,
+      0,
     );
     if (now.isBefore(monday)) {
       return tz.TZDateTime(
@@ -563,7 +669,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         monday.year,
         monday.month,
         monday.day - 7,
-        4, 0, 0,
+        4,
+        0,
+        0,
       );
     }
     return monday;
@@ -577,6 +685,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     try {
       final prefs = await _getPrefs();
+      if (!mounted) return;
+
+      unawaited(TapHistoryStore.instance.migrateFromPrefs(prefs));
+      await ShiftCounterStore.instance.migrateFromPrefs(prefs);
+      final stored = await ShiftCounterStore.instance.read();
       if (!mounted) return;
 
       final now = _nowWarsaw();
@@ -596,7 +709,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           : TripGoal.tier1;
 
       final modeStr = prefs.getString(DriverMode.key);
-      activeDriverMode = modeStr == 'paired' ? DriverMode.paired : DriverMode.solo;
+      activeDriverMode = modeStr == 'paired'
+          ? DriverMode.paired
+          : DriverMode.solo;
 
       if (prefs.getBool(DriverMode.askedKey) != true) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -609,26 +724,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
 
       if (lastReset.isBefore(resetBoundary)) {
-        await _performReset(prefs, resetBoundary);
+        await _performReset(prefs, resetBoundary, stored);
         if (mounted) {
           setState(() {
             _selectedGoal = loadedGoal;
+            _keepScreenOn = prefs.getBool(_keyKeepScreenOn) ?? false;
           });
         }
       } else {
         if (!mounted) return;
         setState(() {
           _selectedGoal = loadedGoal;
-          acceptedRequests = prefs.getInt(_keyAccepted) ?? 0;
-          rejectedRequests = prefs.getInt(_keyRejected) ?? 0;
-          completedTrips = prefs.getInt(_keyCompleted) ?? 0;
-          canceledTrips = prefs.getInt(_keyCanceled) ?? 0;
+          acceptedRequests = stored.accepted;
+          rejectedRequests = stored.rejected;
+          completedTrips = stored.completed;
+          canceledTrips = stored.canceled;
           _autoCompleteTrips = prefs.getBool(_keyAutoComplete) ?? false;
           _steeringWheelEnabled = prefs.getBool(_keySteeringWheel) ?? false;
+          _keepScreenOn = prefs.getBool(_keyKeepScreenOn) ?? false;
           _syncBaseline();
         });
-        unawaited(OverlaySync.notifyCountersChanged());
+        unawaited(
+          OverlaySync.notifyCountersChanged(
+            accepted: acceptedRequests,
+            rejected: rejectedRequests,
+            completed: completedTrips,
+          ),
+        );
       }
+      _applyWakelockPolicy();
     } finally {
       _isLoadingOrResetting = false;
     }
@@ -641,14 +765,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
     final prefs = await _getPrefs();
     await prefs.setString(_keyTripGoal, goal.name);
-    unawaited(OverlaySync.notifyCountersChanged());
+    unawaited(
+      OverlaySync.notifyCountersChanged(
+        accepted: acceptedRequests,
+        rejected: rejectedRequests,
+        completed: completedTrips,
+      ),
+    );
   }
 
   /// Keep 2 years of weekly snapshots, matching kMaxEarningEntries.
   static const int _maxArchiveEntries = 104;
 
-  Future<void> _performReset(SharedPreferences prefs, [tz.TZDateTime? boundary]) async {
-    final snap = _buildArchiveEntry(prefs, boundary);
+  Future<void> _performReset(
+    SharedPreferences prefs, [
+    tz.TZDateTime? boundary,
+    ShiftCounters? snapshot,
+  ]) async {
+    final counts = snapshot ?? await ShiftCounterStore.instance.read();
+    final snap = _buildArchiveEntry(counts, boundary);
     if (snap != null) {
       var archive = prefs.getStringList(_keyArchive) ?? [];
       archive.add(snap);
@@ -658,10 +793,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await prefs.setStringList(_keyArchive, archive);
     }
 
-    await prefs.setInt(_keyAccepted, 0);
-    await prefs.setInt(_keyRejected, 0);
-    await prefs.setInt(_keyCompleted, 0);
-    await prefs.setInt(_keyCanceled, 0);
+    await ShiftCounterStore.instance.write(const ShiftCounters());
     await prefs.setInt(_keyLastReset, _nowWarsaw().millisecondsSinceEpoch);
 
     if (!mounted) return;
@@ -673,14 +805,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _clearUndo();
       _syncBaseline();
     });
-    unawaited(OverlaySync.notifyCountersChanged());
+    unawaited(
+      OverlaySync.notifyCountersChanged(accepted: 0, rejected: 0, completed: 0),
+    );
   }
 
-  String? _buildArchiveEntry(SharedPreferences prefs, tz.TZDateTime? boundary) {
-    final accepted = prefs.getInt(_keyAccepted) ?? 0;
-    final rejected = prefs.getInt(_keyRejected) ?? 0;
-    final completed = prefs.getInt(_keyCompleted) ?? 0;
-    final canceled = prefs.getInt(_keyCanceled) ?? 0;
+  String? _buildArchiveEntry(ShiftCounters counts, tz.TZDateTime? boundary) {
+    final accepted = counts.accepted;
+    final rejected = counts.rejected;
+    final completed = counts.completed;
+    final canceled = counts.canceled;
 
     final total = accepted + rejected;
     final totalTrips = completed + canceled;
@@ -696,7 +830,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       weekStart.year,
       weekStart.month,
       weekStart.day + 6,
-      4, 0, 0,
+      4,
+      0,
+      0,
     );
 
     final entry = WeeklyArchiveEntry(
@@ -717,28 +853,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _saveDataNow() async {
-    final prefs = await _getPrefs();
-    await prefs.reload();
+    final disk = await ShiftCounterStore.instance.read();
 
-    final diskAccepted = prefs.getInt(_keyAccepted) ?? 0;
-    final diskRejected = prefs.getInt(_keyRejected) ?? 0;
-    final diskCompleted = prefs.getInt(_keyCompleted) ?? 0;
-    final diskCanceled = prefs.getInt(_keyCanceled) ?? 0;
-
-    final newAccepted = (diskAccepted + (acceptedRequests - _baselineAccepted)).clamp(0, 99999);
-    final newRejected = (diskRejected + (rejectedRequests - _baselineRejected)).clamp(0, 99999);
-    final newCompleted = (diskCompleted + (completedTrips - _baselineCompleted)).clamp(0, 99999);
-    final newCanceled = (diskCanceled + (canceledTrips - _baselineCanceled)).clamp(0, 99999);
+    final newAccepted = (disk.accepted + (acceptedRequests - _baselineAccepted))
+        .clamp(0, 99999);
+    final newRejected = (disk.rejected + (rejectedRequests - _baselineRejected))
+        .clamp(0, 99999);
+    final newCompleted = (disk.completed + (completedTrips - _baselineCompleted))
+        .clamp(0, 99999);
+    final newCanceled = (disk.canceled + (canceledTrips - _baselineCanceled))
+        .clamp(0, 99999);
 
     if (mounted) {
-      setState(() {
-        acceptedRequests = newAccepted;
-        rejectedRequests = newRejected;
-        completedTrips = newCompleted;
-        canceledTrips = newCanceled;
-        _syncBaseline();
-      });
-    } else {
       acceptedRequests = newAccepted;
       rejectedRequests = newRejected;
       completedTrips = newCompleted;
@@ -746,13 +872,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _syncBaseline();
     }
 
-    await prefs.setInt(_keyAccepted, newAccepted);
-    await prefs.setInt(_keyRejected, newRejected);
-    await prefs.setInt(_keyCompleted, newCompleted);
-    await prefs.setInt(_keyCanceled, newCanceled);
-    await prefs.setBool(_keyAutoComplete, _autoCompleteTrips);
-    await prefs.setBool(_keySteeringWheel, _steeringWheelEnabled);
-    unawaited(OverlaySync.notifyCountersChanged());
+    await ShiftCounterStore.instance.write(
+      ShiftCounters(
+        accepted: newAccepted.toInt(),
+        rejected: newRejected.toInt(),
+        completed: newCompleted.toInt(),
+        canceled: newCanceled.toInt(),
+      ),
+    );
+    unawaited(
+      OverlaySync.notifyCountersChanged(
+        accepted: newAccepted,
+        rejected: newRejected,
+        completed: newCompleted,
+      ),
+    );
   }
 
   void _snapshotUndo() {
@@ -760,6 +894,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _prevRejected = rejectedRequests;
     _prevCompleted = completedTrips;
     _prevCanceled = canceledTrips;
+    _undoAvailable.value = true;
   }
 
   void _clearUndo() {
@@ -767,55 +902,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _prevRejected = null;
     _prevCompleted = null;
     _prevCanceled = null;
+    _undoAvailable.value = false;
   }
 
   void _undo() {
     if (!_canUndo) return;
-    setState(() {
-      acceptedRequests = _prevAccepted!;
-      rejectedRequests = _prevRejected!;
-      completedTrips = _prevCompleted!;
-      canceledTrips = _prevCanceled!;
-      _clearUndo();
-    });
+    acceptedRequests = _prevAccepted!;
+    rejectedRequests = _prevRejected!;
+    completedTrips = _prevCompleted!;
+    canceledTrips = _prevCanceled!;
+    _clearUndo();
     _scheduleSave();
   }
 
   void _change(String key, int delta) {
-    setState(() {
-      _snapshotUndo();
-      switch (key) {
-        case _keyAccepted:
-          acceptedRequests = (acceptedRequests + delta).clamp(0, 99999);
-          if (delta > 0 && _autoCompleteTrips) {
-            completedTrips = (completedTrips + delta).clamp(0, 99999);
-          }
-        case _keyRejected:
-          rejectedRequests = (rejectedRequests + delta).clamp(0, 99999);
-        case _keyCompleted:
+    _snapshotUndo();
+    switch (key) {
+      case _keyAccepted:
+        acceptedRequests = (acceptedRequests + delta).clamp(0, 99999);
+        if (delta > 0 && _autoCompleteTrips) {
           completedTrips = (completedTrips + delta).clamp(0, 99999);
-        case _keyCanceled:
-          canceledTrips = (canceledTrips + delta).clamp(0, 99999);
-      }
-    });
+        }
+      case _keyRejected:
+        rejectedRequests = (rejectedRequests + delta).clamp(0, 99999);
+      case _keyCompleted:
+        completedTrips = (completedTrips + delta).clamp(0, 99999);
+      case _keyCanceled:
+        canceledTrips = (canceledTrips + delta).clamp(0, 99999);
+    }
     _scheduleSave();
   }
 
   void _setCounter(String key, int value) {
-    setState(() {
-      _snapshotUndo();
-      final clamped = value.clamp(0, 99999);
-      switch (key) {
-        case _keyAccepted:
-          acceptedRequests = clamped;
-        case _keyRejected:
-          rejectedRequests = clamped;
-        case _keyCompleted:
-          completedTrips = clamped;
-        case _keyCanceled:
-          canceledTrips = clamped;
-      }
-    });
+    _snapshotUndo();
+    final clamped = value.clamp(0, 99999);
+    switch (key) {
+      case _keyAccepted:
+        acceptedRequests = clamped;
+      case _keyRejected:
+        rejectedRequests = clamped;
+      case _keyCompleted:
+        completedTrips = clamped;
+      case _keyCanceled:
+        canceledTrips = clamped;
+    }
     _scheduleSave();
   }
 
@@ -823,6 +953,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => _autoCompleteTrips = enabled);
     final prefs = await _getPrefs();
     await prefs.setBool(_keyAutoComplete, enabled);
+  }
+
+  Future<void> _setKeepScreenOn(bool enabled) async {
+    setState(() => _keepScreenOn = enabled);
+    final prefs = await _getPrefs();
+    await prefs.setBool(_keyKeepScreenOn, enabled);
+    _applyWakelockPolicy();
   }
 
   Future<void> _showEditCounterDialog({
@@ -834,11 +971,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: AppColors.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           title,
-          style: TextStyle(fontFamily: AppFonts.dmSans, 
+          style: const TextStyle(
+            fontFamily: AppFonts.dmSans,
             color: Colors.white,
             fontWeight: FontWeight.w900,
           ),
@@ -848,7 +986,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           keyboardType: TextInputType.number,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           autofocus: true,
-          style: TextStyle(fontFamily: AppFonts.dmSans, 
+          style: const TextStyle(
+            fontFamily: AppFonts.dmSans,
             color: Colors.white,
             fontSize: 24,
             fontWeight: FontWeight.w700,
@@ -867,14 +1006,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(
               S.cancel,
-              style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white54),
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
+                color: AppColors.mutedText,
+              ),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(
               S.save,
-              style: TextStyle(fontFamily: AppFonts.dmSans, 
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
                 color: _emerald,
                 fontWeight: FontWeight.w900,
               ),
@@ -895,16 +1038,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _setLanguage(AppLang lang) async {
     S.setLang(lang);
+    if (!mounted) return;
+    // Rebuild cached chrome (bottom bar + version footer) immediately so a
+    // language switch cannot leave last-frame Turkish labels on screen.
+    setState(() => _currentLang = lang);
     final prefs = await _getPrefs();
     await prefs.setString(_keyLang, lang.name);
-    if (!mounted) return;
-    setState(() => _currentLang = lang);
   }
 
   Future<void> _showLanguageSelector() async {
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: AppColors.sheet,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -957,46 +1102,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _toggleOverlay() async {
+    // Showing/closing the native overlay round-trips through the platform
+    // channel and the permission screen; without this guard the button just
+    // sits there looking dead and re-fires on every impatient tap.
+    if (_overlayToggleBusy) return;
+    setState(() => _overlayToggleBusy = true);
     try {
       final active = await FlutterOverlayWindow.isActive();
 
       if (active) {
         await FlutterOverlayWindow.closeOverlay();
         if (!mounted) return;
-        setState(() {
-          _overlayActive = false;
-          _updateCachedBottomBar();
-        });
+        setState(() => _overlayActive = false);
         return;
       }
 
-    final granted = await FlutterOverlayWindow.isPermissionGranted();
-    if (!granted) {
-      await FlutterOverlayWindow.requestPermission();
-      final check = await FlutterOverlayWindow.isPermissionGranted();
-      if (!check) return;
-    }
+      final granted = await FlutterOverlayWindow.isPermissionGranted();
+      if (!granted) {
+        await FlutterOverlayWindow.requestPermission();
+        final check = await FlutterOverlayWindow.isPermissionGranted();
+        if (!check) return;
+      }
+      if (!mounted) return;
 
-    // Native window sized to the pill (dp) so touches pass through elsewhere.
-    await FlutterOverlayWindow.showOverlay(
-      width: OverlayWidget.nativeWindowWidthDp,
-      height: OverlayWidget.nativeWindowHeightDp,
-      alignment: OverlayAlignment.topLeft,
-      visibility: NotificationVisibility.visibilitySecret,
-      flag: OverlayFlag.defaultFlag,
-      enableDrag: true,
-      positionGravity: PositionGravity.none,
-      startPosition: const OverlayPosition(0, 60),
-      overlayTitle: 'RateHelper',
-    );
+      // Native window sized to the pill (dp) so touches pass through elsewhere.
+      await FlutterOverlayWindow.showOverlay(
+        width: OverlayWidget.nativeWindowWidthDp,
+        height: OverlayWidget.nativeWindowHeightDp,
+        alignment: OverlayAlignment.topLeft,
+        visibility: NotificationVisibility.visibilitySecret,
+        flag: OverlayFlag.defaultFlag,
+        enableDrag: true,
+        positionGravity: PositionGravity.none,
+        startPosition: const OverlayPosition(0, 60),
+        overlayTitle: 'RateHelper',
+      );
 
       await OverlaySync.notifyCountersChanged();
 
       if (!mounted) return;
-      setState(() {
-        _overlayActive = true;
-        _updateCachedBottomBar();
-      });
+      setState(() => _overlayActive = true);
     } on PlatformException catch (e, s) {
       loge('overlay toggle failed', name: 'home', error: e, stack: s);
       if (!mounted) return;
@@ -1005,24 +1150,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(S.overlayToggleFailed),
-          backgroundColor: const Color(0xFF1A1A1A),
+          backgroundColor: AppColors.card,
         ),
       );
-    }
-  }
-
-  List<Map<String, dynamic>> _parseTapHistory(String? raw) {
-    if (raw == null) return [];
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return [];
-      return decoded
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList()
-          .reversed
-          .toList();
-    } catch (_) {
-      return [];
+    } finally {
+      if (mounted) {
+        setState(() => _overlayToggleBusy = false);
+      } else {
+        _overlayToggleBusy = false;
+      }
     }
   }
 
@@ -1033,15 +1169,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _showHistory() async {
     final prefs = await _getPrefs();
-    await prefs.reload();
+    await TapHistoryStore.instance.migrateFromPrefs(prefs);
     final archive = (prefs.getStringList(_keyArchive) ?? []).reversed.toList();
-    final taps = _parseTapHistory(prefs.getString(_keyTapHistory));
+    final taps = await TapHistoryStore.instance.readNewestFirst();
 
     if (!mounted) return;
 
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: AppColors.sheet,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -1055,7 +1191,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _showCrashLog() async {
-    String body = S.crashLogEmpty;
+    String body = '';
     final f = await CrashLogger.currentLogFile();
     if (f != null) {
       try {
@@ -1067,12 +1203,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // Stay with the empty-state placeholder.
       }
     }
+    final isEmpty = body.trim().isEmpty;
 
     if (!mounted) return;
 
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: AppColors.sheet,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -1086,74 +1223,97 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             children: [
               Text(
                 S.crashLogTitle,
-                style: TextStyle(fontFamily: AppFonts.dmSans, 
+                style: const TextStyle(
+                  fontFamily: AppFonts.dmSans,
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 2,
-                  color: Colors.white54,
+                  color: AppColors.labelText,
                 ),
               ),
               const SizedBox(height: 12),
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(ctx).size.height * 0.5,
-                ),
-                child: SingleChildScrollView(
-                  child: SelectableText(
-                    body,
-                    style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
-                      color: Colors.white,
-                      fontSize: 11,
-                      height: 1.4,
+              if (isEmpty)
+                AppEmptyState(
+                  compact: true,
+                  icon: Icons.verified_outlined,
+                  title: S.crashLogEmptyTitle,
+                  description: S.crashLogEmpty,
+                )
+              else ...[
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(ctx).size.height * 0.5,
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      body,
+                      style: const TextStyle(
+                        fontFamily: AppFonts.jetBrainsMono,
+                        color: Colors.white,
+                        fontSize: 11,
+                        height: 1.4,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () async {
-                        await Clipboard.setData(ClipboardData(text: body));
-                        if (!ctx.mounted) return;
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(
-                            content: Text(S.crashLogCopied),
-                            duration: const Duration(seconds: 1),
-                            backgroundColor: const Color(0xFF1A1A1A),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(0, kMinTouchTarget),
+                        ),
+                        onPressed: () async {
+                          await Clipboard.setData(ClipboardData(text: body));
+                          if (!ctx.mounted) return;
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(
+                              content: Text(S.crashLogCopied),
+                              duration: const Duration(seconds: 1),
+                              backgroundColor: AppColors.card,
+                            ),
+                          );
+                        },
+                        child: Text(
+                          S.crashLogCopy,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: AppFonts.dmSans,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.5,
                           ),
-                        );
-                      },
-                      child: Text(
-                        S.crashLogCopy,
-                        style: TextStyle(fontFamily: AppFonts.dmSans, 
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.5,
                         ),
                       ),
                     ),
-                  ),
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () async {
-                        await CrashLogger.clear();
-                        if (!ctx.mounted) return;
-                        Navigator.of(ctx).pop();
-                      },
-                      child: Text(
-                        S.crashLogClear,
-                        style: TextStyle(fontFamily: AppFonts.dmSans, 
-                          color: _crimson,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.5,
+                    Expanded(
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(0, kMinTouchTarget),
+                        ),
+                        onPressed: () async {
+                          await CrashLogger.clear();
+                          if (!ctx.mounted) return;
+                          Navigator.of(ctx).pop();
+                        },
+                        child: Text(
+                          S.crashLogClear,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: AppFonts.dmSans,
+                            color: _crimson,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.5,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -1165,32 +1325,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: AppColors.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           S.resetWeekTitle,
-          style: TextStyle(fontFamily: AppFonts.dmSans, 
+          style: const TextStyle(
+            fontFamily: AppFonts.dmSans,
             color: Colors.white,
             fontWeight: FontWeight.w900,
           ),
         ),
         content: Text(
           S.resetConfirm,
-          style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white70),
+          style: const TextStyle(
+            fontFamily: AppFonts.dmSans,
+            color: AppColors.mutedText,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(
               S.cancel,
-              style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white54),
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
+                color: AppColors.mutedText,
+              ),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(
               S.reset,
-              style: TextStyle(fontFamily: AppFonts.dmSans, 
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
                 color: _crimson,
                 fontWeight: FontWeight.w900,
               ),
@@ -1208,391 +1376,479 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final cancelColor = cancellationRate >= 5.0 ? _crimson : _emerald;
-    final recovery = neededForRecovery;
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
+    final logoCachePx =
+        (28 * MediaQuery.devicePixelRatioOf(context)).round();
+    return Listener(
+      onPointerDown: (_) => _onUserInteraction(),
+      child: Scaffold(
         backgroundColor: Colors.black,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(
-            Icons.undo_rounded,
-            color: _canUndo ? Colors.white : const Color(0x26FFFFFF),
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          leading: ValueListenableBuilder<bool>(
+            valueListenable: _undoAvailable,
+            builder: (context, canUndo, _) => IconButton(
+              icon: Icon(
+                Icons.undo_rounded,
+                color: canUndo ? Colors.white : const Color(0x26FFFFFF),
+              ),
+              onPressed: canUndo ? _undo : null,
+            ),
           ),
-          onPressed: _canUndo ? _undo : null,
-        ),
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.asset(
-                'assets/logo.png',
-                width: 28,
-                height: 28,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => Container(
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset(
+                  'assets/logo.png',
                   width: 28,
                   height: 28,
-                  decoration: BoxDecoration(
-                    color: _cardColor,
-                    borderRadius: BorderRadius.circular(8),
+                  cacheWidth: logoCachePx,
+                  cacheHeight: logoCachePx,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: _cardColor,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.local_taxi_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
                   ),
-                  child: const Icon(Icons.local_taxi_rounded, color: Colors.white, size: 18),
                 ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              'RateHelper',
-              style: TextStyle(fontFamily: AppFonts.dmSans, 
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: 0.3,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _overlayActive ? _emerald : const Color(0x44FFFFFF),
-                boxShadow: _overlayActive
-                    ? [
-                        BoxShadow(
-                          color: _emerald.withValues(alpha: 0.55),
-                          blurRadius: 6,
-                        ),
-                      ]
-                    : null,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
-            color: const Color(0xFF1A1A1A),
-            onSelected: (v) {
-              if (v == 'setup') {
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const SetupGuideScreen(),
-                  ),
-                );
-              } else if (v == 'crash') {
-                _showCrashLog();
-              } else if (v == 'driver_mode') {
-                _getPrefs().then((p) {
-                  if (!context.mounted) return;
-                  showDriverModeDialog(context, p, () {
-                    if (mounted) setState(() {});
-                  });
-                });
-              }
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                value: 'setup',
-                child: Text(
-                  S.setupGuide,
-                  style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white),
+              const SizedBox(width: 10),
+              const Text(
+                'RateHelper',
+                style: TextStyle(
+                  fontFamily: AppFonts.dmSans,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: 0.3,
                 ),
               ),
-              PopupMenuItem(
-                value: 'crash',
-                child: Text(
-                  S.crashLogTitle,
-                  style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white),
-                ),
-              ),
-              PopupMenuItem(
-                value: 'driver_mode',
-                child: Text(
-                  S.driverModeLabel(activeDriverMode == DriverMode.paired),
-                  style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white),
+              const SizedBox(width: 8),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _overlayActive ? _emerald : const Color(0x44FFFFFF),
+                  boxShadow: _overlayActive
+                      ? [
+                          BoxShadow(
+                            color: _emerald.withValues(alpha: 0.55),
+                            blurRadius: 6,
+                          ),
+                        ]
+                      : null,
                 ),
               ),
             ],
           ),
-        ],
-      ),
-      body: Stack(
-        fit: StackFit.expand,
-        clipBehavior: Clip.none,
-        children: [
-          SafeArea(
-            bottom: false,
-            child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                4,
-                20,
-                120 + MediaQuery.paddingOf(context).bottom,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-              _buildTripGoalSelectorChip(),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 110,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      flex: 1,
-                      child: _buildRateCard(
-                        label: S.acceptRate,
-                        value: S.formatPercent(acceptanceRate.toStringAsFixed(2)),
-                        color: _acceptRateColor,
-                      ),
+          actions: [
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+              color: AppColors.card,
+              onSelected: (v) {
+                if (v == 'setup') {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const SetupGuideScreen(),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 1,
-                      child: _buildRateCard(
-                        label: S.cancelRate,
-                        value: S.formatPercent(cancellationRate.toStringAsFixed(2)),
-                        color: cancelColor,
-                      ),
+                  );
+                } else if (v == 'crash') {
+                  _showCrashLog();
+                } else if (v == 'driver_mode') {
+                  _getPrefs().then((p) {
+                    if (!context.mounted) return;
+                    showDriverModeDialog(context, p, () {
+                      if (mounted) setState(() {});
+                    });
+                  });
+                }
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'setup',
+                  child: Text(
+                    S.setupGuide,
+                    style: const TextStyle(
+                      fontFamily: AppFonts.dmSans,
+                      color: Colors.white,
                     ),
-                  ],
-                ),
-              ),
-
-              if (recovery != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: _cardColor,
-                    border: _cardBorder,
-                    borderRadius: _cardRadius,
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.trending_up_rounded, color: _amber, size: 20),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          S.recovery(recovery, _selectedGoal.requiredAcceptRate!),
-                          style: TextStyle(fontFamily: AppFonts.dmSans, 
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: _amber,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                 ),
-              ] else if (_selectedGoal.requiredAcceptRate != null &&
-                  acceptanceRate >= _selectedGoal.requiredAcceptRate! &&
-                  acceptanceRate < _selectedGoal.requiredAcceptRate! + AMBER_BUFFER) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: _cardColor,
-                    border: _cardBorder,
-                    borderRadius: _cardRadius,
+                PopupMenuItem(
+                  value: 'crash',
+                  child: Text(
+                    S.crashLogTitle,
+                    style: const TextStyle(
+                      fontFamily: AppFonts.dmSans,
+                      color: Colors.white,
+                    ),
                   ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.shield_outlined, color: _amber, size: 20),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          S.safeButClose,
-                          style: TextStyle(fontFamily: AppFonts.dmSans, 
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: _amber,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
+                ),
+                PopupMenuItem(
+                  value: 'driver_mode',
+                  child: Text(
+                    S.driverModeLabel(activeDriverMode == DriverMode.paired),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: AppFonts.dmSans,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ],
-
-              if (_selectedGoal != TripGoal.tier0) ...[
-                Builder(
-                  builder: (context) {
-                    final budget = maxCancellationsBudget;
-                    if (budget == null) return const SizedBox.shrink();
-                    
-                    final isOverLimit = budget < 0;
-                    final isZeroBudget = budget == 0;
-                    
-                    final textColor = isOverLimit 
-                      ? _crimson 
-                      : (isZeroBudget ? _amber : _emerald);
-                      
-                    final icon = isOverLimit 
-                      ? Icons.warning_amber_rounded 
-                      : (isZeroBudget ? Icons.shield_outlined : Icons.info_outline_rounded);
-                      
-                    final text = isOverLimit 
-                      ? S.cancellationLimitExceeded 
-                      : S.maxAdditionalCancellations(budget);
-                      
-                    return Column(
-                      children: [
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                          decoration: BoxDecoration(
-                            color: _cardColor,
-                            border: _cardBorder,
-                            borderRadius: _cardRadius,
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(icon, color: textColor, size: 20),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  text,
-                                  style: TextStyle(fontFamily: AppFonts.dmSans, 
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: textColor,
-                                    height: 1.4,
+            ),
+          ],
+        ),
+        body: Stack(
+          fit: StackFit.expand,
+          clipBehavior: Clip.none,
+          children: [
+            SafeArea(
+              bottom: false,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  4,
+                  20,
+                  120 + MediaQuery.paddingOf(context).bottom,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildTripGoalSelectorChip(),
+                    const SizedBox(height: 12),
+                    ListenableBuilder(
+                      listenable: _ratesListenable,
+                      builder: (context, _) {
+                        final cancelColor = cancellationRate >= 5.0
+                            ? _crimson
+                            : _emerald;
+                        final recovery = neededForRecovery;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(
+                              height: 110,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Expanded(
+                                    flex: 1,
+                                    child: _buildRateCard(
+                                      label: S.acceptRate,
+                                      value: S.formatPercent(
+                                        acceptanceRate.toStringAsFixed(2),
+                                      ),
+                                      color: _acceptRateColor,
+                                    ),
                                   ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    flex: 1,
+                                    child: _buildRateCard(
+                                      label: S.cancelRate,
+                                      value: S.formatPercent(
+                                        cancellationRate.toStringAsFixed(2),
+                                      ),
+                                      color: cancelColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (recovery != null) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 14,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _cardColor,
+                                  border: _cardBorder,
+                                  borderRadius: _cardRadius,
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.trending_up_rounded,
+                                      color: _amber,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        S.recovery(
+                                          recovery,
+                                          _selectedGoal.requiredAcceptRate!,
+                                        ),
+                                        style: const TextStyle(
+                                          fontFamily: AppFonts.dmSans,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: _amber,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ] else if (_selectedGoal.requiredAcceptRate !=
+                                    null &&
+                                acceptanceRate >=
+                                    _selectedGoal.requiredAcceptRate! &&
+                                acceptanceRate <
+                                    _selectedGoal.requiredAcceptRate! +
+                                        AMBER_BUFFER) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 14,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _cardColor,
+                                  border: _cardBorder,
+                                  borderRadius: _cardRadius,
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.shield_outlined,
+                                      color: _amber,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        S.safeButClose,
+                                        style: const TextStyle(
+                                          fontFamily: AppFonts.dmSans,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: _amber,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
+                            if (_selectedGoal != TripGoal.tier0)
+                              Builder(
+                                builder: (context) {
+                                  final budget = maxCancellationsBudget;
+                                  if (budget == null) {
+                                    return const SizedBox.shrink();
+                                  }
+
+                                  final isOverLimit = budget < 0;
+                                  final isZeroBudget = budget == 0;
+
+                                  final textColor = isOverLimit
+                                      ? _crimson
+                                      : (isZeroBudget ? _amber : _emerald);
+
+                                  final icon = isOverLimit
+                                      ? Icons.warning_amber_rounded
+                                      : (isZeroBudget
+                                            ? Icons.shield_outlined
+                                            : Icons.info_outline_rounded);
+
+                                  final text = isOverLimit
+                                      ? S.cancellationLimitExceeded
+                                      : S.maxAdditionalCancellations(budget);
+
+                                  return Column(
+                                    children: [
+                                      const SizedBox(height: 12),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 14,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _cardColor,
+                                          border: _cardBorder,
+                                          borderRadius: _cardRadius,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              icon,
+                                              color: textColor,
+                                              size: 20,
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Text(
+                                                text,
+                                                style: TextStyle(
+                                                  fontFamily: AppFonts.dmSans,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: textColor,
+                                                  height: 1.4,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+
+                    const SizedBox(height: 32),
+
+                    _sectionHeader(S.requests),
+                    const SizedBox(height: 12),
+                    _CounterRow(
+                      label: S.accepted,
+                      valueListenable: _accepted,
+                      onDelta: (d) => _change(_keyAccepted, d),
+                      onEdit: () => _showEditCounterDialog(
+                        title: S.editAcceptedTitle,
+                        currentValue: acceptedRequests,
+                        onSave: (v) => _setCounter(_keyAccepted, v),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    _CounterRow(
+                      label: S.rejected,
+                      valueListenable: _rejected,
+                      onDelta: (d) => _change(_keyRejected, d),
+                      onEdit: () => _showEditCounterDialog(
+                        title: S.editRejectedTitle,
+                        currentValue: rejectedRequests,
+                        onSave: (v) => _setCounter(_keyRejected, v),
+                      ),
+                    ),
+
+                    const SizedBox(height: 28),
+
+                    _sectionHeader(S.trips),
+                    const SizedBox(height: 12),
+                    _buildAutoCompleteSwitch(),
+                    const SizedBox(height: 10),
+                    _buildSteeringWheelSwitch(),
+                    const SizedBox(height: 10),
+                    _buildKeepScreenOnSwitch(),
+                    const SizedBox(height: 10),
+                    _CounterRow(
+                      label: S.completed,
+                      valueListenable: _completed,
+                      onDelta: (d) => _change(_keyCompleted, d),
+                      onEdit: () => _showEditCounterDialog(
+                        title: S.editCompletedTitle,
+                        currentValue: completedTrips,
+                        onSave: (v) => _setCounter(_keyCompleted, v),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    _CounterRow(
+                      label: S.cancelled,
+                      valueListenable: _canceled,
+                      onDelta: (d) => _change(_keyCanceled, d),
+                      onEdit: () => _showEditCounterDialog(
+                        title: S.editCancelledTitle,
+                        currentValue: canceledTrips,
+                        onSave: (v) => _setCounter(_keyCanceled, v),
+                      ),
+                    ),
+
+                    const SizedBox(height: 40),
+
+                    GestureDetector(
+                      onTap: _showManualResetDialog,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        decoration: BoxDecoration(
+                          color: _cardColor,
+                          border: _cardBorder,
+                          borderRadius: _cardRadius,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          S.resetWeek,
+                          style: const TextStyle(
+                            fontFamily: AppFonts.dmSans,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 2,
+                            color: _crimson,
                           ),
                         ),
-                      ],
-                    );
-                  }
-                ),
-              ],
-
-              const SizedBox(height: 32),
-
-
-              _sectionHeader(S.requests),
-              const SizedBox(height: 12),
-              _buildCounterRow(
-                label: S.accepted,
-                value: acceptedRequests,
-                key: _keyAccepted,
-                onValueTap: () => _showEditCounterDialog(
-                  title: S.editAcceptedTitle,
-                  currentValue: acceptedRequests,
-                  onSave: (value) => _setCounter(_keyAccepted, value),
-                ),
-              ),
-              const SizedBox(height: 10),
-              _buildCounterRow(
-                label: S.rejected,
-                value: rejectedRequests,
-                key: _keyRejected,
-                onValueTap: () => _showEditCounterDialog(
-                  title: S.editRejectedTitle,
-                  currentValue: rejectedRequests,
-                  onSave: (value) => _setCounter(_keyRejected, value),
-                ),
-              ),
-
-              const SizedBox(height: 28),
-
-              _sectionHeader(S.trips),
-              const SizedBox(height: 12),
-              _buildAutoCompleteSwitch(),
-              const SizedBox(height: 10),
-              _buildSteeringWheelSwitch(),
-              const SizedBox(height: 10),
-              _buildCounterRow(
-                label: S.completed,
-                value: completedTrips,
-                key: _keyCompleted,
-                onValueTap: () => _showEditCounterDialog(
-                  title: S.editCompletedTitle,
-                  currentValue: completedTrips,
-                  onSave: (value) => _setCounter(_keyCompleted, value),
-                ),
-              ),
-              const SizedBox(height: 10),
-              _buildCounterRow(
-                label: S.cancelled,
-                value: canceledTrips,
-                key: _keyCanceled,
-                onValueTap: () => _showEditCounterDialog(
-                  title: S.editCancelledTitle,
-                  currentValue: canceledTrips,
-                  onSave: (value) => _setCounter(_keyCanceled, value),
-                ),
-              ),
-
-              const SizedBox(height: 40),
-
-              GestureDetector(
-                onTap: _showManualResetDialog,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  decoration: BoxDecoration(
-                    color: _cardColor,
-                    border: _cardBorder,
-                    borderRadius: _cardRadius,
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    S.resetWeek,
-                    style: TextStyle(fontFamily: AppFonts.dmSans, 
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2,
-                      color: _crimson,
+                      ),
                     ),
-                  ),
+
+                    const SizedBox(height: 20),
+                    KeyedSubtree(
+                      key: ValueKey('footer-$_currentLang'),
+                      child: Column(
+                        children: [
+                          Center(child: _buildDesignerSignature()),
+                          const SizedBox(height: 12),
+                          Center(child: _buildReleaseInfoRow()),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                 ),
               ),
-
-              const SizedBox(height: 20),
-              _staticFooter,
-                ],
+            ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  24 + MediaQuery.paddingOf(context).bottom,
+                ),
+                child: KeyedSubtree(
+                  key: ValueKey('nav-$_currentLang'),
+                  child: _buildBottomActionBar(),
+                ),
               ),
             ),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                0,
-                16,
-                24 + MediaQuery.paddingOf(context).bottom,
-              ),
-              child: _cachedBottomBar,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildBottomActionBar() {
     return Material(
-      color: const Color(0xFF1E1E1E),
+      color: AppColors.elevated,
       elevation: 12,
       shadowColor: Colors.black54,
       borderRadius: BorderRadius.circular(32),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: const Color(0x1AFFFFFF)),
+          border: Border.all(color: AppColors.hairline),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
         child: Row(
@@ -1607,6 +1863,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Expanded(
               child: _BottomBarWidgetToggle(
                 active: _overlayActive,
+                busy: _overlayToggleBusy,
                 onTap: _toggleOverlay,
               ),
             ),
@@ -1643,9 +1900,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_navInFlight) return; // swallow the accidental second tap
     _navInFlight = true;
     try {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => builder()),
-      );
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => builder()));
     } finally {
       _navInFlight = false;
     }
@@ -1656,21 +1913,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _openEarnings() async {
     await _pushGuarded(() => const EarningsScreen());
     if (mounted) setState(() {});
-  }
-
-  void _updateStaticFooter() {
-    _staticFooter = Column(
-      children: [
-        Center(child: _buildDesignerSignature()),
-        const SizedBox(height: 12),
-        Center(child: _buildReleaseInfoRow()),
-        const SizedBox(height: 16),
-      ],
-    );
-  }
-
-  void _updateCachedBottomBar() {
-    _cachedBottomBar = _buildBottomActionBar();
   }
 
   Widget _buildDesignerSignature() {
@@ -1684,9 +1926,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
+          const Text(
             'KK4181R',
-            style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
+            style: TextStyle(
+              fontFamily: AppFonts.jetBrainsMono,
               fontSize: 11,
               color: _designerGold,
               letterSpacing: 2.5,
@@ -1697,7 +1940,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           const SizedBox(height: 3),
           Text(
             S.designer,
-            style: TextStyle(fontFamily: AppFonts.dmSans, 
+            style: TextStyle(
+              fontFamily: AppFonts.dmSans,
               fontSize: 9,
               fontWeight: FontWeight.w600,
               letterSpacing: 1.5,
@@ -1716,17 +1960,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         setState(() => _showRawVersion = !_showRawVersion);
       },
       behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: kMinTouchTarget),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               'RateHelper — ${S.releaseName}',
               textAlign: TextAlign.center,
-              style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
+              style: const TextStyle(
+                fontFamily: AppFonts.jetBrainsMono,
                 fontSize: 10,
-                color: const Color(0x77FFFFFF),
+                color: AppColors.mutedText,
                 letterSpacing: 1.2,
                 fontWeight: FontWeight.w500,
               ),
@@ -1734,18 +1981,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             if (_versionLabel.isNotEmpty) ...[
               const SizedBox(height: 3),
               Text(
-                _showRawVersion
-                    ? '${S.version} $_versionLabel'
-                    : _versionLabel,
+                _showRawVersion ? '${S.version} $_versionLabel' : _versionLabel,
                 textAlign: TextAlign.center,
-                style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
-                  fontSize: 8,
-                  color: _showRawVersion
-                      ? const Color(0x77FFFFFF)
-                      : const Color(0x38FFFFFF),
-                  letterSpacing: 1.0,
-                  fontWeight: FontWeight.w400,
-                ),
+                style: _showRawVersion
+                    ? const TextStyle(
+                        fontFamily: AppFonts.jetBrainsMono,
+                        fontSize: 9,
+                        color: AppColors.mutedText,
+                        letterSpacing: 1.0,
+                        fontWeight: FontWeight.w400,
+                      )
+                    : const TextStyle(
+                        fontFamily: AppFonts.jetBrainsMono,
+                        fontSize: 9,
+                        color: AppColors.disabledText,
+                        letterSpacing: 1.0,
+                        fontWeight: FontWeight.w400,
+                      ),
               ),
             ],
             if (_showRawVersion &&
@@ -1756,9 +2008,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               SelectableText(
                 'SIG: $_debugBuildSignature',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
+                style: const TextStyle(
+                  fontFamily: AppFonts.jetBrainsMono,
                   fontSize: 8,
-                  color: const Color(0x55FFFFFF),
+                  color: Color(0x55FFFFFF),
                   letterSpacing: 0.5,
                   height: 1.3,
                 ),
@@ -1782,19 +2035,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
         child: Row(
           children: [
-            Icon(Icons.flag_rounded, color: _amber, size: 20),
+            const Icon(Icons.flag_rounded, color: _amber, size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                S.tripGoalChip(_selectedGoal.minTrips, _selectedGoal.requiredAcceptRate),
-                style: TextStyle(fontFamily: AppFonts.dmSans, 
+                S.tripGoalChip(
+                  _selectedGoal.minTrips,
+                  _selectedGoal.requiredAcceptRate,
+                ),
+                style: const TextStyle(
+                  fontFamily: AppFonts.dmSans,
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: Colors.white,
                 ),
               ),
             ),
-            const Icon(Icons.expand_more_rounded, color: Colors.white54, size: 20),
+            const Icon(
+              Icons.expand_more_rounded,
+              color: AppColors.mutedText,
+              size: 20,
+            ),
           ],
         ),
       ),
@@ -1804,7 +2065,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _showTripGoalSelector() {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF161616),
+      backgroundColor: AppColors.dialog,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1817,10 +2078,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   child: Text(
                     S.tripGoalTitle,
-                    style: TextStyle(fontFamily: AppFonts.dmSans, 
+                    style: const TextStyle(
+                      fontFamily: AppFonts.dmSans,
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: Colors.white,
@@ -1834,21 +2099,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     selected: _selectedGoal == goal,
-                    selectedTileColor: const Color(0xFF242424),
+                    selectedTileColor: AppColors.selected,
                     leading: Icon(
                       Icons.outlined_flag_rounded,
-                      color: _selectedGoal == goal ? _amber : Colors.white54,
+                      color: _selectedGoal == goal
+                          ? _amber
+                          : AppColors.mutedText,
                     ),
                     title: Text(
                       S.tripGoalOption(goal.minTrips, goal.requiredAcceptRate),
-                      style: TextStyle(fontFamily: AppFonts.dmSans, 
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: AppFonts.dmSans,
                         fontSize: 14,
-                        fontWeight: _selectedGoal == goal ? FontWeight.w800 : FontWeight.w500,
-                        color: _selectedGoal == goal ? Colors.white : Colors.white70,
+                        fontWeight: _selectedGoal == goal
+                            ? FontWeight.w800
+                            : FontWeight.w500,
+                        color: _selectedGoal == goal
+                            ? Colors.white
+                            : AppColors.mutedText,
                       ),
                     ),
                     trailing: _selectedGoal == goal
-                        ? Icon(Icons.check_circle_rounded, color: _amber, size: 20)
+                        ? const Icon(
+                            Icons.check_circle_rounded,
+                            color: _amber,
+                            size: 20,
+                          )
                         : null,
                     onTap: () {
                       Navigator.pop(ctx);
@@ -1886,11 +2164,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             label,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontFamily: AppFonts.dmSans, 
+            style: const TextStyle(
+              fontFamily: AppFonts.dmSans,
               fontSize: 10,
               fontWeight: FontWeight.w700,
               letterSpacing: 2,
-              color: Colors.white38,
+              color: AppColors.labelText,
             ),
           ),
           const SizedBox(height: 10),
@@ -1902,12 +2181,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   value,
-                  style: TextStyle(fontFamily: AppFonts.dmSans, 
-                    fontSize: 36,
-                    fontWeight: FontWeight.w900,
-                    color: color,
-                    height: 1,
-                  ),
+                  style: T.rateFor(color),
                 ),
               ),
             ),
@@ -1922,11 +2196,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       padding: const EdgeInsets.only(left: 4),
       child: Text(
         title,
-        style: TextStyle(fontFamily: AppFonts.dmSans, 
+        style: const TextStyle(
+          fontFamily: AppFonts.dmSans,
           fontSize: 12,
           fontWeight: FontWeight.w800,
           letterSpacing: 1.5,
-          color: Colors.white38,
+          color: AppColors.labelText,
         ),
       ),
     );
@@ -1945,10 +2220,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Expanded(
             child: Text(
               S.autoCompleteTrips,
-              style: TextStyle(fontFamily: AppFonts.dmSans, 
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Colors.white70,
+                color: AppColors.mutedText,
               ),
             ),
           ),
@@ -1976,10 +2252,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Expanded(
             child: Text(
               S.steeringWheelCounter,
-              style: TextStyle(fontFamily: AppFonts.dmSans, 
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Colors.white70,
+                color: AppColors.mutedText,
               ),
             ),
           ),
@@ -1994,33 +2271,105 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildKeepScreenOnSwitch() {
+    return Container(
+      decoration: BoxDecoration(
+        color: _cardColor,
+        border: _cardBorder,
+        borderRadius: _cardRadius,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              S.keepScreenOn,
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.mutedText,
+              ),
+            ),
+          ),
+          Switch(
+            value: _keepScreenOn,
+            onChanged: _setKeepScreenOn,
+            activeThumbColor: _emerald,
+            activeTrackColor: _emerald.withValues(alpha: 0.45),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _setSteeringWheelCounter(bool enabled) async {
     if (enabled) {
       try {
-        final bool isServiceActive = await _kSysChannel.invokeMethod('isAccessibilityServiceEnabled') ?? false;
+        final bool isServiceActive =
+            await _kSysChannel.invokeMethod('isAccessibilityServiceEnabled') ??
+            false;
         if (!isServiceActive) {
           if (!mounted) return;
           final bool? open = await showDialog<bool>(
             context: context,
             builder: (ctx) => AlertDialog(
-              backgroundColor: const Color(0xFF1E2430),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              backgroundColor: AppColors.dialogAlt,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               title: Text(
                 S.steeringWheelDialogTitle,
-                style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontFamily: AppFonts.dmSans,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              content: Text(
-                S.steeringWheelDialogDesc,
-                style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white70),
+              // Longest body copy in the app (~180 chars in Polish) — must
+              // stay scrollable on short screens.
+              content: SingleChildScrollView(
+                child: Text(
+                  S.steeringWheelDialogDesc,
+                  style: const TextStyle(
+                    fontFamily: AppFonts.dmSans,
+                    color: AppColors.mutedText,
+                    height: 1.4,
+                  ),
+                ),
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
-                  child: Text(S.cancel, style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white54)),
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(0, kMinTouchTarget),
+                  ),
+                  child: Text(
+                    S.cancel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: AppFonts.dmSans,
+                      color: AppColors.mutedText,
+                    ),
+                  ),
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, true),
-                  child: Text(S.openSettings, style: TextStyle(fontFamily: AppFonts.dmSans, color: _emerald, fontWeight: FontWeight.bold)),
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(0, kMinTouchTarget),
+                  ),
+                  child: Text(
+                    S.openSettings,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: AppFonts.dmSans,
+                      color: _emerald,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -2039,97 +2388,128 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final prefs = await _getPrefs();
     await prefs.setBool(_keySteeringWheel, enabled);
   }
+}
 
-  Widget _buildCounterRow({
-    required String label,
-    required int value,
-    required String key,
-    VoidCallback? onValueTap,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardColor,
-        border: _cardBorder,
-        borderRadius: _cardRadius,
-      ),
-      padding: const EdgeInsets.only(left: 20, top: 16, bottom: 16, right: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+/// Isolated so a +/- tap rebuilds only this row, not the whole home screen.
+class _CounterRow extends StatelessWidget {
+  const _CounterRow({
+    required this.label,
+    required this.valueListenable,
+    required this.onDelta,
+    this.onEdit,
+  });
+
+  final String label;
+  final ValueNotifier<int> valueListenable;
+  final void Function(int delta) onDelta;
+  final VoidCallback? onEdit;
+
+  static const _valueStyle = TextStyle(
+    fontFamily: AppFonts.dmSans,
+    fontSize: 48,
+    fontWeight: FontWeight.w900,
+    color: Colors.white,
+    height: 1,
+    decoration: TextDecoration.underline,
+    decorationColor: AppColors.labelText,
+  );
+
+  static const _labelStyle = TextStyle(
+    fontFamily: AppFonts.dmSans,
+    fontSize: 13,
+    fontWeight: FontWeight.w600,
+    color: AppColors.mutedText,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          border: Border.all(color: AppColors.cardBorderColor, width: 1),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        padding: const EdgeInsets.only(left: 20, top: 16, bottom: 16, right: 8),
+        child: ValueListenableBuilder<int>(
+          valueListenable: valueListenable,
+          builder: (context, value, _) {
+            return Row(
               children: [
-                Text(
-                  label,
-                  style: TextStyle(fontFamily: AppFonts.dmSans, 
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white70,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                GestureDetector(
-                  onTap: onValueTap == null
-                      ? null
-                      : () {
-                          HapticFeedback.selectionClick();
-                          onValueTap();
-                        },
-                  onLongPress: onValueTap == null
-                      ? null
-                      : () {
-                          HapticFeedback.mediumImpact();
-                          onValueTap();
-                        },
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          '$value',
-                          style: TextStyle(fontFamily: AppFonts.dmSans, 
-                            fontSize: 48,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            height: 1,
-                            decoration: onValueTap != null
-                                ? TextDecoration.underline
-                                : TextDecoration.none,
-                            decorationColor: Colors.white38,
-                          ),
+                      Text(label, style: _labelStyle),
+                      const SizedBox(height: 4),
+                      GestureDetector(
+                        onTap: onEdit == null
+                            ? null
+                            : () {
+                                HapticFeedback.selectionClick();
+                                onEdit!();
+                              },
+                        onLongPress: onEdit == null
+                            ? null
+                            : () {
+                                HapticFeedback.mediumImpact();
+                                onEdit!();
+                              },
+                        behavior: HitTestBehavior.opaque,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text('$value', style: _valueStyle),
+                            ),
+                            if (onEdit != null) ...[
+                              const SizedBox(width: 8),
+                              const Icon(
+                                Icons.edit_rounded,
+                                size: 22,
+                                color: AppColors.labelText,
+                              ),
+                            ],
+                          ],
                         ),
                       ),
-                      if (onValueTap != null) ...[
-                        const SizedBox(width: 8),
-                        const Icon(
-                          Icons.edit_rounded,
-                          size: 22,
-                          color: Colors.white38,
-                        ),
-                      ],
                     ],
                   ),
                 ),
+                _CounterIconButton(
+                  icon: Icons.remove_rounded,
+                  onTap: () {
+                    HapticFeedback.mediumImpact();
+                    onDelta(-1);
+                  },
+                ),
+                const SizedBox(width: 6),
+                _CounterIconButton(
+                  icon: Icons.add_rounded,
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    onDelta(1);
+                  },
+                ),
               ],
-            ),
-          ),
-          _buildIconButton(Icons.remove_rounded, () {
-            HapticFeedback.mediumImpact();
-            _change(key, -1);
-          }),
-          const SizedBox(width: 6),
-          _buildIconButton(Icons.add_rounded, () {
-            HapticFeedback.lightImpact();
-            _change(key, 1);
-          }),
-        ],
+            );
+          },
+        ),
       ),
     );
   }
+}
 
-  Widget _buildIconButton(IconData icon, VoidCallback onTap) {
+class _CounterIconButton extends StatelessWidget {
+  const _CounterIconButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -2175,10 +2555,11 @@ class _BottomBarAction extends StatelessWidget {
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontFamily: AppFonts.dmSans, 
+                style: const TextStyle(
+                  fontFamily: AppFonts.dmSans,
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white70,
+                  color: AppColors.mutedText,
                   letterSpacing: 0.2,
                 ),
               ),
@@ -2193,12 +2574,14 @@ class _BottomBarAction extends StatelessWidget {
 class _BottomBarWidgetToggle extends StatelessWidget {
   const _BottomBarWidgetToggle({
     required this.active,
+    required this.busy,
     required this.onTap,
   });
 
-  static const _emerald = Color(0xFF10B981);
+  static const _emerald = AppColors.emerald;
 
   final bool active;
+  final bool busy;
   final VoidCallback onTap;
 
   @override
@@ -2206,7 +2589,7 @@ class _BottomBarWidgetToggle extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
+        onTap: busy ? null : onTap,
         borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -2225,11 +2608,22 @@ class _BottomBarWidgetToggle extends StatelessWidget {
                     width: 1.5,
                   ),
                 ),
-                child: Icon(
-                  active ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                  color: active ? Colors.white : _emerald,
-                  size: 28,
-                ),
+                child: busy
+                    ? Center(
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.6,
+                            color: active ? Colors.white : _emerald,
+                          ),
+                        ),
+                      )
+                    : Icon(
+                        active ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                        color: active ? Colors.white : _emerald,
+                        size: 28,
+                      ),
               ),
               const SizedBox(height: 4),
               Text(
@@ -2237,12 +2631,21 @@ class _BottomBarWidgetToggle extends StatelessWidget {
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontFamily: AppFonts.dmSans, 
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: active ? _emerald : Colors.white70,
-                  letterSpacing: 0.2,
-                ),
+                style: active
+                    ? const TextStyle(
+                        fontFamily: AppFonts.dmSans,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.emerald,
+                        letterSpacing: 0.2,
+                      )
+                    : const TextStyle(
+                        fontFamily: AppFonts.dmSans,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.mutedText,
+                        letterSpacing: 0.2,
+                      ),
               ),
             ],
           ),
@@ -2269,10 +2672,9 @@ class _HistorySheet extends StatefulWidget {
 
 class _HistorySheetState extends State<_HistorySheet>
     with SingleTickerProviderStateMixin {
-  static const _keyTapHistory = 'tapHistory';
   static const _keyArchive = 'weekly_archive';
-  static const _emerald = Color(0xFF10B981);
-  static const _crimson = Color(0xFFEF4444);
+  static const _emerald = AppColors.emerald;
+  static const _crimson = AppColors.crimson;
 
   late final TabController _tabController;
   late final List<({Map<String, dynamic> raw, DateTime? local})> _parsedTaps;
@@ -2283,10 +2685,16 @@ class _HistorySheetState extends State<_HistorySheet>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _parsedTaps = widget.taps.map((e) => (
-      raw: e,
-      local: DateTime.tryParse(e['timestamp']?.toString() ?? '')?.toLocal(),
-    )).toList();
+    _parsedTaps = widget.taps
+        .map(
+          (e) => (
+            raw: e,
+            local: DateTime.tryParse(
+              e['timestamp']?.toString() ?? '',
+            )?.toLocal(),
+          ),
+        )
+        .toList();
     _archive = List<String>.from(widget.archive);
     _tabController.addListener(() {
       setState(() {});
@@ -2318,7 +2726,8 @@ class _HistorySheetState extends State<_HistorySheet>
     if (t.local == null) return hhmm;
 
     final now = DateTime.now();
-    final isToday = t.local!.year == now.year &&
+    final isToday =
+        t.local!.year == now.year &&
         t.local!.month == now.month &&
         t.local!.day == now.day;
     if (isToday) return hhmm;
@@ -2329,32 +2738,40 @@ class _HistorySheetState extends State<_HistorySheet>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: AppColors.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           S.tapLogTab,
-          style: TextStyle(fontFamily: AppFonts.dmSans, 
+          style: const TextStyle(
+            fontFamily: AppFonts.dmSans,
             color: Colors.white,
             fontWeight: FontWeight.w900,
           ),
         ),
         content: Text(
           S.tapHistoryClearConfirm,
-          style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white70),
+          style: const TextStyle(
+            fontFamily: AppFonts.dmSans,
+            color: AppColors.mutedText,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(
               S.cancel,
-              style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white54),
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
+                color: AppColors.mutedText,
+              ),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(
               S.tapHistoryClear,
-              style: TextStyle(fontFamily: AppFonts.dmSans, 
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
                 color: _crimson,
                 fontWeight: FontWeight.w900,
               ),
@@ -2366,8 +2783,9 @@ class _HistorySheetState extends State<_HistorySheet>
 
     if (confirmed != true || !mounted) return;
 
+    await TapHistoryStore.instance.clear();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_keyTapHistory);
+    await prefs.remove(TapHistoryStore.prefsKey);
     setState(() => _parsedTaps.clear());
   }
 
@@ -2375,32 +2793,40 @@ class _HistorySheetState extends State<_HistorySheet>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: AppColors.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           S.weeklyTab,
-          style: TextStyle(fontFamily: AppFonts.dmSans, 
+          style: const TextStyle(
+            fontFamily: AppFonts.dmSans,
             color: Colors.white,
             fontWeight: FontWeight.w900,
           ),
         ),
         content: Text(
           S.weeklyArchiveClearConfirm,
-          style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white70),
+          style: const TextStyle(
+            fontFamily: AppFonts.dmSans,
+            color: AppColors.mutedText,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(
               S.cancel,
-              style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white54),
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
+                color: AppColors.mutedText,
+              ),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(
               S.weeklyArchiveClear,
-              style: TextStyle(fontFamily: AppFonts.dmSans, 
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
                 color: _crimson,
                 fontWeight: FontWeight.w900,
               ),
@@ -2444,21 +2870,34 @@ class _HistorySheetState extends State<_HistorySheet>
                 Expanded(
                   child: Text(
                     S.history,
-                    style: TextStyle(fontFamily: AppFonts.dmSans, 
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: AppFonts.dmSans,
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 2,
-                      color: Colors.white38,
+                      color: AppColors.labelText,
                     ),
                   ),
                 ),
-                if (_tabController.index == 0)
-                  TextButton.icon(
-                    onPressed: _parsedTaps.isEmpty ? null : _confirmClearTapHistory,
+                const SizedBox(width: 8),
+                Flexible(
+                  child: TextButton.icon(
+                    onPressed: _tabController.index == 0
+                        ? (_parsedTaps.isEmpty ? null : _confirmClearTapHistory)
+                        : (_archive.isEmpty
+                              ? null
+                              : _confirmClearWeeklyArchive),
                     icon: const Icon(Icons.delete_outline_rounded, size: 18),
                     label: Text(
-                      S.tapHistoryClear,
-                      style: TextStyle(fontFamily: AppFonts.dmSans, 
+                      _tabController.index == 0
+                          ? S.tapHistoryClear
+                          : S.weeklyArchiveClear,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: AppFonts.dmSans,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.5,
@@ -2466,28 +2905,12 @@ class _HistorySheetState extends State<_HistorySheet>
                     ),
                     style: TextButton.styleFrom(
                       foregroundColor: _crimson,
-                      disabledForegroundColor: Colors.white24,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                  )
-                else
-                  TextButton.icon(
-                    onPressed: _archive.isEmpty ? null : _confirmClearWeeklyArchive,
-                    icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                    label: Text(
-                      S.weeklyArchiveClear,
-                      style: TextStyle(fontFamily: AppFonts.dmSans, 
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    style: TextButton.styleFrom(
-                      foregroundColor: _crimson,
-                      disabledForegroundColor: Colors.white24,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      disabledForegroundColor: AppColors.disabledText,
+                      minimumSize: const Size(0, kMinTouchTarget),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
                     ),
                   ),
+                ),
               ],
             ),
             const SizedBox(height: 14),
@@ -2495,20 +2918,23 @@ class _HistorySheetState extends State<_HistorySheet>
               controller: _tabController,
               indicatorColor: _emerald,
               labelColor: Colors.white,
-              unselectedLabelColor: Colors.white38,
-              labelStyle: TextStyle(fontFamily: AppFonts.dmSans, 
+              unselectedLabelColor: AppColors.labelText,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+              labelStyle: const TextStyle(
+                fontFamily: AppFonts.dmSans,
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.5,
               ),
-              unselectedLabelStyle: TextStyle(fontFamily: AppFonts.dmSans, 
+              unselectedLabelStyle: const TextStyle(
+                fontFamily: AppFonts.dmSans,
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 1.5,
               ),
               tabs: [
-                Tab(text: S.tapLogTab),
-                Tab(text: S.weeklyTab),
+                _OverflowSafeTab(label: S.tapLogTab),
+                _OverflowSafeTab(label: S.weeklyTab),
               ],
             ),
             const SizedBox(height: 12),
@@ -2562,15 +2988,11 @@ class _HistorySheetState extends State<_HistorySheet>
         const SizedBox(height: 12),
         Expanded(
           child: entries.isEmpty
-              ? Align(
-                  alignment: Alignment.topCenter,
-                  child: Text(
-                    S.noTapHistory,
-                    style: TextStyle(fontFamily: AppFonts.dmSans, 
-                      color: Colors.white54,
-                      fontSize: 15,
-                    ),
-                  ),
+              ? AppEmptyState(
+                  compact: true,
+                  icon: Icons.touch_app_outlined,
+                  title: S.noTapHistoryTitle,
+                  description: _todayOnly ? S.noTapHistory : S.noTapHistoryDesc,
                 )
               : ListView.separated(
                   itemCount: entries.length,
@@ -2584,10 +3006,10 @@ class _HistorySheetState extends State<_HistorySheet>
                         vertical: 12,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A1A1A),
+                        color: AppColors.card,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: const Color(0x0DFFFFFF),
+                          color: AppColors.cardBorderColor,
                           width: 1,
                         ),
                       ),
@@ -2601,19 +3023,29 @@ class _HistorySheetState extends State<_HistorySheet>
                           Expanded(
                             child: Text(
                               accepted ? S.tapAcceptShort : S.tapRejectShort,
-                              style: TextStyle(fontFamily: AppFonts.dmSans, 
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontFamily: AppFonts.dmSans,
                                 color: accepted ? _emerald : _crimson,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
-                          Text(
-                            _tapTimeLabel(entry),
-                            style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
-                              color: Colors.white70,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              _tapTimeLabel(entry),
+                              maxLines: 1,
+                              softWrap: false,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontFamily: AppFonts.jetBrainsMono,
+                                color: AppColors.mutedText,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                         ],
@@ -2628,12 +3060,11 @@ class _HistorySheetState extends State<_HistorySheet>
 
   Widget _buildWeeklyTab() {
     if (_archive.isEmpty) {
-      return Align(
-        alignment: Alignment.topCenter,
-        child: Text(
-          S.noHistory,
-          style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white54, fontSize: 15),
-        ),
+      return AppEmptyState(
+        compact: true,
+        icon: Icons.inventory_2_outlined,
+        title: S.noHistoryTitle,
+        description: S.noHistoryDesc,
       );
     }
 
@@ -2645,11 +3076,29 @@ class _HistorySheetState extends State<_HistorySheet>
   }
 }
 
+/// Tab label that shrinks to fit rather than clipping — the Polish labels
+/// ("DOTKNIĘCIA", "TYGODNIOWE") are much wider than the Turkish ones.
+class _OverflowSafeTab extends StatelessWidget {
+  const _OverflowSafeTab({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tab(
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(label, maxLines: 1, softWrap: false),
+      ),
+    );
+  }
+}
+
 class _ArchiveCard extends StatelessWidget {
   const _ArchiveCard({required this.rawEntry});
 
-  static const _emerald = Color(0xFF10B981);
-  static const _crimson = Color(0xFFEF4444);
+  static const _emerald = AppColors.emerald;
+  static const _crimson = AppColors.crimson;
 
   final String rawEntry;
 
@@ -2660,8 +3109,8 @@ class _ArchiveCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        border: Border.all(color: const Color(0x0DFFFFFF)),
+        color: AppColors.card,
+        border: Border.all(color: AppColors.cardBorderColor),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -2669,22 +3118,28 @@ class _ArchiveCard extends StatelessWidget {
         children: [
           Text(
             entry.getFormattedDateRange(),
-            style: TextStyle(fontFamily: AppFonts.dmSans, 
+            style: const TextStyle(
+              fontFamily: AppFonts.dmSans,
               fontSize: 14,
               fontWeight: FontWeight.w700,
               color: Colors.white,
             ),
           ),
           const SizedBox(height: 10),
-          Row(
+          // Wrap, not Row: the Polish chip labels ("Akceptacja"/"Anulowanie")
+          // are long enough to overflow side by side on a narrow sheet.
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
               _buildStatChip(
-                label: '%${entry.acceptRate.toStringAsFixed(0)} ${S.archiveAccept}',
+                label:
+                    '%${entry.acceptRate.toStringAsFixed(0)} ${S.archiveAccept}',
                 color: entry.acceptRate >= 80 ? _emerald : _crimson,
               ),
-              const SizedBox(width: 8),
               _buildStatChip(
-                label: '%${entry.cancelRate.toStringAsFixed(0)} ${S.archiveCancel}',
+                label:
+                    '%${entry.cancelRate.toStringAsFixed(0)} ${S.archiveCancel}',
                 color: entry.cancelRate <= 5 ? _emerald : _crimson,
               ),
             ],
@@ -2693,9 +3148,12 @@ class _ArchiveCard extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               '${S.accepted}: ${entry.acceptedCount} · ${S.rejected}: ${entry.rejectedCount}',
-              style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: AppFonts.jetBrainsMono,
                 fontSize: 12,
-                color: Colors.white54,
+                color: AppColors.mutedText,
               ),
             ),
           ],
@@ -2714,7 +3172,10 @@ class _ArchiveCard extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(fontFamily: AppFonts.dmSans, 
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontFamily: AppFonts.dmSans,
           fontSize: 11,
           fontWeight: FontWeight.w700,
           color: color,
@@ -2739,27 +3200,40 @@ class _FilterChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        constraints: const BoxConstraints(minHeight: kMinTouchTarget),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected
-              ? const Color(0xFF10B981).withValues(alpha: 0.15)
-              : const Color(0xFF1A1A1A),
+              ? AppColors.emerald.withValues(alpha: 0.15)
+              : AppColors.card,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: selected ? const Color(0xFF10B981) : const Color(0x0DFFFFFF),
+            color: selected ? AppColors.emerald : AppColors.cardBorderColor,
             width: 1,
           ),
         ),
         child: Text(
           label,
-          style: TextStyle(fontFamily: AppFonts.dmSans, 
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-            color: selected ? const Color(0xFF10B981) : Colors.white54,
-            letterSpacing: 0.5,
-          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: selected
+              ? const TextStyle(
+                  fontFamily: AppFonts.dmSans,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.emerald,
+                  letterSpacing: 0.5,
+                )
+              : const TextStyle(
+                  fontFamily: AppFonts.dmSans,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.labelText,
+                  letterSpacing: 0.5,
+                ),
         ),
       ),
     );
@@ -2794,15 +3268,27 @@ class _LangOption extends StatelessWidget {
               Expanded(
                 child: Text(
                   name,
-                  style: TextStyle(fontFamily: AppFonts.dmSans, 
-                    fontSize: 17,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-                    color: selected ? Colors.white : Colors.white70,
-                  ),
+                  style: selected
+                      ? const TextStyle(
+                          fontFamily: AppFonts.dmSans,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        )
+                      : const TextStyle(
+                          fontFamily: AppFonts.dmSans,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w400,
+                          color: AppColors.mutedText,
+                        ),
                 ),
               ),
               if (selected)
-                const Icon(Icons.check_rounded, color: Color(0xFF10B981), size: 22),
+                const Icon(
+                  Icons.check_rounded,
+                  color: AppColors.emerald,
+                  size: 22,
+                ),
             ],
           ),
         ),
@@ -2812,10 +3298,7 @@ class _LangOption extends StatelessWidget {
 }
 
 class _KeepAliveTabView extends StatefulWidget {
-  const _KeepAliveTabView({
-    required this.child,
-    super.key,
-  });
+  const _KeepAliveTabView({required this.child, super.key});
 
   final Widget child;
 

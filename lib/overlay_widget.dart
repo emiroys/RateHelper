@@ -1,14 +1,16 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
-import 'package:rate_helper/fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_colors.dart';
+import 'app_text_styles.dart';
 import 'l10n.dart';
 import 'log.dart';
 import 'overlay_sync.dart';
+import 'shift_counter_store.dart';
+import 'tap_history_store.dart';
 
 class OverlayWidget extends StatefulWidget {
   const OverlayWidget({super.key});
@@ -27,16 +29,14 @@ class OverlayWidget extends StatefulWidget {
 class _OverlayWidgetState extends State<OverlayWidget> {
   static const _keyAccepted = 'acceptedRequests';
   static const _keyRejected = 'rejectedRequests';
-  static const _keyCompleted = 'completedTrips';
   static const _keyAutoComplete = 'autoCompleteTrips';
-  static const _keyTapHistory = 'tapHistory';
-  static const _maxTapHistory = 500;
+  static const _persistDebounce = Duration(milliseconds: 300);
 
-  static const _crimson = Color(0xFFEF4444);
-  static const _emerald = Color(0xFF10B981);
-  static const _amber = Color(0xFFF59E0B);
-  static const _pillBg = Color(0xE6161616);
-  static const _pillBorder = Color(0x33FFFFFF);
+  static const _crimson = AppColors.crimson;
+  static const _emerald = AppColors.emerald;
+  static const _amber = AppColors.amber;
+  static const _pillBg = AppColors.overlayPill;
+  static const _pillBorder = AppColors.strongBorder;
 
   static const double _pillWidthDp = OverlayWidget.pillWidthDp;
   static const double _pillHeightDp = OverlayWidget.pillHeightDp;
@@ -46,13 +46,15 @@ class _OverlayWidgetState extends State<OverlayWidget> {
 
   SharedPreferences? _prefs;
   StreamSubscription<dynamic>? _syncSub;
-  int _pendingWriteCount = 0;
-  bool get _incrementInFlight => _pendingWriteCount > 0;
-  Future<void> _pendingWrite = Future<void>.value();
+  Timer? _persistTimer;
 
   int _accepted = 0;
   int _rejected = 0;
+  int _completed = 0;
+  bool _autoComplete = false;
   double? _requiredAcceptRate = 80.0;
+
+  bool get _hasUnpersistedTaps => _persistTimer?.isActive ?? false;
 
   double get _acceptanceRate {
     final total = _accepted + _rejected;
@@ -89,7 +91,12 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     try {
       _syncSub = FlutterOverlayWindow.overlayListener.listen((event) {
         if (OverlaySync.shouldReloadCounters(event)) {
-          unawaited(_loadCounts());
+          final counters = OverlaySync.countersFromEvent(event);
+          if (counters != null) {
+            _applyRemoteCounters(counters);
+          } else {
+            unawaited(_loadCounts());
+          }
         } else if (event is Map && event['action'] == 'media_key_increment') {
           final keyStr = event['key'];
           final key = keyStr == 'accepted' ? _keyAccepted : _keyRejected;
@@ -97,7 +104,12 @@ class _OverlayWidgetState extends State<OverlayWidget> {
         }
       });
     } catch (e, s) {
-      loge('overlayListener listen failed', name: 'overlay', error: e, stack: s);
+      loge(
+        'overlayListener listen failed',
+        name: 'overlay',
+        error: e,
+        stack: s,
+      );
     }
   }
 
@@ -128,14 +140,22 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       final prefs = await SharedPreferences.getInstance();
       _prefs = prefs;
       await prefs.reload();
+      unawaited(TapHistoryStore.instance.migrateFromPrefs(prefs));
+      await ShiftCounterStore.instance.migrateFromPrefs(prefs);
       if (!mounted) return;
       _updateLang(prefs);
-      final accepted = prefs.getInt(_keyAccepted) ?? 0;
-      final rejected = prefs.getInt(_keyRejected) ?? 0;
+      final stored = await ShiftCounterStore.instance.read();
+      if (!mounted) return;
+      final accepted = stored.accepted;
+      final rejected = stored.rejected;
+      final completed = stored.completed;
+      final autoComplete = prefs.getBool(_keyAutoComplete) ?? false;
       final reqRate = _parseReqRate(prefs);
       setState(() {
         _accepted = accepted;
         _rejected = rejected;
+        _completed = completed;
+        _autoComplete = autoComplete;
         _requiredAcceptRate = reqRate;
       });
     } catch (e, s) {
@@ -145,24 +165,58 @@ class _OverlayWidgetState extends State<OverlayWidget> {
 
   @override
   void dispose() {
+    final hadPending = _persistTimer?.isActive ?? false;
+    _persistTimer?.cancel();
+    _persistTimer = null;
+    if (hadPending) {
+      unawaited(_persistCounts());
+    }
     _syncSub?.cancel();
     super.dispose();
   }
 
+  void _applyRemoteCounters(OverlayCounters counters) {
+    if (_hasUnpersistedTaps) return;
+    if (!mounted) return;
+    if (counters.accepted == _accepted &&
+        counters.rejected == _rejected &&
+        counters.completed == _completed) {
+      return;
+    }
+    setState(() {
+      _accepted = counters.accepted;
+      _rejected = counters.rejected;
+      _completed = counters.completed;
+    });
+  }
+
   Future<void> _loadCounts() async {
-    if (_incrementInFlight) return;
+    if (_hasUnpersistedTaps) return;
     try {
       final prefs = await _getPrefs();
-      await prefs.reload();
-      if (!mounted || _incrementInFlight) return;
+      // Counters live in ShiftCounterStore — no prefs.reload() on the
+      // hot path. Lang/goal/autoComplete are home-only and were loaded
+      // at overlay startup.
+      final stored = await ShiftCounterStore.instance.read();
+      if (!mounted || _hasUnpersistedTaps) return;
       _updateLang(prefs);
-      final accepted = prefs.getInt(_keyAccepted) ?? 0;
-      final rejected = prefs.getInt(_keyRejected) ?? 0;
+      final accepted = stored.accepted;
+      final rejected = stored.rejected;
+      final completed = stored.completed;
+      final autoComplete = prefs.getBool(_keyAutoComplete) ?? false;
       final reqRate = _parseReqRate(prefs);
-      if (accepted == _accepted && rejected == _rejected && reqRate == _requiredAcceptRate) return;
+      if (accepted == _accepted &&
+          rejected == _rejected &&
+          completed == _completed &&
+          autoComplete == _autoComplete &&
+          reqRate == _requiredAcceptRate) {
+        return;
+      }
       setState(() {
         _accepted = accepted;
         _rejected = rejected;
+        _completed = completed;
+        _autoComplete = autoComplete;
         _requiredAcceptRate = reqRate;
       });
     } catch (e, s) {
@@ -186,41 +240,7 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     return _prefs!;
   }
 
-  String _formatLocalTime(DateTime dt) {
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${two(dt.hour)}:${two(dt.minute)}:${two(dt.second)}';
-  }
-
-  Future<void> _appendTapHistory(SharedPreferences prefs, String type) async {
-    final now = DateTime.now();
-    final entry = <String, String>{
-      'type': type,
-      'timestamp': now.toIso8601String(),
-      'localTime': _formatLocalTime(now),
-    };
-
-    List<dynamic> list;
-    final raw = prefs.getString(_keyTapHistory);
-    if (raw != null) {
-      try {
-        final decoded = jsonDecode(raw);
-        list = decoded is List ? List<dynamic>.from(decoded) : <dynamic>[];
-      } catch (_) {
-        list = <dynamic>[];
-      }
-    } else {
-      list = <dynamic>[];
-    }
-
-    list.add(entry);
-    if (list.length > _maxTapHistory) {
-      list = list.sublist(list.length - _maxTapHistory);
-    }
-    await prefs.setString(_keyTapHistory, jsonEncode(list));
-  }
-
-  Future<void> _increment(String key) {
-    _pendingWriteCount++;
+  Future<void> _increment(String key) async {
     final accepted = key == _keyAccepted;
 
     logd('overlay tap', name: 'overlay');
@@ -228,42 +248,43 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     setState(() {
       if (accepted) {
         _accepted = (_accepted + 1).clamp(0, 99999);
+        if (_autoComplete) {
+          _completed = (_completed + 1).clamp(0, 99999);
+        }
       } else {
         _rejected = (_rejected + 1).clamp(0, 99999);
       }
     });
 
-    _pendingWrite = _pendingWrite.then((_) => _persistCounts(accepted)).whenComplete(() {
-      if (mounted) {
-        setState(() {
-          _pendingWriteCount--;
-        });
-      } else {
-        _pendingWriteCount--;
-      }
-    });
-    return _pendingWrite;
+    unawaited(
+      TapHistoryStore.instance.append(accepted ? 'accepted' : 'rejected'),
+    );
+    _schedulePersist();
   }
 
-  Future<void> _persistCounts(bool accepted) async {
+  void _schedulePersist() {
+    _persistTimer?.cancel();
+    _persistTimer = Timer(_persistDebounce, () {
+      unawaited(_persistCounts());
+    });
+  }
+
+  Future<void> _persistCounts() async {
+    _persistTimer?.cancel();
+    _persistTimer = null;
     try {
-      final prefs = await _getPrefs();
-      await _appendTapHistory(
-        prefs,
-        accepted ? 'accepted' : 'rejected',
+      await ShiftCounterStore.instance.merge(
+        accepted: _accepted,
+        rejected: _rejected,
+        completed: _completed,
       );
-
-      await prefs.setInt(_keyAccepted, _accepted);
-      await prefs.setInt(_keyRejected, _rejected);
-
-      if (accepted && (prefs.getBool(_keyAutoComplete) ?? false)) {
-        final completed = prefs.getInt(_keyCompleted) ?? 0;
-        await prefs.setInt(
-          _keyCompleted,
-          (completed + 1).clamp(0, 99999),
-        );
-      }
-      unawaited(OverlaySync.notifyCountersChanged());
+      unawaited(
+        OverlaySync.notifyCountersChanged(
+          accepted: _accepted,
+          rejected: _rejected,
+          completed: _completed,
+        ),
+      );
     } catch (e, s) {
       loge('overlay write failed', name: 'overlay', error: e, stack: s);
       await _loadCounts();
@@ -372,22 +393,19 @@ class _AcceptRateDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      child: Align(
-        alignment: Alignment.center,
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            text,
-            maxLines: 1,
-            softWrap: false,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontFamily: AppFonts.dmSans, 
-              fontSize: 36,
-              fontWeight: FontWeight.w900,
-              color: color,
-              height: 1,
+    return RepaintBoundary(
+      child: SizedBox(
+        width: width,
+        child: Align(
+          alignment: Alignment.center,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              text,
+              maxLines: 1,
+              softWrap: false,
+              textAlign: TextAlign.center,
+              style: T.rateFor(color),
             ),
           ),
         ),

@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:rate_helper/fonts.dart';
 
+import 'app_colors.dart';
+import 'app_widgets.dart';
 import 'l10n.dart';
 import 'models/event_model.dart';
 import 'services/event_service.dart';
 
-const _cardColor = Color(0xFF1E1E1E);
-const _emerald = Color(0xFF10B981);
-const _crimson = Color(0xFFEF4444);
-const _amber = Color(0xFFF59E0B);
-final _cardBorder = Border.all(color: const Color(0x1AFFFFFF), width: 1);
+const _cardColor = AppColors.elevated;
+const _emerald = AppColors.emerald;
+const _crimson = AppColors.crimson;
+const _amber = AppColors.amber;
+final _cardBorder = Border.all(color: AppColors.hairline, width: 1);
 final _cardRadius = BorderRadius.circular(20);
 
 class RadarScreen extends StatefulWidget {
@@ -66,7 +68,8 @@ class _RadarScreenState extends State<RadarScreen> {
                 S.eventRadarTitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontFamily: AppFonts.dmSans, 
+                style: const TextStyle(
+                  fontFamily: AppFonts.dmSans,
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
                   color: Colors.white,
@@ -79,7 +82,7 @@ class _RadarScreenState extends State<RadarScreen> {
         actions: [
           IconButton(
             tooltip: S.refresh,
-            icon: const Icon(Icons.refresh_rounded, color: Colors.white70),
+            icon: const Icon(Icons.refresh_rounded, color: AppColors.mutedText),
             onPressed: () {
               EventService.clearCache();
               _loadEvents();
@@ -134,10 +137,7 @@ class _RadarScreenState extends State<RadarScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFF1A2E26),
-            Color(0xFF161616),
-          ],
+          colors: [AppColors.radarHeader, AppColors.dialog],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -152,7 +152,11 @@ class _RadarScreenState extends State<RadarScreen> {
               color: _emerald.withValues(alpha: 0.2),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.trending_up_rounded, color: _emerald, size: 24),
+            child: const Icon(
+              Icons.trending_up_rounded,
+              color: _emerald,
+              size: 24,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -163,7 +167,8 @@ class _RadarScreenState extends State<RadarScreen> {
                   S.radarDemandTitle,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontFamily: AppFonts.dmSans, 
+                  style: const TextStyle(
+                    fontFamily: AppFonts.dmSans,
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
@@ -172,10 +177,11 @@ class _RadarScreenState extends State<RadarScreen> {
                 const SizedBox(height: 4),
                 Text(
                   S.radarDemandSubtitle(count),
-                  style: TextStyle(fontFamily: AppFonts.dmSans, 
+                  style: const TextStyle(
+                    fontFamily: AppFonts.dmSans,
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
-                    color: Colors.white70,
+                    color: AppColors.mutedText,
                     height: 1.3,
                   ),
                 ),
@@ -230,7 +236,10 @@ class _RadarScreenState extends State<RadarScreen> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
@@ -238,14 +247,19 @@ class _RadarScreenState extends State<RadarScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.calendar_today_rounded, size: 14, color: Colors.white70),
+                    const Icon(
+                      Icons.calendar_today_rounded,
+                      size: 14,
+                      color: AppColors.mutedText,
+                    ),
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
                         event.formattedDateTime,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontFamily: AppFonts.jetBrainsMono, 
+                        style: const TextStyle(
+                          fontFamily: AppFonts.jetBrainsMono,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
@@ -256,11 +270,17 @@ class _RadarScreenState extends State<RadarScreen> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: surgeColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: surgeColor.withValues(alpha: 0.5), width: 1),
+                  border: Border.all(
+                    color: surgeColor.withValues(alpha: 0.5),
+                    width: 1,
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -286,7 +306,8 @@ class _RadarScreenState extends State<RadarScreen> {
                         surgeLabel,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontFamily: AppFonts.dmSans, 
+                        style: TextStyle(
+                          fontFamily: AppFonts.dmSans,
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           color: surgeColor,
@@ -303,7 +324,8 @@ class _RadarScreenState extends State<RadarScreen> {
             event.title,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontFamily: AppFonts.dmSans, 
+            style: const TextStyle(
+              fontFamily: AppFonts.dmSans,
               fontSize: 18,
               fontWeight: FontWeight.w800,
               color: Colors.white,
@@ -316,25 +338,22 @@ class _RadarScreenState extends State<RadarScreen> {
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0x0DFFFFFF)),
+              border: Border.all(color: AppColors.cardBorderColor),
             ),
             child: Row(
               children: [
-                const Icon(
-                  Icons.location_on_rounded,
-                  size: 18,
-                  color: _amber,
-                ),
+                const Icon(Icons.location_on_rounded, size: 18, color: _amber),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     event.venue,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontFamily: AppFonts.dmSans, 
+                    style: const TextStyle(
+                      fontFamily: AppFonts.dmSans,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: Colors.white70,
+                      color: AppColors.mutedText,
                     ),
                   ),
                 ),
@@ -359,16 +378,17 @@ class _RadarScreenState extends State<RadarScreen> {
             return Opacity(
               opacity: opacity,
               child: Container(
-                height: 180,
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: _cardColor,
                   border: _cardBorder,
                   borderRadius: _cardRadius,
                 ),
+                // Height comes from the placeholder blocks themselves; a fixed
+                // height overflowed once the card border took its 2px.
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -429,128 +449,29 @@ class _RadarScreenState extends State<RadarScreen> {
   }
 
   Widget _buildEmptyState(String message) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: _cardColor,
-                shape: BoxShape.circle,
-                border: _cardBorder,
-              ),
-              child: const Icon(Icons.event_busy_rounded, color: Colors.white38, size: 48),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              S.eventsEmptyTitle,
-              style: TextStyle(fontFamily: AppFonts.dmSans, 
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontFamily: AppFonts.dmSans, 
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.white54,
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _cardColor,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: const BorderSide(color: Color(0x33FFFFFF)),
-                ),
-              ),
-              onPressed: () {
-                EventService.clearCache();
-                _loadEvents();
-              },
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: Text(
-                S.tryAgain,
-                style: TextStyle(fontFamily: AppFonts.dmSans, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return AppEmptyState(
+      icon: Icons.event_busy_rounded,
+      title: S.eventsEmptyTitle,
+      description: message,
+      actionLabel: S.tryAgain,
+      onAction: () {
+        EventService.clearCache();
+        _loadEvents();
+      },
     );
   }
 
   Widget _buildErrorState(String message) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: _crimson.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-                border: Border.all(color: _crimson.withValues(alpha: 0.4)),
-              ),
-              child: const Icon(Icons.wifi_off_rounded, color: _crimson, size: 48),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              S.connectionError,
-              style: TextStyle(fontFamily: AppFonts.dmSans, 
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontFamily: AppFonts.dmSans, 
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.white54,
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _crimson.withValues(alpha: 0.2),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: _crimson.withValues(alpha: 0.5)),
-                ),
-              ),
-              onPressed: () {
-                EventService.clearCache();
-                _loadEvents();
-              },
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: Text(
-                S.reload,
-                style: TextStyle(fontFamily: AppFonts.dmSans, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return AppEmptyState(
+      icon: Icons.wifi_off_rounded,
+      title: S.connectionError,
+      description: message,
+      accent: _crimson,
+      actionLabel: S.reload,
+      onAction: () {
+        EventService.clearCache();
+        _loadEvents();
+      },
     );
   }
 }

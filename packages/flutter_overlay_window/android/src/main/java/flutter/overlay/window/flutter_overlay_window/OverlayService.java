@@ -41,6 +41,7 @@ import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.embedding.engine.FlutterEngineCache;
 import io.flutter.embedding.engine.FlutterEngineGroup;
 import io.flutter.embedding.engine.dart.DartExecutor;
+import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.plugin.common.BasicMessageChannel;
 import io.flutter.plugin.common.JSONMessageCodec;
 import io.flutter.plugin.common.MethodChannel;
@@ -99,6 +100,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         NotificationManager notificationManager = (NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
         notificationManager.cancel(OverlayConstants.NOTIFICATION_ID);
         instance = null;
+        cancelTrayAnimation();
         
         // Mirror of appIsResumed() in onStartCommand: tell the overlay
         // isolate it is backgrounded so the VM applies idle/background
@@ -329,13 +331,25 @@ public class OverlayService extends Service implements View.OnTouchListener {
         if (flutterEngine == null) {
             // Handle the error if engine is not found
             Log.e("OverlayService", "Flutter engine not found, hence creating new flutter engine");
-            FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
             DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
                 FlutterInjector.instance().flutterLoader().findAppBundlePath(),
                 "overlayMain"
             );  // "overlayMain" is custom entry point
 
-            flutterEngine = engineGroup.createAndRunEngine(this, entryPoint);
+            // automaticallyRegisterPlugins=false so GeneratedPluginRegistrant
+            // does not load url_launcher/share_plus/wakelock into this isolate.
+            // createAndRunEngine() would execute Dart before we can add plugins;
+            // overlayMain immediately uses path_provider and shared_preferences,
+            // so construct the engine, register, then run the entrypoint.
+            FlutterEngineGroup.Options options = new FlutterEngineGroup.Options(this)
+                    .setDartEntrypoint(entryPoint)
+                    .setAutomaticallyRegisterPlugins(false);
+            flutterEngine = new FlutterEngine(
+                    this,
+                    /* dartVmArgs */ null,
+                    options.getAutomaticallyRegisterPlugins());
+            registerOverlayPlugins(flutterEngine);
+            flutterEngine.getDartExecutor().executeDartEntrypoint(options.getDartEntrypoint());
 
             // Cache the created FlutterEngine for future use
             FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, flutterEngine);
@@ -367,6 +381,28 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 .build();
         startForeground(OverlayConstants.NOTIFICATION_ID, notification);
         instance = this;
+    }
+
+    // Overlay isolate only needs window IPC, prefs, and path_provider.
+    // path_provider_android is JNI-backed (no FlutterPlugin class), so we
+    // register JniPlugin + JniFlutterPlugin instead of PathProviderPlugin.
+    private static void registerOverlayPlugins(FlutterEngine engine) {
+        String[] pluginClasses = new String[] {
+            "flutter.overlay.window.flutter_overlay_window.FlutterOverlayWindowPlugin",
+            "io.flutter.plugins.sharedpreferences.SharedPreferencesPlugin",
+            "com.github.dart_lang.jni.JniPlugin",
+            "com.github.dart_lang.jni_flutter.JniFlutterPlugin",
+        };
+        for (int i = 0; i < pluginClasses.length; i++) {
+            String className = pluginClasses[i];
+            try {
+                Class<?> clazz = Class.forName(className);
+                Object plugin = clazz.getDeclaredConstructor().newInstance();
+                engine.getPlugins().add((FlutterPlugin) plugin);
+            } catch (Exception e) {
+                Log.e("OverlayService", "Failed to register overlay plugin " + className, e);
+            }
+        }
     }
 
     private void createNotificationChannel() {
@@ -425,10 +461,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     dragging = false;
                     lastX = event.getRawX();
                     lastY = event.getRawY();
-                    break;
+                    // Let Flutter see DOWN so a stationary press can still
+                    // register as a button tap.
+                    return false;
                 case MotionEvent.ACTION_MOVE:
                     float dx = event.getRawX() - lastX;
                     float dy = event.getRawY() - lastY;
+                    // Native slop is 20px; Flutter's is 18px. Returning false
+                    // under slop keeps taps working. Once we exceed it we
+                    // consume so a slow drag cannot become a Flutter tap.
                     if (!dragging && dx * dx + dy * dy < 400) {
                         return false;
                     }
@@ -448,24 +489,37 @@ public class OverlayService extends Service implements View.OnTouchListener {
                         windowManager.updateViewLayout(flutterView, params);
                     }
                     dragging = true;
-                    break;
+                    return true;
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
                     lastYPosition = params.y;
                     if (!WindowSetup.positionGravity.equals("none")) {
-                        if (windowManager == null) return false;
+                        if (windowManager == null) return dragging;
                         windowManager.updateViewLayout(flutterView, params);
+                        cancelTrayAnimation();
                         mTrayTimerTask = new TrayAnimationTimerTask();
                         mTrayAnimationTimer = new Timer();
                         mTrayAnimationTimer.schedule(mTrayTimerTask, 0, 25);
                     }
-                    return false;
+                    // Consume UP after a drag so Flutter does not fire a tap.
+                    return dragging;
                 default:
                     return false;
             }
-            return false;
         }
         return false;
+    }
+
+    private void cancelTrayAnimation() {
+        if (mTrayTimerTask != null) {
+            mTrayTimerTask.cancel();
+            mTrayTimerTask = null;
+        }
+        if (mTrayAnimationTimer != null) {
+            mTrayAnimationTimer.cancel();
+            mTrayAnimationTimer.purge();
+            mTrayAnimationTimer = null;
+        }
     }
 
     private class TrayAnimationTimerTask extends TimerTask {
@@ -503,7 +557,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 }
                 if (Math.abs(params.x - mDestX) < 2 && Math.abs(params.y - mDestY) < 2) {
                     TrayAnimationTimerTask.this.cancel();
-                    mTrayAnimationTimer.cancel();
+                    if (mTrayAnimationTimer != null) {
+                        mTrayAnimationTimer.cancel();
+                        mTrayAnimationTimer.purge();
+                        mTrayAnimationTimer = null;
+                    }
                 }
             });
         }

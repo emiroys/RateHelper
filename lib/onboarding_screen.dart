@@ -3,12 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:rate_helper/fonts.dart';
 
+import 'app_colors.dart';
+import 'app_widgets.dart';
 import 'l10n.dart';
 import 'log.dart';
 
-const _kCardColor = Color(0xFF1A1A1A);
-const _kEmerald = Color(0xFF10B981);
-const _kAmber = Color(0xFFF59E0B);
+const _kCardColor = AppColors.card;
+const _kEmerald = AppColors.emerald;
+const _kAmber = AppColors.amber;
 const _kSysChannel = MethodChannel('com.ratehelper.app/system');
 
 enum DeviceBrand { samsung, xiaomi, huawei, oneplus, other }
@@ -171,7 +173,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         elevation: 0,
         title: Text(
           S.onboardingTitle,
-          style: TextStyle(fontFamily: AppFonts.dmSans, 
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontFamily: AppFonts.dmSans,
             color: Colors.white,
             fontWeight: FontWeight.w900,
             letterSpacing: 0.2,
@@ -180,9 +184,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         actions: [
           TextButton(
             onPressed: widget.onDone,
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, kMinTouchTarget),
+            ),
             child: Text(
               S.skip,
-              style: TextStyle(fontFamily: AppFonts.dmSans, color: Colors.white54),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontFamily: AppFonts.dmSans, color: AppColors.mutedText),
             ),
           ),
         ],
@@ -195,8 +204,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             children: [
               Text(
                 S.onboardingIntro,
-                style: TextStyle(fontFamily: AppFonts.dmSans, 
-                  color: Colors.white70,
+                style: const TextStyle(fontFamily: AppFonts.dmSans, 
+                  color: AppColors.mutedText,
                   fontSize: 14,
                   height: 1.45,
                 ),
@@ -253,7 +262,7 @@ class _StepCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: _kCardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0x0DFFFFFF)),
+        border: Border.all(color: AppColors.cardBorderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -263,7 +272,7 @@ class _StepCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(fontFamily: AppFonts.dmSans, 
+                  style: const TextStyle(fontFamily: AppFonts.dmSans, 
                     color: Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
@@ -277,8 +286,8 @@ class _StepCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             body,
-            style: TextStyle(fontFamily: AppFonts.dmSans, 
-              color: Colors.white70,
+            style: const TextStyle(fontFamily: AppFonts.dmSans, 
+              color: AppColors.mutedText,
               fontSize: 13,
               height: 1.45,
             ),
@@ -316,7 +325,7 @@ class _BatteryCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: _kCardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0x0DFFFFFF)),
+        border: Border.all(color: AppColors.cardBorderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -326,7 +335,7 @@ class _BatteryCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   S.stepBatteryTitle,
-                  style: TextStyle(fontFamily: AppFonts.dmSans, 
+                  style: const TextStyle(fontFamily: AppFonts.dmSans, 
                     color: Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
@@ -340,8 +349,8 @@ class _BatteryCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             S.stepBatteryBody,
-            style: TextStyle(fontFamily: AppFonts.dmSans, 
-              color: Colors.white70,
+            style: const TextStyle(fontFamily: AppFonts.dmSans, 
+              color: AppColors.mutedText,
               fontSize: 13,
               height: 1.45,
             ),
@@ -363,12 +372,12 @@ class _BatteryCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFF0F0F0F),
+              color: AppColors.inset,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
               brand.steps,
-              style: TextStyle(fontFamily: AppFonts.dmSans, 
+              style: const TextStyle(fontFamily: AppFonts.dmSans, 
                 color: Colors.white,
                 fontSize: 13,
                 height: 1.5,
@@ -403,20 +412,32 @@ class _BrandChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? Colors.white12 : const Color(0xFF0F0F0F),
+      color: selected ? Colors.white12 : AppColors.inset,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
-        child: Padding(
+        child: Container(
+          constraints: const BoxConstraints(minHeight: kMinTouchTarget),
+          alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Text(
             label,
-            style: TextStyle(fontFamily: AppFonts.dmSans, 
-              color: selected ? Colors.white : Colors.white60,
-              fontSize: 12,
-              fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: selected
+                ? const TextStyle(
+                    fontFamily: AppFonts.dmSans,
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  )
+                : const TextStyle(
+                    fontFamily: AppFonts.dmSans,
+                    color: AppColors.labelText,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
           ),
         ),
       ),
@@ -441,24 +462,34 @@ class _BigCta extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: enabled ? onTap : null,
+      behavior: HitTestBehavior.opaque,
       child: Container(
         height: 60,
         alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: enabled ? color.withValues(alpha: 0.18) : Colors.white12,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: enabled ? color.withValues(alpha: 0.55) : Colors.white24,
+            color: enabled ? color.withValues(alpha: 0.55) : AppColors.disabledText,
             width: 1.4,
           ),
         ),
-        child: Text(
-          label,
-          style: TextStyle(fontFamily: AppFonts.dmSans, 
-            color: enabled ? color : Colors.white38,
-            fontSize: 14,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 2,
+        // Polish CTAs ("NADAJ UPRAWNIENIE", "OTWÓRZ USTAWIENIA") are far wider
+        // than their Turkish equivalents at this letter spacing.
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            maxLines: 1,
+            softWrap: false,
+            style: TextStyle(
+              fontFamily: AppFonts.dmSans,
+              color: enabled ? color : AppColors.disabledText,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 2,
+            ),
           ),
         ),
       ),

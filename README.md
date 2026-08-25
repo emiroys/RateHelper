@@ -32,7 +32,7 @@
 
 ### Główne zasady projektowe
 
-- **100% Local Finance:** Wszystkie dane finansowe i statystyki przechowywane są wyłącznie w piaskownicy Androida (`SharedPreferences`). Brak zewnętrznej telemetrii i kont użytkowników. Jedyny ruch sieciowy: aktualizacje APK, publiczny radar wydarzeń Kraków.
+- **100% Local Finance:** Wszystkie dane finansowe i statystyki pozostają na urządzeniu. Ustawienia, archiwum i księgowość — `SharedPreferences`; liczniki zmiany — `shift_counters.json`; dziennik tapnięć — `tap_history.jsonl`. Brak zewnętrznej telemetrii i kont użytkowników. Jedyny ruch sieciowy: aktualizacje APK, publiczny radar wydarzeń Kraków.
 - **Driving-First UI:** Ekstremalny ciemny motyw (True Dark), gigantyczne punkty dotykowe (XL Targets) oraz haptyka zwrotna dostosowana do obsługi urządzenia w uchwycie samochodowym.
 - **Trójjęzyczność:** Pełna lokalizacja interfejsu w językach: Tureckim (domyślny), Polskim oraz Angielskim.
 
@@ -42,7 +42,8 @@
 
 | Moduł | Opis Funkcjonalny | Mechanizm Implementacji |
 | --- | --- | --- |
-| **Pływająca Nakładka** | Widget 276×80 dp wiszący bezpośrednio nad aplikacją Uber/Bolt Driver, pozwalający na rejestrację kliknięć bez opuszczania nawigacji. | Osobny izolat Flutter (`OverlayIsolate`) sprzężony z natywnym `WindowManager` w Javie. |
+| **Pływająca Nakładka** | Widget 276×80 dp wiszący bezpośrednio nad aplikacją Uber/Bolt Driver, pozwalający na rejestrację kliknięć bez opuszczania nawigacji. | Osobny izolat Flutter z **chudym** silnikiem (bez url_launcher/share_plus/wakelock); natywny `WindowManager`; drag **konsumuje** gest po 20 px slop (brak phantom tapów). |
+| **Ekran zawsze włączony** | Opcjonalny wakelock na uchwycie deski rozdzielczej (domyślnie wyłączony). | Pref `keepScreenOn` + `WakelockPlus`; timeout 10 min bez interakcji. |
 | **3-Stanowy Alert AR** | Inteligentne monitorowanie wskaźnika akceptacji (AR) z dynamicznym systemem wczesnego ostrzegania (Zielony/Żółty/Czerwony). | Algorytm sprawdzający bufor bezpieczeństwa `AMBER_BUFFER = 2.0%` wokół progu wybranego celu. |
 | **Silnik Księgowy** | Precyzyjny kalkulator rentowności tygodniowej z automatycznym odliczaniem podatków, prowizji rozliczeniowej i paliwa. | Mapowanie VAT ryczałtowego (12%), opłaty rozliczeniowej partnera (3%) oraz progów najmu zależnych od liczby kursów. |
 | **Tryby Jazdy (1 vs 2)** | Elastyczne przełączanie profilu kosztów w zależności od tego, czy kierowca jeździ sam, czy dzieli auto na zmiany. | Dynamiczne tabele progowe `RENTAL_TIERS` i `RENTAL_TIERS_PAIRED` działające w sposób odporny na modyfikacje wsteczne. |
@@ -74,8 +75,8 @@ Aplikacja opiera się na **dwóch całkowicie niezależnych izolatach Flutter**,
 ┌────────────┼────────────────────┼────────────────────┼─────────────┐
 │            ▼                    ▼                    ▼             │
 │   ┌──────────────────┐  ┌──────────────────┐                      │
-│   │   HomeScreen      │  │  OverlayWidget   │ ◄─ SharedPreferences│
-│   │   (główny izolat) │  │  (izolat okna)   │    2-way sync       │
+│   │   HomeScreen      │  │  OverlayWidget   │ ◄─ OverlaySync payload │
+│   │   (główny izolat) │  │  (izolat okna)   │    + pliki liczników   │
 │   └────────┬──────────┘  └──────────────────┘                      │
 │            │                                                       │
 │   ┌────────┼──────────┬─────────────────┬─────────────┐           │
@@ -86,7 +87,7 @@ Aplikacja opiera się na **dwóch całkowicie niezależnych izolatach Flutter**,
 
 ### Protokół synchronizacji stanów
 
-Wszelkie operacje zapisu w głównym izolacie wywołują natychmiastowe powiadomienie `OverlaySync.notifyCountersChanged()`. Po powrocie do aplikacji głównej (`resumed`), interfejs wykonuje `prefs.reload()`, zapewniając całkowitą spójność danych i eliminując zjawisko wyścigu (race conditions).
+Zapis liczników w dowolnym izolacie: **jeden** plik `shift_counters.json` + `OverlaySync.notifyCountersChanged(accepted, rejected, completed)`. Odbiorca stosuje liczby z komunikatu — **bez** `prefs.reload()` na ścieżce tapnięcia. Dziennik tapnięć to dopisywany `tap_history.jsonl` (max 500). Ustawienia (język, cel, przełączniki) zostają w SharedPreferences. Po `resumed` główny izolat scala ewentualny debounce i czyta plik liczników; pełny reload XML prefs nie jest częścią hot path.
 
 ---
 
@@ -115,10 +116,12 @@ $$X = \max\left(1,\ \left\lfloor \frac{r \cdot \text{rejected} - (1-r) \cdot \te
 - **Reset tygodnia:** Ręczny (`RESETUJ TYDZIEŃ`) lub automatyczny w **poniedziałek 04:00** (`Europe/Warsaw`). Archiwum zapisuje wpis JSON v2 przed zerowaniem liczników.
 - **Nawigacja dolna (5 przycisków):** Język · Widget (Uruchom/Zatrzymaj) · Logi · Radar · Zarobki.
 - **Cofnij (undo):** Jednokrokowe cofnięcie ostatniej zmiany licznika (ikona ↩ w AppBar).
+- **Liczniki:** widget `_CounterRow` + `ValueNotifier` — tap +/- nie przebudowuje całego ekranu.
+- **Ekran włączony:** przełącznik `S.keepScreenOn` (opt-in; 10 min bezczynności gasi wakelock).
 
 ### Moduł II: Natywna Nakładka na Żywo (Pill Overlay)
 
-Pływająca pigułka o wymiarach 276×80 dp operuje na natywnym wątku renderowania Androida poprzez `WindowManager.updateViewLayout()`. Zastosowano margines błędu dotyku (20px slop) dopasowany do digitizera serii Samsung Galaxy Ultra, dzięki czemu fizyczne przeciąganie nakładki nie koliduje z panelami dotykowymi aplikacji Uber/Bolt Driver. Widget używa komponentu `RepaintBoundary` w celu odizolowania renderowania dynamicznego tekstu od statycznych ikon wektorowych.
+Pływająca pigułka o wymiarach 276×80 dp operuje na natywnym wątku renderowania Androida poprzez `WindowManager.updateViewLayout()`. Margines błędu dotyku: 20 px (`dx²+dy² < 400`). Po przekroczeniu slop zdarzenie jest **konsumowane** (`onTouch` → `true`), żeby wolny drag nie wpadł w 18 px slop Fluttera jako fałszywe tapnięcie (psuje AR). Silnik overlay: `setAutomaticallyRegisterPlugins(false)` — tylko IPC okna, SharedPreferences i JNI/`path_provider`. Widget używa `RepaintBoundary` oraz `T.rateFor()` (const TextStyle).
 
 ### Moduł III: Zaawansowany Silnik Księgowy (Kary/Zyski)
 
@@ -138,7 +141,7 @@ Aplikacja dynamicznie wskazuje kwotę obrotu, od której kierowca zaczyna zarabi
 
 $$\text{Break-Even} = \frac{\text{Paliwo po Rabacie} + \text{Najem}}{\text{1} - \text{FLAT\_VAT\_RATE (0.12)} - \text{SETTLEMENT\_FEE\_RATE (0.03)}} = \frac{\text{Koszty Stałe}}{\text{0.85}}$$
 
-Dodatkowo, formularz paliwowy pozwala na **wielokrotne wprowadzanie rachunków (Multi-Receipt Logging)** w ciągu jednego tygodnia. Każdy paragon otrzymuje unikalne ID generowane ze znacznika czasu i sumy kontrolnej kwoty, co eliminuje błędy duplikacji danych.
+Dodatkowo, formularz paliwowy pozwala na **wielokrotne wprowadzanie rachunków (Multi-Receipt Logging)** w ciągu jednego tygodnia (FIFO, max **100** paragonów / `kMaxFuelReceipts`; lista `ListView.builder`). Każdy paragon otrzymuje unikalne ID generowane ze znacznika czasu i sumy kontrolnej kwoty, co eliminuje błędy duplikacji danych.
 
 ### Moduł IV: Tryb Solo vs. Paired (Podział Kosztów)
 
@@ -186,7 +189,7 @@ W celu maksymalizacji stawek godzinowych, aplikacja została wyposażona w async
 
 Natywna usługa systemowa `MediaKeyAccessibilityService.kt` pozwala na bezwzrokowe zliczanie zleceń. Wykorzystuje ona bezprzewodowe piloty Bluetooth montowane na koło kierownicy.
 
-- **Filtracja zdarzeń:** Krótkie kliknięcie (<800 ms) przycisków zmiany utworu (`MEDIA_NEXT` / `MEDIA_PREVIOUS`) jest przepuszczane do systemu — Spotify czy YouTube Music działają bez zakłóceń.
+- **Filtracja zdarzeń:** Najpierw tani test `keycode` (volume/power itd. nie czytają prefs). Potem flaga reiniekcji, potem `@Volatile steeringWheelEnabled` (cache z `onServiceConnected`). Krótkie kliknięcie (<800 ms) `MEDIA_NEXT` / `MEDIA_PREVIOUS` jest przepuszczane do systemu — Spotify czy YouTube Music działają bez zakłóceń.
 - **Przechwytywanie (Long Press):** Przytrzymanie przycisku powyżej 800 ms wywołuje krótką wibrację haptyczną (150 ms), blokuje zmianę utworu w odtwarzaczu muzycznym i inkrementuje licznik zaakceptowanych (przycisk w przód) lub odrzuconych (przycisk w tył) zleceń.
 
 > **Uwaga konfiguracyjna (Kompilacja):** W pliku konfiguracyjnym usługi `accessibility_service_config.xml` parametr `android:accessibilityEventTypes` został całkowicie usunięty, a flagą nadrzędną sterującą nasłuchem jest wyłącznie `android:canRequestFilterKeyEvents="true"`. Rozwiązuje to krytyczny błąd kompilacji zasobów AAPT (Resource Linking Failed) na nowych wersjach SDK.
@@ -197,7 +200,7 @@ Natywna usługa systemowa `MediaKeyAccessibilityService.kt` pozwala na bezwzroko
 
 | Zagrożenie | Zastosowana Architektura Obronna |
 | --- | --- |
-| **Wyciek danych finansowych** | Brak synchronizacji finansów w chmurze — dane księgowe i liczniki pozostają w `SharedPreferences` na urządzeniu. Jedyny ruch sieciowy: publiczny manifest OTA, radar wydarzeń (`krakow_events.json`) i pobieranie APK. |
+| **Wyciek danych finansowych** | Brak synchronizacji finansów w chmurze — księgowość w `SharedPreferences`, liczniki zmiany i dziennik tapnięć w plikach piaskownicy. Jedyny ruch sieciowy: publiczny manifest OTA, radar wydarzeń (`krakow_events.json`) i pobieranie APK. |
 | **Inżynieria wsteczna bazy** | Flaga `android:allowBackup=false` w manifestu uniemożliwia pobranie struktury SharedPreferences poprzez debugowanie ADB lub lokalne backupy systemowe. |
 | **Ataki typu MITM (OTA)** | Klasa `StrictSecurityHttpOverrides` wymusza rygorystyczną weryfikację łańcucha certyfikatów TLS podczas sprawdzania aktualizacji i pobierania radaru wydarzeń. |
 | **Paste-Bombing & Crash** | Filtry tekstowe `LengthLimitingTextInputFormatter(7)` oraz walidacja matematyczna do wartości maksymalnej 999 999,00 PLN zabezpieczają przed wprowadzeniem błędnych struktur niszczących wykresy. |
@@ -247,7 +250,7 @@ flutter pub get
 dart run build_runner build --delete-conflicting-outputs
 ```
 
-5. **Uruchomienie pakietu testów regresyjnych (137 testów):**
+5. **Uruchomienie pakietu testów regresyjnych (198 testów):**
 
 ```bash
 flutter test
@@ -255,11 +258,16 @@ flutter test
 
 | Plik testowy | Zakres |
 | --- | --- |
-| `test/earnings_test.dart` | 90 — finanse, progi, JSON, tryb solo/paired |
-| `test/logic_test.dart` | 38 — AR, semver, reset tygodnia |
+| `test/earnings_test.dart` | 94 — finanse, progi, JSON, FIFO paragonów, solo/paired |
+| `test/logic_test.dart` | 44 — AR, semver, reset tygodnia |
+| `test/layout_overflow_test.dart` | 40 — TR/EN/PL × 320/384 dp |
 | `test/weekly_archive_test.dart` | 5 — archiwum v2 + legacy |
-| `test/event_model_test.dart` | 1 — lokalizacja fallback |
+| `test/tap_history_store_test.dart` | 4 — NDJSON tap log |
+| `test/shift_counter_store_test.dart` | 4 — plik liczników |
 | `test/widget_test.dart` | 3 — overlay, earnings form |
+| `test/overlay_sync_test.dart` | 2 — payload bez reload prefs |
+| `test/crash_logger_test.dart` | 1 |
+| `test/event_model_test.dart` | 1 — lokalizacja fallback |
 
 6. **Kompilacja bezpiecznej wersji APK ze stripowaniem symboli debugowania i obfuskacją kodu Dart:**
 
@@ -278,16 +286,20 @@ Finansowa i strukturalna architektura kodu RateHelper rozkłada się na następu
 ```
 lib/
 ├── main.dart                  # Inicjalizacja wątków, konfiguracja izolatu nakładki
-├── home_screen.dart           # Kokpit wskaźników, licznik odzysku, mechanizm aktualizacji OTA
+├── home_screen.dart           # Kokpit, _CounterRow + ValueNotifier, OTA, wakelock opt-in
 ├── earnings_models.dart       # Silnik matematyczny, struktury JSON, progi Solo/Paired
-├── earnings_screen.dart       # Formularze księgowe, izolowane odświeżanie list, wykresy i drogomierz
+├── earnings_screen.dart       # Formularze, ListView.builder paragonów, wykresy
 ├── earnings_pdf_export.dart   # Generator zestawień miesięcznych PDF (pdf + share_plus)
 ├── radar_screen.dart          # Interfejs graficzny Radaru Wydarzeń Kraków
-├── overlay_widget.dart        # Kod UI nakładki (Izolat okna) z optymalizacją RepaintBoundary
-├── overlay_sync.dart          # Komunikacja międzyizolatowa i wymuszanie przeładowania pamięci
+├── overlay_widget.dart        # UI nakładki (izolat) — T.rateFor, ShiftCounterStore
+├── overlay_sync.dart          # IPC z payloadem liczników (bez prefs.reload)
+├── tap_history_store.dart     # Append-only tap_history.jsonl (max 500)
+├── shift_counter_store.dart   # Jeden zapis shift_counters.json
 ├── onboarding_screen.dart     # Menadżer uprawnień systemowych (Overlay / Battery)
 ├── fonts.dart                 # Stałe nazw rodzin czcionek (DM Sans, JetBrains Mono)
-├── app_text_styles.dart       # Współdzielone obiekty TextStyle (T.*) — bez google_fonts
+├── app_text_styles.dart       # T.* static const TextStyle — bez google_fonts
+├── app_colors.dart            # Jedyna paleta semantyczna
+├── app_widgets.dart           # AppEmptyState, kMinTouchTarget
 ├── l10n.dart                  # Słownik tłumaczeń (TR/EN/PL) i lokalne formatowanie walut
 ├── secure_http.dart           # Zabezpieczenia certyfikatów i protokołu TLS
 ├── crash_logger.dart          # Dziennik awarii i błędów krytycznych
@@ -299,12 +311,17 @@ lib/
 
 android/app/src/main/kotlin/com/ratehelper/app/
 ├── MainActivity.kt            # MethodChannel, obsługa zdarzeń MediaKey
-└── MediaKeyAccessibilityService.kt  # Przechwytywanie przycisków Bluetooth (long press 800 ms)
+└── MediaKeyAccessibilityService.kt  # Keycode-first, @Volatile steeringWheelEnabled
 
 test/
 ├── earnings_test.dart
 ├── logic_test.dart
+├── layout_overflow_test.dart
 ├── weekly_archive_test.dart
+├── tap_history_store_test.dart
+├── shift_counter_store_test.dart
+├── overlay_sync_test.dart
+├── crash_logger_test.dart
 ├── event_model_test.dart
 └── widget_test.dart
 ```

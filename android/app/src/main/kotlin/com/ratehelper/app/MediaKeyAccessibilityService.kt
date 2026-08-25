@@ -3,6 +3,7 @@ package com.ratehelper.app
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
@@ -22,12 +23,27 @@ class MediaKeyAccessibilityService : AccessibilityService() {
     companion object {
         @Volatile
         var isServiceRunning = false
+
+        private const val FLUTTER_PREFS = "FlutterSharedPreferences"
+        private const val STEERING_WHEEL_KEY = "flutter.steeringWheelEnabled"
     }
 
     private val handler = Handler(Looper.getMainLooper())
     private var isInjecting = false
     private var pendingKeyCode = -1
     private var isLongPressTriggered = false
+
+    @Volatile
+    private var steeringWheelEnabled = false
+
+    private var flutterPrefs: SharedPreferences? = null
+
+    private val prefsListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+            if (key == STEERING_WHEEL_KEY) {
+                steeringWheelEnabled = prefs.getBoolean(key, false)
+            }
+        }
 
     private val longPressRunnable = Runnable {
         if (pendingKeyCode != -1) {
@@ -40,12 +56,20 @@ class MediaKeyAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         isServiceRunning = true
+        Thread {
+            val prefs = getSharedPreferences(FLUTTER_PREFS, Context.MODE_PRIVATE)
+            flutterPrefs = prefs
+            steeringWheelEnabled = prefs.getBoolean(STEERING_WHEEL_KEY, false)
+            prefs.registerOnSharedPreferenceChangeListener(prefsListener)
+        }.start()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         isServiceRunning = false
         handler.removeCallbacksAndMessages(null)
+        flutterPrefs?.unregisterOnSharedPreferenceChangeListener(prefsListener)
+        flutterPrefs = null
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -57,25 +81,21 @@ class MediaKeyAccessibilityService : AccessibilityService() {
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
-        // If we are currently re-injecting a short press, let it pass through to the system without swallowing
-        if (isInjecting) {
-            return super.onKeyEvent(event)
-        }
-
-        // Read-only check: verify if the user has enabled steering wheel counter in app settings.
-        // We never write to SharedPreferences here to prevent race conditions with Flutter.
-        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        val isEnabled = prefs.getBoolean("flutter.steeringWheelEnabled", false)
-        if (!isEnabled) {
-            return super.onKeyEvent(event)
-        }
-
+        // Cheap int compare first — never touch prefs or other work for
+        // volume/power/etc. that dominate the accessibility event stream.
         val keyCode = event.keyCode
         val isTargetKey = keyCode == KeyEvent.KEYCODE_MEDIA_NEXT ||
                           keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
                           keyCode == KeyEvent.KEYCODE_MEDIA_PREVIOUS
-
         if (!isTargetKey) {
+            return super.onKeyEvent(event)
+        }
+
+        if (isInjecting) {
+            return super.onKeyEvent(event)
+        }
+
+        if (!steeringWheelEnabled) {
             return super.onKeyEvent(event)
         }
 

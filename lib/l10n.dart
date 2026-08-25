@@ -36,6 +36,11 @@ class S {
         'Auto-complete trips',
         'Automatyczne ukończenie',
       );
+  static String get keepScreenOn => _p(
+        'Ekranı açık tut',
+        'Keep screen on',
+        'Nie wygaszaj ekranu',
+      );
   static String get steeringWheelCounter => _p(
         'Direksiyon Tuşu ile Sayma (Beta)',
         'Steering Wheel Counter (Beta)',
@@ -178,6 +183,31 @@ class S {
         'Henüz dokunuş kaydı yok.',
         'No tap records yet.',
         'Brak zapisów dotknięć.',
+      );
+  static String get noTapHistoryTitle => _p(
+        'Kayıt Yok',
+        'No Records',
+        'Brak zapisów',
+      );
+  static String get noTapHistoryDesc => _p(
+        'Widget üzerindeki + ve − tuşlarına bastığın her istek burada listelenir.',
+        'Every request you log with the + and − buttons on the widget shows up here.',
+        'Każde zlecenie zapisane przyciskami + i − na widżecie pojawi się tutaj.',
+      );
+  static String get noHistoryTitle => _p(
+        'Arşiv Boş',
+        'Archive Empty',
+        'Archiwum puste',
+      );
+  static String get noHistoryDesc => _p(
+        'Haftayı her sıfırladığında o haftanın özeti burada saklanır.',
+        'Each time you reset the week, that week’s summary is stored here.',
+        'Za każdym razem, gdy resetujesz tydzień, jego podsumowanie trafia tutaj.',
+      );
+  static String get crashLogEmptyTitle => _p(
+        'Kayıt Yok',
+        'No Entries',
+        'Brak wpisów',
       );
   static String get tapHistoryClear => _p('Temizle', 'Clear', 'Wyczyść');
   static String get tapHistoryClearConfirm => _p(
@@ -539,6 +569,16 @@ class S {
         'Kazanç raporu',
         'Earnings report',
         'Raport zarobków',
+      );
+  static String get exportPdfInProgress => _p(
+        'PDF hazırlanıyor…',
+        'Preparing PDF…',
+        'Przygotowywanie PDF…',
+      );
+  static String get exportFailed => _p(
+        'PDF oluşturulamadı. Tekrar deneyin.',
+        'Could not create the PDF. Try again.',
+        'Nie udało się utworzyć PDF. Spróbuj ponownie.',
       );
 
   // PDF document content

@@ -266,6 +266,48 @@ void main() {
       expect(decoded.fuelAfterDiscount, 315);
     });
 
+    test('drops oldest fuel receipts beyond kMaxFuelReceipts (FIFO)', () {
+      final receipts = [
+        for (var i = 0; i < kMaxFuelReceipts + 10; i++)
+          FuelReceipt(
+            id: '$i',
+            timestamp: DateTime(2026, 7, 6).add(Duration(minutes: i)),
+            amountPaid: i.toDouble(),
+          ),
+      ];
+      final e = WeekEarning(
+        id: 'capped_receipts',
+        weekStart: DateTime(2026, 7, 6),
+        weekEnd: DateTime(2026, 7, 12),
+        driverMode: DriverMode.solo,
+        netIncome: 3000,
+        cashReceived: 0,
+        onlineHours: 30,
+        tripCount: 100,
+        hasRentalDiscount: true,
+        fuelReceipts: receipts,
+      );
+      expect(e.fuelReceipts.length, kMaxFuelReceipts);
+      expect(e.fuelReceipts.first.id, '10');
+      expect(e.fuelReceipts.last.id, '${kMaxFuelReceipts + 9}');
+
+      final decoded = WeekEarning.fromJson(e.toJson())!;
+      expect(decoded.fuelReceipts.length, kMaxFuelReceipts);
+      expect(decoded.fuelReceipts.first.id, '10');
+    });
+
+    test('capFuelReceipts is a no-op at or below the cap', () {
+      final receipts = [
+        FuelReceipt(
+          id: 'a',
+          timestamp: DateTime(2026, 7, 6),
+          amountPaid: 1,
+        ),
+      ];
+      expect(identical(capFuelReceipts(receipts), receipts), isTrue);
+      expect(capFuelReceipts(receipts).length, 1);
+    });
+
     test('legacy fuelPumpPaid single field migrates into fuelReceipts list', () {
       final legacy = {
         'id': 'legacy_pump',
@@ -1082,6 +1124,57 @@ void main() {
         buildWeek(tripCount: 220, driverMode: DriverMode.solo),
       ];
       expect(calculateLifetimeTrips(weeks), 500);
+    });
+  });
+
+  group('fuel receipt FIFO cap', () {
+    test('caps fuel receipts FIFO at kMaxFuelReceipts on construct', () {
+      final receipts = [
+        for (var i = 0; i < kMaxFuelReceipts + 5; i++)
+          FuelReceipt(
+            timestamp: DateTime(2026, 1, 1, 0, i),
+            amountPaid: i.toDouble(),
+          ),
+      ];
+      final week = WeekEarning(
+        id: 'cap',
+        weekStart: DateTime(2026, 6, 22),
+        weekEnd: DateTime(2026, 6, 28),
+        driverMode: DriverMode.solo,
+        netIncome: 0,
+        cashReceived: 0,
+        onlineHours: 0,
+        tripCount: 0,
+        fuelReceipts: receipts,
+      );
+      expect(week.fuelReceipts, hasLength(kMaxFuelReceipts));
+      expect(week.fuelReceipts.first.amountPaid, 5);
+      expect(week.fuelReceipts.last.amountPaid, kMaxFuelReceipts + 4);
+    });
+
+    test('fromJson also FIFO-caps an oversized receipts list', () {
+      final receipts = [
+        for (var i = 0; i < kMaxFuelReceipts + 3; i++)
+          {
+            'id': 'r$i',
+            'timestamp': DateTime(2026, 1, 1, 0, i).toIso8601String(),
+            'amountPaid': i,
+          },
+      ];
+      final week = WeekEarning.fromJson({
+        'id': 'cap-json',
+        'weekStart': '2026-06-22T00:00:00.000',
+        'weekEnd': '2026-06-28T00:00:00.000',
+        'driverMode': 'solo',
+        'netIncome': 0,
+        'cashReceived': 0,
+        'onlineHours': 0,
+        'tripCount': 0,
+        'fuelReceipts': receipts,
+      });
+      expect(week, isNotNull);
+      expect(week!.fuelReceipts, hasLength(kMaxFuelReceipts));
+      expect(week.fuelReceipts.first.amountPaid, 3);
     });
   });
 }

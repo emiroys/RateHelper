@@ -21,8 +21,14 @@ class CrashLogger {
   CrashLogger._();
 
   static const int _maxBytes = 64 * 1024;
+  static const int _maxPerSecond = 5;
   static File? _file;
   static bool _initialised = false;
+  static final List<DateTime> _recentWrites = <DateTime>[];
+  static int _droppedThisWindow = 0;
+  static Timer? _dropSummaryTimer;
+  static Duration _dropSummaryDelay = const Duration(seconds: 1);
+  static Future<void> _chain = Future<void>.value();
 
   static Future<void> install() async {
     if (_initialised) return;
@@ -59,6 +65,26 @@ class CrashLogger {
     }
   }
 
+  @visibleForTesting
+  static void debugReset({File? file, Duration? dropSummaryDelay}) {
+    _file = file;
+    _initialised = true;
+    _recentWrites.clear();
+    _droppedThisWindow = 0;
+    _dropSummaryTimer?.cancel();
+    _dropSummaryTimer = null;
+    _dropSummaryDelay = dropSummaryDelay ?? const Duration(seconds: 1);
+    _chain = Future<void>.value();
+  }
+
+  @visibleForTesting
+  static Future<void> flushDroppedSummaryForTest() {
+    _dropSummaryTimer?.cancel();
+    _dropSummaryTimer = null;
+    _chain = _chain.then((_) => _writeDroppedSummary());
+    return _chain;
+  }
+
   static Future<void> appendError(
     String tag,
     String message,
@@ -81,6 +107,50 @@ class CrashLogger {
   }
 
   static Future<void> _write(
+    String tag,
+    String message,
+    Object? error,
+    StackTrace? stack,
+  ) {
+    _chain = _chain.then((_) => _writeNow(tag, message, error, stack));
+    return _chain;
+  }
+
+  static bool _allowWrite(DateTime now) {
+    _recentWrites.removeWhere(
+      (t) => now.difference(t) >= const Duration(seconds: 1),
+    );
+    if (_recentWrites.length < _maxPerSecond) {
+      _recentWrites.add(now);
+      return true;
+    }
+    _droppedThisWindow++;
+    _dropSummaryTimer ??= Timer(_dropSummaryDelay, () {
+      _dropSummaryTimer = null;
+      unawaited(_writeDroppedSummary());
+    });
+    return false;
+  }
+
+  static Future<void> _writeDroppedSummary() async {
+    final n = _droppedThisWindow;
+    _droppedThisWindow = 0;
+    if (n <= 0) return;
+    await _appendRaw('RATE_LIMIT', 'dropped $n', null, null);
+  }
+
+  static Future<void> _writeNow(
+    String tag,
+    String message,
+    Object? error,
+    StackTrace? stack,
+  ) async {
+    if (_file == null) return;
+    if (!_allowWrite(DateTime.now())) return;
+    await _appendRaw(tag, message, error, stack);
+  }
+
+  static Future<void> _appendRaw(
     String tag,
     String message,
     Object? error,
