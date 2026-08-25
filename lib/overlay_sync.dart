@@ -20,9 +20,11 @@ class OverlayCounters {
 /// [FlutterOverlayWindow.shareData] / [FlutterOverlayWindow.overlayListener].
 abstract final class OverlaySync {
   static const String actionReloadCounters = 'reload_counters';
+  static const String actionSunMode = 'sun_mode';
   static const String keyAccepted = 'accepted';
   static const String keyRejected = 'rejected';
   static const String keyCompleted = 'completed';
+  static const String keySunMode = 'sunMode';
 
   static bool _isReloadMessage(Object? event) {
     if (event is Map) {
@@ -47,9 +49,31 @@ abstract final class OverlaySync {
     );
   }
 
+  static bool isSunModeMessage(Object? event) {
+    return event is Map && event['action'] == actionSunMode;
+  }
+
+  /// `true` / `false` when [event] is a sun-mode signal; `null` otherwise.
+  static bool? sunModeFromEvent(Object? event) {
+    if (event is! Map) return null;
+    final raw = event[keySunMode];
+    if (event['action'] == actionSunMode) {
+      return _asBool(raw) ?? false;
+    }
+    if (_isReloadMessage(event) && raw != null) return _asBool(raw);
+    return null;
+  }
+
   static int? _asInt(Object? value) {
     if (value is int) return value;
     if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  static bool? _asBool(Object? value) {
+    if (value is bool) return value;
+    if (value is String) return value == '1' || value.toLowerCase() == 'true';
+    if (value is num) return value != 0;
     return null;
   }
 
@@ -58,6 +82,7 @@ abstract final class OverlaySync {
     int? accepted,
     int? rejected,
     int? completed,
+    bool? sunMode,
   }) async {
     try {
       if (!await FlutterOverlayWindow.isActive()) return;
@@ -65,10 +90,28 @@ abstract final class OverlaySync {
       if (accepted != null) payload[keyAccepted] = '$accepted';
       if (rejected != null) payload[keyRejected] = '$rejected';
       if (completed != null) payload[keyCompleted] = '$completed';
+      if (sunMode != null) payload[keySunMode] = sunMode ? '1' : '0';
       await FlutterOverlayWindow.shareData(payload);
     } catch (e, s) {
       loge(
         'overlay sync notify failed',
+        name: 'overlay_sync',
+        error: e,
+        stack: s,
+      );
+    }
+  }
+
+  static Future<void> notifySunMode(bool sun) async {
+    try {
+      if (!await FlutterOverlayWindow.isActive()) return;
+      await FlutterOverlayWindow.shareData(<String, String>{
+        'action': actionSunMode,
+        keySunMode: sun ? '1' : '0',
+      });
+    } catch (e, s) {
+      loge(
+        'overlay sun-mode notify failed',
         name: 'overlay_sync',
         error: e,
         stack: s,

@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 
+import 'app_colors.dart';
+import 'display_mode.dart';
 import 'home_screen.dart';
 import 'crash_logger.dart';
 import 'fonts.dart';
@@ -146,6 +148,12 @@ class RateHelperApp extends StatefulWidget {
 class _RateHelperAppState extends State<RateHelperApp> {
   late bool _needsOnboarding = widget.showOnboarding;
 
+  @override
+  void initState() {
+    super.initState();
+    unawaited(DisplayMode.instance.start());
+  }
+
   Future<void> _completeOnboarding() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kKeyOnboardingComplete, true);
@@ -153,24 +161,46 @@ class _RateHelperAppState extends State<RateHelperApp> {
     setState(() => _needsOnboarding = false);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'RateHelper',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: Colors.black,
-        colorScheme: const ColorScheme.dark(
-          surface: Colors.black,
-          primary: Colors.white,
+  ThemeData _theme(bool sun) {
+    if (sun) {
+      return ThemeData(
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: AppColors.sunField,
+        colorScheme: const ColorScheme.light(
+          surface: AppColors.sunField,
+          primary: AppColors.sunInk,
         ),
         useMaterial3: true,
-        textTheme: ThemeData.dark().textTheme.apply(fontFamily: AppFonts.dmSans),
+        textTheme:
+            ThemeData.light().textTheme.apply(fontFamily: AppFonts.dmSans),
+      );
+    }
+    return ThemeData(
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: AppColors.base,
+      colorScheme: const ColorScheme.dark(
+        surface: AppColors.base,
+        primary: Colors.white,
       ),
-      home: _needsOnboarding
-          ? OnboardingScreen(onDone: _completeOnboarding)
-          : const HomeScreen(),
+      useMaterial3: true,
+      textTheme: ThemeData.dark().textTheme.apply(fontFamily: AppFonts.dmSans),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: kSunMode,
+      builder: (context, sun, _) {
+        return MaterialApp(
+          title: 'RateHelper',
+          debugShowCheckedModeBanner: false,
+          theme: _theme(sun),
+          home: _needsOnboarding
+              ? OnboardingScreen(onDone: _completeOnboarding)
+              : const HomeScreen(),
+        );
+      },
     );
   }
 }

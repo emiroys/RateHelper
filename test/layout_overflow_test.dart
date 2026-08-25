@@ -86,7 +86,7 @@ void main() {
         testWidgets('OnboardingScreen renders clean — $label', (tester) async {
           S.setLang(lang);
           await _pumpAt(tester, size, OnboardingScreen(onDone: () {}));
-          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 600));
           expect(tester.takeException(), isNull);
         });
 
@@ -117,7 +117,7 @@ void main() {
             tester,
             size,
             Scaffold(
-              backgroundColor: Colors.black,
+              backgroundColor: AppColors.base,
               body: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
@@ -171,13 +171,13 @@ void main() {
     });
 
     test('surface tokens match the consolidated hex values', () {
-      expect(AppColors.card, const Color(0xFF1A1A1A));
-      expect(AppColors.sheet, const Color(0xFF121212));
-      expect(AppColors.dialog, const Color(0xFF161616));
-      expect(AppColors.elevated, const Color(0xFF1E1E1E));
-      expect(AppColors.selected, const Color(0xFF242424));
+      expect(AppColors.base, const Color(0xFF121212));
+      expect(AppColors.raised, const Color(0xFF1A1A1A));
       expect(AppColors.inset, const Color(0xFF0F0F0F));
-      expect(AppColors.track, const Color(0xFF2A2A2A));
+      expect(AppColors.card, AppColors.raised);
+      expect(AppColors.hairlineFaint, const Color(0x0DFFFFFF));
+      expect(AppColors.hairline, const Color(0x1AFFFFFF));
+      expect(AppColors.hairlineStrong, const Color(0x33FFFFFF));
     });
 
     test('label colors clear the dim-text threshold used before', () {

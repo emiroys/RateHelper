@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -18,9 +18,15 @@ import 'app_colors.dart';
 import 'app_text_styles.dart';
 import 'app_widgets.dart';
 import 'crash_logger.dart';
+import 'display_mode.dart';
 import 'earnings_models.dart';
 import 'earnings_screen.dart';
 import 'env.dart';
+import 'format_rate.dart';
+import 'instruments/bezel.dart';
+import 'instruments/gauge_painter.dart';
+import 'instruments/plate.dart';
+import 'instruments/shift_clock.dart';
 import 'models/weekly_archive_entry.dart';
 import 'l10n.dart';
 import 'log.dart';
@@ -145,12 +151,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _emerald = AppColors.emerald;
   static const _crimson = AppColors.crimson;
   static const _amber = AppColors.amber;
-  static const _designerGold = AppColors.designerGold;
-  static final _cardBorder = Border.all(
-    color: AppColors.cardBorderColor,
-    width: 1,
-  );
-  static final _cardRadius = BorderRadius.circular(16);
+  static const _gold = AppColors.gold;
+  static final _cardBorder = kCardBorder;
+  static final _cardRadius = kCardBorderRadius;
 
   SharedPreferences? _prefs;
   AppLang _currentLang = AppLang.tr;
@@ -182,6 +185,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _steeringWheelEnabled = false;
   bool _keepScreenOn = false;
   TripGoal _selectedGoal = TripGoal.tier1;
+  String _plate = kDefaultPlate;
+  Color? _flashColor;
+  Color? _prevAcceptBand;
+  Timer? _flashTimer;
 
   int? _prevAccepted;
   int? _prevRejected;
@@ -308,6 +315,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     unawaited(_checkForUpdate(info.version));
     _loadAndCheckReset();
     unawaited(_refreshOverlayState());
+    _plate = prefs.getString(kDriverPlateKey) ?? kDefaultPlate;
+    if (mounted) setState(() {});
   }
 
   String _normalizeSignature(String sig) =>
@@ -519,6 +528,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _overlayListenerSub?.cancel();
     _saveDebounce?.cancel();
     _wakelockIdleTimer?.cancel();
+    _flashTimer?.cancel();
     _flushSave();
     unawaited(_setWakelock(false));
     WidgetsBinding.instance.removeObserver(this);
@@ -530,6 +540,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _applyWakelockPolicy();
       _reloadAndSync();
+      unawaited(DisplayMode.instance.playSelfTest());
     } else if (state == AppLifecycleState.paused) {
       // Kick the write before the OS freezes us. shared_preferences
       // updates its in-memory map synchronously and flushes to disk
@@ -986,15 +997,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           keyboardType: TextInputType.number,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           autofocus: true,
-          style: const TextStyle(
-            fontFamily: AppFonts.dmSans,
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-          ),
+          style: T.titleSm.copyWith(fontWeight: FontWeight.w700),
           decoration: InputDecoration(
             filled: true,
-            fillColor: const Color(0x0AFFFFFF),
+            fillColor: AppColors.hairlineFaint,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,
@@ -1049,7 +1055,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _showLanguageSelector() async {
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.sheet,
+      backgroundColor: AppColors.base,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1058,14 +1064,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
+            const AppSheetHandle(),
             const SizedBox(height: 16),
             _LangOption(
               flag: '🇹🇷',
@@ -1139,6 +1138,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
 
       await OverlaySync.notifyCountersChanged();
+      unawaited(OverlaySync.notifySunMode(kSunMode.value));
 
       if (!mounted) return;
       setState(() => _overlayActive = true);
@@ -1177,7 +1177,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.sheet,
+      backgroundColor: AppColors.base,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -1186,6 +1186,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         archive: archive,
         taps: taps,
         formatTapDate: _formatTapDate,
+        plate: _plate,
       ),
     );
   }
@@ -1209,7 +1210,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.sheet,
+      backgroundColor: AppColors.base,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -1223,19 +1224,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             children: [
               Text(
                 S.crashLogTitle,
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 2,
-                  color: AppColors.labelText,
-                ),
+                style: T.sectionHeader,
               ),
               const SizedBox(height: 12),
               if (isEmpty)
                 AppEmptyState(
                   compact: true,
-                  icon: Icons.verified_outlined,
+                  icon: Icons.verified_rounded,
                   title: S.crashLogEmptyTitle,
                   description: S.crashLogEmpty,
                 )
@@ -1247,12 +1242,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   child: SingleChildScrollView(
                     child: SelectableText(
                       body,
-                      style: const TextStyle(
-                        fontFamily: AppFonts.jetBrainsMono,
-                        color: Colors.white,
-                        fontSize: 11,
-                        height: 1.4,
-                      ),
+                      style: T.monoSm,
                     ),
                   ),
                 ),
@@ -1376,14 +1366,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final logoCachePx =
-        (28 * MediaQuery.devicePixelRatioOf(context)).round();
+    final sun = Theme.of(context).brightness == Brightness.light;
+    final ink = AppColors.ink(sun);
+    final scaffold = AppColors.scaffold(sun);
     return Listener(
       onPointerDown: (_) => _onUserInteraction(),
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: scaffold,
         appBar: AppBar(
-          backgroundColor: Colors.black,
+          backgroundColor: scaffold,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           leading: ValueListenableBuilder<bool>(
@@ -1391,7 +1382,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             builder: (context, canUndo, _) => IconButton(
               icon: Icon(
                 Icons.undo_rounded,
-                color: canUndo ? Colors.white : const Color(0x26FFFFFF),
+                color: canUndo ? ink : AppColors.mutedFor(sun),
               ),
               onPressed: canUndo ? _undo : null,
             ),
@@ -1399,64 +1390,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.asset(
-                  'assets/logo.png',
-                  width: 28,
-                  height: 28,
-                  cacheWidth: logoCachePx,
-                  cacheHeight: logoCachePx,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: _cardColor,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.local_taxi_rounded,
-                      color: Colors.white,
-                      size: 18,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Text(
-                'RateHelper',
-                style: TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: 0.3,
-                ),
-              ),
+              LicensePlate(text: _plate, height: 26, compact: true),
               const SizedBox(width: 8),
               Container(
-                width: 8,
-                height: 8,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _overlayActive ? _emerald : const Color(0x44FFFFFF),
-                  boxShadow: _overlayActive
-                      ? [
-                          BoxShadow(
-                            color: _emerald.withValues(alpha: 0.55),
-                            blurRadius: 6,
-                          ),
-                        ]
-                      : null,
+                  color: _overlayActive
+                      ? AppColors.emeraldFor(sun)
+                      : AppColors.trackFor(sun),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _overlayActive ? S.overlayOn : S.overlayOff,
+                  style: T.captionSm.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: _overlayActive ? Colors.white : AppColors.ink(sun),
+                  ),
                 ),
               ),
             ],
           ),
           actions: [
             PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
-              color: AppColors.card,
+              icon: Icon(Icons.more_vert_rounded, color: ink),
+              color: AppColors.cardBg(sun),
               onSelected: (v) {
                 if (v == 'setup') {
                   Navigator.of(context).push(
@@ -1473,6 +1430,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       if (mounted) setState(() {});
                     });
                   });
+                } else if (v == 'display') {
+                  DisplayMode.instance.cyclePref();
                 }
               },
               itemBuilder: (_) => [
@@ -1480,9 +1439,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   value: 'setup',
                   child: Text(
                     S.setupGuide,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: AppFonts.dmSans,
-                      color: Colors.white,
+                      color: ink,
+                    ),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'display',
+                  child: Text(
+                    '${S.displayModeAuto}/${S.displayModeSun}/${S.displayModeDark}',
+                    style: TextStyle(
+                      fontFamily: AppFonts.dmSans,
+                      color: ink,
                     ),
                   ),
                 ),
@@ -1490,9 +1459,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   value: 'crash',
                   child: Text(
                     S.crashLogTitle,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: AppFonts.dmSans,
-                      color: Colors.white,
+                      color: ink,
                     ),
                   ),
                 ),
@@ -1502,9 +1471,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     S.driverModeLabel(activeDriverMode == DriverMode.paired),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: AppFonts.dmSans,
-                      color: Colors.white,
+                      color: ink,
                     ),
                   ),
                 ),
@@ -1531,189 +1500,146 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _buildTripGoalSelectorChip(),
                     const SizedBox(height: 12),
                     ListenableBuilder(
-                      listenable: _ratesListenable,
+                      listenable: Listenable.merge([
+                        _ratesListenable,
+                        kGaugeSweep,
+                      ]),
                       builder: (context, _) {
+                        final sun =
+                            Theme.of(context).brightness == Brightness.light;
+                        final band = _acceptRateColor;
+                        if (_prevAcceptBand != null &&
+                            _prevAcceptBand != band) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (!mounted) return;
+                            HapticFeedback.heavyImpact();
+                            setState(() => _flashColor = band);
+                            _flashTimer?.cancel();
+                            _flashTimer = Timer(
+                              const Duration(milliseconds: 600),
+                              () {
+                                if (mounted) {
+                                  setState(() => _flashColor = null);
+                                }
+                              },
+                            );
+                          });
+                        }
+                        _prevAcceptBand = band;
                         final cancelColor = cancellationRate >= 5.0
-                            ? _crimson
-                            : _emerald;
-                        final recovery = neededForRecovery;
+                            ? AppColors.crimsonFor(sun)
+                            : AppColors.emeraldFor(sun);
+                        final req = _selectedGoal.requiredAcceptRate;
+                        final acceptHeadroom =
+                            req == null ? 100.0 : acceptanceRate - req;
+                        final cancelHeadroom = 5.0 - cancellationRate;
+                        final worstIsCancel = req != null &&
+                            cancelHeadroom < acceptHeadroom;
+                        final sweep = kGaugeSweep.value;
+                        final stateColor = AppColors.stateFor(band, sun);
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            SizedBox(
-                              height: 110,
+                            Container(
+                              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                              decoration: instrumentBezel(
+                                sun: sun,
+                                flash: _flashColor == null
+                                    ? null
+                                    : AppColors.stateFor(_flashColor!, sun),
+                              ),
                               child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   Expanded(
-                                    flex: 1,
-                                    child: _buildRateCard(
+                                    flex: 5,
+                                    child: ArcGauge(
+                                      value: acceptanceRate,
+                                      arcValue: acceptanceRate * sweep,
+                                      redline: req,
+                                      color: stateColor,
                                       label: S.acceptRate,
-                                      value: S.formatPercent(
-                                        acceptanceRate.toStringAsFixed(2),
-                                      ),
-                                      color: _acceptRateColor,
+                                      caption: worstIsCancel
+                                          ? S.constraintCancel
+                                          : (req == null
+                                              ? null
+                                              : S.constraintAccept),
+                                      sun: sun,
+                                      size: 220,
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: 8),
                                   Expanded(
-                                    flex: 1,
-                                    child: _buildRateCard(
-                                      label: S.cancelRate,
-                                      value: S.formatPercent(
-                                        cancellationRate.toStringAsFixed(2),
+                                    flex: 2,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 14,
+                                        horizontal: 8,
                                       ),
-                                      color: cancelColor,
+                                      decoration: BoxDecoration(
+                                        color: sun && cancellationRate >= 5
+                                            ? AppColors.sunCrimson
+                                            : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: cancelColor.withValues(
+                                            alpha: 0.55,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            cancellationRate >= 5
+                                                ? Icons.warning_rounded
+                                                : Icons.shield_rounded,
+                                            color: sun && cancellationRate >= 5
+                                                ? Colors.white
+                                                : cancelColor,
+                                            size: 18,
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            S.cancelRate,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            textAlign: TextAlign.center,
+                                            style: T.caption.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                              color: sun &&
+                                                      cancellationRate >= 5
+                                                  ? Colors.white
+                                                  : AppColors.labelFor(sun),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          FittedBox(
+                                            child: Text(
+                                              formatRatePercent(
+                                                cancellationRate,
+                                              ),
+                                              style: T.rateFor(
+                                                cancelColor,
+                                                sun: sun,
+                                              ).copyWith(
+                                                fontSize: 22,
+                                                color: sun &&
+                                                        cancellationRate >= 5
+                                                    ? Colors.white
+                                                    : cancelColor,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            if (recovery != null) ...[
-                              const SizedBox(height: 12),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _cardColor,
-                                  border: _cardBorder,
-                                  borderRadius: _cardRadius,
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.trending_up_rounded,
-                                      color: _amber,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        S.recovery(
-                                          recovery,
-                                          _selectedGoal.requiredAcceptRate!,
-                                        ),
-                                        style: const TextStyle(
-                                          fontFamily: AppFonts.dmSans,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: _amber,
-                                          height: 1.4,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ] else if (_selectedGoal.requiredAcceptRate !=
-                                    null &&
-                                acceptanceRate >=
-                                    _selectedGoal.requiredAcceptRate! &&
-                                acceptanceRate <
-                                    _selectedGoal.requiredAcceptRate! +
-                                        AMBER_BUFFER) ...[
-                              const SizedBox(height: 12),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _cardColor,
-                                  border: _cardBorder,
-                                  borderRadius: _cardRadius,
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.shield_outlined,
-                                      color: _amber,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        S.safeButClose,
-                                        style: const TextStyle(
-                                          fontFamily: AppFonts.dmSans,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: _amber,
-                                          height: 1.4,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            if (_selectedGoal != TripGoal.tier0)
-                              Builder(
-                                builder: (context) {
-                                  final budget = maxCancellationsBudget;
-                                  if (budget == null) {
-                                    return const SizedBox.shrink();
-                                  }
-
-                                  final isOverLimit = budget < 0;
-                                  final isZeroBudget = budget == 0;
-
-                                  final textColor = isOverLimit
-                                      ? _crimson
-                                      : (isZeroBudget ? _amber : _emerald);
-
-                                  final icon = isOverLimit
-                                      ? Icons.warning_amber_rounded
-                                      : (isZeroBudget
-                                            ? Icons.shield_outlined
-                                            : Icons.info_outline_rounded);
-
-                                  final text = isOverLimit
-                                      ? S.cancellationLimitExceeded
-                                      : S.maxAdditionalCancellations(budget);
-
-                                  return Column(
-                                    children: [
-                                      const SizedBox(height: 12),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                          vertical: 14,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _cardColor,
-                                          border: _cardBorder,
-                                          borderRadius: _cardRadius,
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              icon,
-                                              color: textColor,
-                                              size: 20,
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Text(
-                                                text,
-                                                style: TextStyle(
-                                                  fontFamily: AppFonts.dmSans,
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: textColor,
-                                                  height: 1.4,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                },
-                              ),
+                            const SizedBox(height: 12),
+                            _buildStateStrip(sun),
                           ],
                         );
                       },
@@ -1779,24 +1705,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                     const SizedBox(height: 40),
 
-                    GestureDetector(
-                      onTap: _showManualResetDialog,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        decoration: BoxDecoration(
-                          color: _cardColor,
-                          border: _cardBorder,
-                          borderRadius: _cardRadius,
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          S.resetWeek,
-                          style: const TextStyle(
-                            fontFamily: AppFonts.dmSans,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 2,
-                            color: _crimson,
+                    Material(
+                      color: _cardColor,
+                      borderRadius: _cardRadius,
+                      child: InkWell(
+                        onTap: () {
+                          HapticFeedback.mediumImpact();
+                          _showManualResetDialog();
+                        },
+                        borderRadius: _cardRadius,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          decoration: BoxDecoration(
+                            border: _cardBorder,
+                            borderRadius: _cardRadius,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            S.resetWeek,
+                            style: T.labelStrong.copyWith(
+                              letterSpacing: 2,
+                              color: _crimson,
+                            ),
                           ),
                         ),
                       ),
@@ -1840,22 +1770,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildBottomActionBar() {
+    final sun = Theme.of(context).brightness == Brightness.light;
     return Material(
-      color: AppColors.elevated,
+      color: AppColors.elevatedBg(sun),
       elevation: 12,
       shadowColor: Colors.black54,
       borderRadius: BorderRadius.circular(32),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: AppColors.hairline),
+          border: Border.all(color: AppColors.hairlineFor(sun)),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
         child: Row(
           children: [
             Expanded(
               child: _BottomBarAction(
-                emoji: '🌐',
+                icon: Icons.language_rounded,
                 label: S.navLang,
                 onTap: _showLanguageSelector,
               ),
@@ -1869,21 +1800,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             Expanded(
               child: _BottomBarAction(
-                emoji: '📋',
+                icon: Icons.list_alt_rounded,
                 label: S.navLogs,
                 onTap: _showHistory,
               ),
             ),
             Expanded(
               child: _BottomBarAction(
-                emoji: '📡',
-                label: 'Radar',
+                icon: Icons.radar_rounded,
+                label: S.navRadar,
                 onTap: _openRadar,
               ),
             ),
             Expanded(
               child: _BottomBarAction(
-                emoji: '💰',
+                icon: Icons.payments_rounded,
                 label: S.navEarnings,
                 onTap: _openEarnings,
               ),
@@ -1920,18 +1851,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
       decoration: BoxDecoration(
         color: _cardColor,
-        border: Border.all(color: const Color(0x26FFFFFF), width: 1),
+        border: Border.all(color: AppColors.hairlineStrong, width: 1),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
+          Text(
             'KK4181R',
-            style: TextStyle(
+            style: T.captionSm.copyWith(
               fontFamily: AppFonts.jetBrainsMono,
-              fontSize: 11,
-              color: _designerGold,
+              color: _gold,
               letterSpacing: 2.5,
               fontWeight: FontWeight.w500,
               height: 1.2,
@@ -1940,12 +1870,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           const SizedBox(height: 3),
           Text(
             S.designer,
-            style: TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 9,
-              fontWeight: FontWeight.w600,
+            style: T.nano.copyWith(
               letterSpacing: 1.5,
-              color: _designerGold.withValues(alpha: 0.65),
+              color: _gold.withValues(alpha: 0.65),
               height: 1,
             ),
           ),
@@ -1955,108 +1882,109 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildReleaseInfoRow() {
-    return GestureDetector(
-      onTap: () {
-        setState(() => _showRawVersion = !_showRawVersion);
-      },
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        constraints: const BoxConstraints(minHeight: kMinTouchTarget),
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'RateHelper — ${S.releaseName}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontFamily: AppFonts.jetBrainsMono,
-                fontSize: 10,
-                color: AppColors.mutedText,
-                letterSpacing: 1.2,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            if (_versionLabel.isNotEmpty) ...[
-              const SizedBox(height: 3),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          setState(() => _showRawVersion = !_showRawVersion);
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: kMinTouchTarget),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               Text(
-                _showRawVersion ? '${S.version} $_versionLabel' : _versionLabel,
+                'RateHelper — ${S.releaseName}',
                 textAlign: TextAlign.center,
-                style: _showRawVersion
-                    ? const TextStyle(
-                        fontFamily: AppFonts.jetBrainsMono,
-                        fontSize: 9,
-                        color: AppColors.mutedText,
-                        letterSpacing: 1.0,
-                        fontWeight: FontWeight.w400,
-                      )
-                    : const TextStyle(
-                        fontFamily: AppFonts.jetBrainsMono,
-                        fontSize: 9,
-                        color: AppColors.disabledText,
-                        letterSpacing: 1.0,
-                        fontWeight: FontWeight.w400,
-                      ),
-              ),
-            ],
-            if (_showRawVersion &&
-                !kReleaseMode &&
-                _debugBuildSignature != null &&
-                _debugBuildSignature!.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              SelectableText(
-                'SIG: $_debugBuildSignature',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: T.micro.copyWith(
                   fontFamily: AppFonts.jetBrainsMono,
-                  fontSize: 8,
-                  color: Color(0x55FFFFFF),
-                  letterSpacing: 0.5,
-                  height: 1.3,
+                  color: AppColors.mutedText,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
+              if (_versionLabel.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(
+                  _showRawVersion ? '${S.version} $_versionLabel' : _versionLabel,
+                  textAlign: TextAlign.center,
+                  style: _showRawVersion
+                      ? T.nano.copyWith(
+                          fontFamily: AppFonts.jetBrainsMono,
+                          fontWeight: FontWeight.w400,
+                          letterSpacing: 1.0,
+                        )
+                      : T.nano.copyWith(
+                          fontFamily: AppFonts.jetBrainsMono,
+                          color: AppColors.disabledText,
+                          letterSpacing: 1.0,
+                          fontWeight: FontWeight.w400,
+                        ),
+                ),
+              ],
+              if (_showRawVersion &&
+                  !kReleaseMode &&
+                  _debugBuildSignature != null &&
+                  _debugBuildSignature!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                SelectableText(
+                  'SIG: $_debugBuildSignature',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontFamily: AppFonts.jetBrainsMono,
+                    fontSize: 8,
+                    color: Color(0x55FFFFFF),
+                    letterSpacing: 0.5,
+                    height: 1.3,
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildTripGoalSelectorChip() {
-    return GestureDetector(
-      onTap: _showTripGoalSelector,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: _cardColor,
-          border: _cardBorder,
-          borderRadius: _cardRadius,
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.flag_rounded, color: _amber, size: 20),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                S.tripGoalChip(
-                  _selectedGoal.minTrips,
-                  _selectedGoal.requiredAcceptRate,
-                ),
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
+    return Material(
+      color: _cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: _cardRadius,
+        side: const BorderSide(color: AppColors.hairlineFaint, width: 1),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          _showTripGoalSelector();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              const Icon(Icons.flag_rounded, color: _amber, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  S.tripGoalChip(
+                    _selectedGoal.minTrips,
+                    _selectedGoal.requiredAcceptRate,
+                  ),
+                  style: T.labelStrong,
                 ),
               ),
-            ),
-            const Icon(
-              Icons.expand_more_rounded,
-              color: AppColors.mutedText,
-              size: 20,
-            ),
-          ],
+              const Icon(
+                Icons.expand_more_rounded,
+                color: AppColors.mutedText,
+                size: 20,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2065,18 +1993,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _showTripGoalSelector() {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.dialog,
+      backgroundColor: AppColors.base,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const AppSheetHandle(),
+                const SizedBox(height: 16),
                 Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -2084,12 +2014,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                   child: Text(
                     S.tripGoalTitle,
-                    style: const TextStyle(
-                      fontFamily: AppFonts.dmSans,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
+                    style: T.eyebrow,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -2099,7 +2024,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     selected: _selectedGoal == goal,
-                    selectedTileColor: AppColors.selected,
+                    selectedTileColor: AppColors.raised,
                     leading: Icon(
                       Icons.outlined_flag_rounded,
                       color: _selectedGoal == goal
@@ -2110,16 +2035,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       S.tripGoalOption(goal.minTrips, goal.requiredAcceptRate),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontFamily: AppFonts.dmSans,
-                        fontSize: 14,
-                        fontWeight: _selectedGoal == goal
-                            ? FontWeight.w800
-                            : FontWeight.w500,
-                        color: _selectedGoal == goal
-                            ? Colors.white
-                            : AppColors.mutedText,
-                      ),
+                      style: _selectedGoal == goal
+                          ? T.bodyStrong
+                          : T.body.copyWith(color: AppColors.mutedText),
                     ),
                     trailing: _selectedGoal == goal
                         ? const Icon(
@@ -2129,6 +2047,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           )
                         : null,
                     onTap: () {
+                      HapticFeedback.selectionClick();
                       Navigator.pop(ctx);
                       _setTripGoal(goal);
                     },
@@ -2143,65 +2062,110 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildRateCard({
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 18),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        border: _cardBorder,
-        borderRadius: _cardRadius,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildStateStrip(bool sun) {
+    final recovery = neededForRecovery;
+    final budget = _selectedGoal == TripGoal.tier0
+        ? null
+        : maxCancellationsBudget;
+    final req = _selectedGoal.requiredAcceptRate;
+    final close = req != null &&
+        recovery == null &&
+        acceptanceRate >= req &&
+        acceptanceRate < req + AMBER_BUFFER;
+
+    Color color;
+    IconData icon;
+    Widget body;
+
+    if (recovery != null) {
+      color = AppColors.crimsonFor(sun);
+      icon = Icons.trending_up_rounded;
+      body = Row(
         children: [
           Text(
-            label,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 2,
-              color: AppColors.labelText,
+            S.recoveryCount(recovery),
+            style: T.heroOverlay.copyWith(
+              fontSize: 28,
+              color: sun ? Colors.white : color,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(width: 12),
           Expanded(
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  value,
-                  style: T.rateFor(color),
-                ),
+            child: Text(
+              S.recovery(recovery, req ?? 80),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: T.body.copyWith(
+                fontWeight: FontWeight.w600,
+                color: sun ? Colors.white : color,
               ),
             ),
           ),
+        ],
+      );
+    } else if (budget != null && budget < 0) {
+      color = AppColors.crimsonFor(sun);
+      icon = Icons.warning_amber_rounded;
+      body = Text(
+        S.cancellationLimitExceeded,
+        style: T.body.copyWith(
+          fontWeight: FontWeight.w700,
+          color: sun ? Colors.white : color,
+        ),
+      );
+    } else if (close) {
+      color = AppColors.amberFor(sun);
+      icon = Icons.shield_rounded;
+      body = Text(
+        S.safeButClose,
+        style: T.body.copyWith(
+          fontWeight: FontWeight.w600,
+          color: sun ? Colors.white : color,
+        ),
+      );
+    } else if (budget != null) {
+      color = budget == 0
+          ? AppColors.amberFor(sun)
+          : AppColors.emeraldFor(sun);
+      icon = budget == 0 ? Icons.shield_rounded : Icons.info_rounded;
+      body = Text(
+        S.maxAdditionalCancellations(budget),
+        style: T.body.copyWith(
+          fontWeight: FontWeight.w600,
+          color: sun ? Colors.white : color,
+        ),
+      );
+    } else {
+      return const SizedBox.shrink();
+    }
+
+    final fill = sun ? color : AppColors.cardBg(sun);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: fill,
+        border: Border.all(color: color.withValues(alpha: sun ? 0 : 0.55)),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: sun ? Colors.white : color, size: 22),
+          const SizedBox(width: 12),
+          Expanded(child: body),
         ],
       ),
     );
   }
 
   Widget _sectionHeader(String title) {
+    final sun = Theme.of(context).brightness == Brightness.light;
     return Padding(
       padding: const EdgeInsets.only(left: 4),
       child: Text(
         title,
-        style: const TextStyle(
-          fontFamily: AppFonts.dmSans,
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 1.5,
-          color: AppColors.labelText,
+        style: T.bodyStrong.copyWith(
+          letterSpacing: 1.2,
+          color: AppColors.labelFor(sun),
         ),
       ),
     );
@@ -2220,9 +2184,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Expanded(
             child: Text(
               S.autoCompleteTrips,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 14,
+              style: T.body.copyWith(
                 fontWeight: FontWeight.w600,
                 color: AppColors.mutedText,
               ),
@@ -2252,9 +2214,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Expanded(
             child: Text(
               S.steeringWheelCounter,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 14,
+              style: T.body.copyWith(
                 fontWeight: FontWeight.w600,
                 color: AppColors.mutedText,
               ),
@@ -2284,9 +2244,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Expanded(
             child: Text(
               S.keepScreenOn,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 14,
+              style: T.body.copyWith(
                 fontWeight: FontWeight.w600,
                 color: AppColors.mutedText,
               ),
@@ -2314,7 +2272,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           final bool? open = await showDialog<bool>(
             context: context,
             builder: (ctx) => AlertDialog(
-              backgroundColor: AppColors.dialogAlt,
+              backgroundColor: AppColors.raised,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
@@ -2404,32 +2362,18 @@ class _CounterRow extends StatelessWidget {
   final void Function(int delta) onDelta;
   final VoidCallback? onEdit;
 
-  static const _valueStyle = TextStyle(
-    fontFamily: AppFonts.dmSans,
-    fontSize: 48,
-    fontWeight: FontWeight.w900,
-    color: Colors.white,
-    height: 1,
-    decoration: TextDecoration.underline,
-    decorationColor: AppColors.labelText,
-  );
+  static const _valueStyle = T.heroSmall;
 
-  static const _labelStyle = TextStyle(
-    fontFamily: AppFonts.dmSans,
-    fontSize: 13,
-    fontWeight: FontWeight.w600,
-    color: AppColors.mutedText,
-  );
+  static const _labelStyle = T.titleXs;
 
   @override
   Widget build(BuildContext context) {
+    final sun = Theme.of(context).brightness == Brightness.light;
+    final valueStyle = _valueStyle.copyWith(color: AppColors.ink(sun));
+    final labelStyle = _labelStyle.copyWith(color: AppColors.mutedFor(sun));
     return RepaintBoundary(
       child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.card,
-          border: Border.all(color: AppColors.cardBorderColor, width: 1),
-          borderRadius: BorderRadius.circular(16),
-        ),
+        decoration: instrumentBezel(sun: sun),
         padding: const EdgeInsets.only(left: 20, top: 16, bottom: 16, right: 8),
         child: ValueListenableBuilder<int>(
           valueListenable: valueListenable,
@@ -2440,7 +2384,7 @@ class _CounterRow extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(label, style: _labelStyle),
+                      Text(label, style: labelStyle),
                       const SizedBox(height: 4),
                       GestureDetector(
                         onTap: onEdit == null
@@ -2462,14 +2406,14 @@ class _CounterRow extends StatelessWidget {
                             FittedBox(
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerLeft,
-                              child: Text('$value', style: _valueStyle),
+                              child: Text('$value', style: valueStyle),
                             ),
                             if (onEdit != null) ...[
                               const SizedBox(width: 8),
-                              const Icon(
+                              Icon(
                                 Icons.edit_rounded,
                                 size: 22,
-                                color: AppColors.labelText,
+                                color: AppColors.labelFor(sun),
                               ),
                             ],
                           ],
@@ -2480,18 +2424,15 @@ class _CounterRow extends StatelessWidget {
                 ),
                 _CounterIconButton(
                   icon: Icons.remove_rounded,
-                  onTap: () {
-                    HapticFeedback.mediumImpact();
-                    onDelta(-1);
-                  },
+                  color: AppColors.crimson,
+                  mediumHaptic: true,
+                  onTap: () => onDelta(-1),
                 ),
                 const SizedBox(width: 6),
                 _CounterIconButton(
                   icon: Icons.add_rounded,
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    onDelta(1);
-                  },
+                  color: AppColors.emerald,
+                  onTap: () => onDelta(1),
                 ),
               ],
             );
@@ -2503,63 +2444,67 @@ class _CounterRow extends StatelessWidget {
 }
 
 class _CounterIconButton extends StatelessWidget {
-  const _CounterIconButton({required this.icon, required this.onTap});
+  const _CounterIconButton({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    this.mediumHaptic = false,
+  });
 
   final IconData icon;
+  final Color color;
   final VoidCallback onTap;
+  final bool mediumHaptic;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return AppCircleButton(
+      icon: icon,
+      color: color,
       onTap: onTap,
-      child: Container(
-        width: 64,
-        height: 64,
-        decoration: BoxDecoration(
-          color: const Color(0x0AFFFFFF),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Icon(icon, color: Colors.white, size: 28),
-      ),
+      size: 56,
+      mediumHaptic: mediumHaptic,
     );
   }
 }
 
 class _BottomBarAction extends StatelessWidget {
   const _BottomBarAction({
-    required this.emoji,
+    required this.icon,
     required this.label,
     required this.onTap,
   });
 
-  final String emoji;
+  final IconData icon;
   final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final sun = Theme.of(context).brightness == Brightness.light;
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
         borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(emoji, style: const TextStyle(fontSize: 22, height: 1.1)),
+              Icon(icon, size: 22, color: AppColors.ink(sun)),
               const SizedBox(height: 4),
               Text(
                 label,
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 11,
+                style: T.body.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: AppColors.mutedText,
+                  color: AppColors.mutedFor(sun),
                   letterSpacing: 0.2,
                 ),
               ),
@@ -2589,7 +2534,12 @@ class _BottomBarWidgetToggle extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: busy ? null : onTap,
+        onTap: busy
+            ? null
+            : () {
+                HapticFeedback.selectionClick();
+                onTap();
+              },
         borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -2632,18 +2582,13 @@ class _BottomBarWidgetToggle extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: active
-                    ? const TextStyle(
-                        fontFamily: AppFonts.dmSans,
-                        fontSize: 11,
+                    ? T.captionSm.copyWith(
                         fontWeight: FontWeight.w800,
                         color: AppColors.emerald,
                         letterSpacing: 0.2,
                       )
-                    : const TextStyle(
-                        fontFamily: AppFonts.dmSans,
-                        fontSize: 11,
+                    : T.captionSm.copyWith(
                         fontWeight: FontWeight.w800,
-                        color: AppColors.mutedText,
                         letterSpacing: 0.2,
                       ),
               ),
@@ -2660,11 +2605,13 @@ class _HistorySheet extends StatefulWidget {
     required this.archive,
     required this.taps,
     required this.formatTapDate,
+    required this.plate,
   });
 
   final List<String> archive;
   final List<Map<String, dynamic>> taps;
   final String Function(DateTime dt) formatTapDate;
+  final String plate;
 
   @override
   State<_HistorySheet> createState() => _HistorySheetState();
@@ -2854,16 +2801,7 @@ class _HistorySheetState extends State<_HistorySheet>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
+            const AppSheetHandle(),
             const SizedBox(height: 16),
             Row(
               children: [
@@ -2872,13 +2810,7 @@ class _HistorySheetState extends State<_HistorySheet>
                     S.history,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: AppFonts.dmSans,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2,
-                      color: AppColors.labelText,
-                    ),
+                    style: T.sectionHeader,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -2896,9 +2828,7 @@ class _HistorySheetState extends State<_HistorySheet>
                           : S.weeklyArchiveClear,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: AppFonts.dmSans,
-                        fontSize: 12,
+                      style: T.caption.copyWith(
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.5,
                       ),
@@ -2920,17 +2850,14 @@ class _HistorySheetState extends State<_HistorySheet>
               labelColor: Colors.white,
               unselectedLabelColor: AppColors.labelText,
               labelPadding: const EdgeInsets.symmetric(horizontal: 8),
-              labelStyle: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 11,
+              labelStyle: T.captionSm.copyWith(
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.5,
+                color: Colors.white,
               ),
-              unselectedLabelStyle: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
+              unselectedLabelStyle: T.captionSm.copyWith(
                 letterSpacing: 1.5,
+                color: AppColors.labelText,
               ),
               tabs: [
                 _OverflowSafeTab(label: S.tapLogTab),
@@ -2966,6 +2893,15 @@ class _HistorySheetState extends State<_HistorySheet>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (widget.taps.isNotEmpty) ...[
+          Text(
+            S.shiftClockTitle,
+            style: T.sectionHeader.copyWith(letterSpacing: 1.2),
+          ),
+          const SizedBox(height: 8),
+          Center(child: ShiftClock(taps: widget.taps, size: 180)),
+          const SizedBox(height: 12),
+        ],
         Row(
           children: [
             Expanded(
@@ -2990,7 +2926,7 @@ class _HistorySheetState extends State<_HistorySheet>
           child: entries.isEmpty
               ? AppEmptyState(
                   compact: true,
-                  icon: Icons.touch_app_outlined,
+                  icon: Icons.touch_app_rounded,
                   title: S.noTapHistoryTitle,
                   description: _todayOnly ? S.noTapHistory : S.noTapHistoryDesc,
                 )
@@ -3009,15 +2945,18 @@ class _HistorySheetState extends State<_HistorySheet>
                         color: AppColors.card,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: AppColors.cardBorderColor,
+                          color: AppColors.hairlineFaint,
                           width: 1,
                         ),
                       ),
                       child: Row(
                         children: [
-                          Text(
-                            accepted ? '🟢' : '🔴',
-                            style: const TextStyle(fontSize: 16),
+                          Icon(
+                            accepted
+                                ? Icons.check_circle_rounded
+                                : Icons.cancel_rounded,
+                            size: 18,
+                            color: accepted ? _emerald : _crimson,
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -3025,11 +2964,9 @@ class _HistorySheetState extends State<_HistorySheet>
                               accepted ? S.tapAcceptShort : S.tapRejectShort,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontFamily: AppFonts.dmSans,
-                                color: accepted ? _emerald : _crimson,
-                                fontSize: 15,
+                              style: T.titleXs.copyWith(
                                 fontWeight: FontWeight.w700,
+                                color: accepted ? _emerald : _crimson,
                               ),
                             ),
                           ),
@@ -3040,10 +2977,8 @@ class _HistorySheetState extends State<_HistorySheet>
                               maxLines: 1,
                               softWrap: false,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: T.label.copyWith(
                                 fontFamily: AppFonts.jetBrainsMono,
-                                color: AppColors.mutedText,
-                                fontSize: 13,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -3062,7 +2997,7 @@ class _HistorySheetState extends State<_HistorySheet>
     if (_archive.isEmpty) {
       return AppEmptyState(
         compact: true,
-        icon: Icons.inventory_2_outlined,
+        icon: Icons.inventory_2_rounded,
         title: S.noHistoryTitle,
         description: S.noHistoryDesc,
       );
@@ -3071,7 +3006,10 @@ class _HistorySheetState extends State<_HistorySheet>
     return ListView.separated(
       itemCount: _archive.length,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemBuilder: (_, i) => _ArchiveCard(rawEntry: _archive[i]),
+      itemBuilder: (_, i) => _ArchiveCard(
+        rawEntry: _archive[i],
+        plate: widget.plate,
+      ),
     );
   }
 }
@@ -3095,12 +3033,13 @@ class _OverflowSafeTab extends StatelessWidget {
 }
 
 class _ArchiveCard extends StatelessWidget {
-  const _ArchiveCard({required this.rawEntry});
+  const _ArchiveCard({required this.rawEntry, required this.plate});
 
   static const _emerald = AppColors.emerald;
   static const _crimson = AppColors.crimson;
 
   final String rawEntry;
+  final String plate;
 
   @override
   Widget build(BuildContext context) {
@@ -3110,7 +3049,7 @@ class _ArchiveCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: AppColors.card,
-        border: Border.all(color: AppColors.cardBorderColor),
+        border: Border.all(color: AppColors.hairlineFaint),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -3118,13 +3057,10 @@ class _ArchiveCard extends StatelessWidget {
         children: [
           Text(
             entry.getFormattedDateRange(),
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
+            style: T.body.copyWith(fontWeight: FontWeight.w700),
           ),
+          const SizedBox(height: 8),
+          LicensePlate(text: plate, height: 22, compact: true),
           const SizedBox(height: 10),
           // Wrap, not Row: the Polish chip labels ("Akceptacja"/"Anulowanie")
           // are long enough to overflow side by side on a narrow sheet.
@@ -3150,10 +3086,8 @@ class _ArchiveCard extends StatelessWidget {
               '${S.accepted}: ${entry.acceptedCount} · ${S.rejected}: ${entry.rejectedCount}',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: T.caption.copyWith(
                 fontFamily: AppFonts.jetBrainsMono,
-                fontSize: 12,
-                color: AppColors.mutedText,
               ),
             ),
           ],
@@ -3174,9 +3108,7 @@ class _ArchiveCard extends StatelessWidget {
         label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontFamily: AppFonts.dmSans,
-          fontSize: 11,
+        style: T.captionSm.copyWith(
           fontWeight: FontWeight.w700,
           color: color,
         ),
@@ -3198,42 +3130,41 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        constraints: const BoxConstraints(minHeight: kMinTouchTarget),
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.emerald.withValues(alpha: 0.15)
-              : AppColors.card,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: selected ? AppColors.emerald : AppColors.cardBorderColor,
-            width: 1,
-          ),
+    return Material(
+      color: selected
+          ? AppColors.emerald.withValues(alpha: 0.15)
+          : AppColors.card,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: selected ? AppColors.emerald : AppColors.hairlineFaint,
+          width: 1,
         ),
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: selected
-              ? const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.emerald,
-                  letterSpacing: 0.5,
-                )
-              : const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.labelText,
-                  letterSpacing: 0.5,
-                ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        child: Container(
+          constraints: const BoxConstraints(minHeight: kMinTouchTarget),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: selected
+                ? T.labelStrong.copyWith(
+                    color: AppColors.emerald,
+                    letterSpacing: 0.5,
+                  )
+                : T.label.copyWith(
+                    color: AppColors.labelText,
+                    letterSpacing: 0.5,
+                  ),
+          ),
         ),
       ),
     );
@@ -3258,7 +3189,10 @@ class _LangOption extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: Row(
@@ -3269,15 +3203,8 @@ class _LangOption extends StatelessWidget {
                 child: Text(
                   name,
                   style: selected
-                      ? const TextStyle(
-                          fontFamily: AppFonts.dmSans,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        )
-                      : const TextStyle(
-                          fontFamily: AppFonts.dmSans,
-                          fontSize: 17,
+                      ? T.titleMd.copyWith(fontWeight: FontWeight.w700)
+                      : T.titleMd.copyWith(
                           fontWeight: FontWeight.w400,
                           color: AppColors.mutedText,
                         ),

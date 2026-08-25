@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_colors.dart';
 import 'app_text_styles.dart';
+import 'format_rate.dart';
 import 'l10n.dart';
 import 'log.dart';
 import 'overlay_sync.dart';
@@ -26,7 +28,8 @@ class OverlayWidget extends StatefulWidget {
   State<OverlayWidget> createState() => _OverlayWidgetState();
 }
 
-class _OverlayWidgetState extends State<OverlayWidget> {
+class _OverlayWidgetState extends State<OverlayWidget>
+    with SingleTickerProviderStateMixin {
   static const _keyAccepted = 'acceptedRequests';
   static const _keyRejected = 'rejectedRequests';
   static const _keyAutoComplete = 'autoCompleteTrips';
@@ -35,16 +38,18 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   static const _crimson = AppColors.crimson;
   static const _emerald = AppColors.emerald;
   static const _amber = AppColors.amber;
-  static const _pillBg = AppColors.overlayPill;
-  static const _pillBorder = AppColors.strongBorder;
+  static const _pillBorder = AppColors.hairlineStrong;
 
   static const double _pillWidthDp = OverlayWidget.pillWidthDp;
   static const double _pillHeightDp = OverlayWidget.pillHeightDp;
   static const double _centerTextWidthDp = 100;
   static const double _btnSizeDp = 68;
   static const double _btnTextGapDp = 12;
+  static const Duration _tapPulseDuration = Duration(milliseconds: 220);
 
   SharedPreferences? _prefs;
+  late final AnimationController _tapPulse;
+  bool _lastTapAccepted = true;
   StreamSubscription<dynamic>? _syncSub;
   Timer? _persistTimer;
 
@@ -53,6 +58,7 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   int _completed = 0;
   bool _autoComplete = false;
   double? _requiredAcceptRate = 80.0;
+  bool _sun = false;
 
   bool get _hasUnpersistedTaps => _persistTimer?.isActive ?? false;
 
@@ -74,22 +80,29 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     if (_accepted == 0 && _rejected == 0) {
       return S.formatPercent('100');
     }
-    final rounded = (rate * 10).round() / 10;
-    if (rounded == rounded.roundToDouble()) {
-      return S.formatPercent(rounded.toInt().toString());
-    }
-    return S.formatPercent(rounded.toStringAsFixed(1));
+    return formatRatePercent(rate);
+  }
+
+  /// 0 → 1 → 0 over [_tapPulseDuration] so the flash peaks mid-tap.
+  double get _tapFlash {
+    final t = _tapPulse.value;
+    return t <= 0.5 ? t * 2.0 : (1.0 - t) * 2.0;
   }
 
   @override
   void initState() {
     super.initState();
+    _tapPulse = AnimationController(vsync: this, duration: _tapPulseDuration);
     unawaited(_loadCountsOnStartup());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_syncNativeWindowSize());
     });
     try {
       _syncSub = FlutterOverlayWindow.overlayListener.listen((event) {
+        final sun = OverlaySync.sunModeFromEvent(event);
+        if (sun != null && sun != _sun && mounted) {
+          setState(() => _sun = sun);
+        }
         if (OverlaySync.shouldReloadCounters(event)) {
           final counters = OverlaySync.countersFromEvent(event);
           if (counters != null) {
@@ -165,6 +178,7 @@ class _OverlayWidgetState extends State<OverlayWidget> {
 
   @override
   void dispose() {
+    _tapPulse.dispose();
     final hadPending = _persistTimer?.isActive ?? false;
     _persistTimer?.cancel();
     _persistTimer = null;
@@ -245,6 +259,14 @@ class _OverlayWidgetState extends State<OverlayWidget> {
 
     logd('overlay tap', name: 'overlay');
 
+    if (accepted) {
+      HapticFeedback.lightImpact();
+    } else {
+      HapticFeedback.mediumImpact();
+    }
+    _lastTapAccepted = accepted;
+    unawaited(_tapPulse.forward(from: 0));
+
     setState(() {
       if (accepted) {
         _accepted = (_accepted + 1).clamp(0, 99999);
@@ -297,41 +319,57 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       type: MaterialType.transparency,
       color: Colors.transparent,
       child: Material(
-        color: _pillBg,
+        color: AppColors.overlayPillFor(_sun),
         elevation: 8,
         shadowColor: Colors.black,
-        shape: const StadiumBorder(
-          side: BorderSide(color: _pillBorder, width: 1),
+        shape: StadiumBorder(
+          side: BorderSide(
+            color: _sun ? const Color(0x99000000) : _pillBorder,
+            width: 1.4,
+          ),
         ),
         child: SizedBox(
           width: _pillWidthDp,
           height: _pillHeightDp,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                _CircleBtn(
-                  size: _btnSizeDp,
-                  icon: Icons.remove_rounded,
-                  color: _crimson,
-                  onTap: () => unawaited(_increment(_keyRejected)),
-                ),
-                const SizedBox(width: _btnTextGapDp),
-                _AcceptRateDisplay(
-                  text: _formatAcceptRate(_acceptanceRate),
-                  color: _acceptRateColor,
-                  width: _centerTextWidthDp,
-                ),
-                const SizedBox(width: _btnTextGapDp),
-                _CircleBtn(
-                  size: _btnSizeDp,
-                  icon: Icons.add_rounded,
-                  color: _emerald,
-                  onTap: () => unawaited(_increment(_keyAccepted)),
-                ),
-              ],
+            child: AnimatedBuilder(
+              animation: _tapPulse,
+              builder: (context, _) {
+                final flash = _tapFlash;
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    _CircleBtn(
+                      size: _btnSizeDp,
+                      icon: Icons.remove_rounded,
+                      color: AppColors.crimsonFor(_sun),
+                      flash: _lastTapAccepted ? 0 : flash,
+                      filled: _sun,
+                      onTap: () => unawaited(_increment(_keyRejected)),
+                    ),
+                    const SizedBox(width: _btnTextGapDp),
+                    _AcceptRateDisplay(
+                      text: _formatAcceptRate(_acceptanceRate),
+                      ratio: '$_accepted/${_accepted + _rejected}',
+                      color: AppColors.stateFor(_acceptRateColor, _sun),
+                      width: _centerTextWidthDp,
+                      scale: 1.0 + 0.08 * flash,
+                      sun: _sun,
+                    ),
+                    const SizedBox(width: _btnTextGapDp),
+                    _CircleBtn(
+                      size: _btnSizeDp,
+                      icon: Icons.add_rounded,
+                      color: AppColors.emeraldFor(_sun),
+                      flash: _lastTapAccepted ? flash : 0,
+                      filled: _sun,
+                      onTap: () => unawaited(_increment(_keyAccepted)),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -346,6 +384,8 @@ class _CircleBtn extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.onTap,
+    this.flash = 0,
+    this.filled = false,
   });
 
   final double size;
@@ -353,14 +393,24 @@ class _CircleBtn extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
 
+  /// 0–1 pulse; fill lerps 0.28 → 0.45 at the peak.
+  final double flash;
+  final bool filled;
+
   @override
   Widget build(BuildContext context) {
     final iconSize = size * 0.5;
+    final fill = filled
+        ? Color.lerp(color, Colors.white, 0.18 * flash)!
+        : color.withValues(alpha: 0.28 + 0.17 * flash);
     return RepaintBoundary(
       child: Material(
-        color: color.withValues(alpha: 0.20),
+        color: fill,
         shape: CircleBorder(
-          side: BorderSide(color: color.withValues(alpha: 0.55), width: 1.5),
+          side: BorderSide(
+            color: color.withValues(alpha: filled ? 1 : 0.55),
+            width: 1.5,
+          ),
         ),
         child: InkWell(
           onTap: onTap,
@@ -371,7 +421,11 @@ class _CircleBtn extends StatelessWidget {
             width: size,
             height: size,
             child: Center(
-              child: Icon(icon, color: Colors.white, size: iconSize),
+              child: Icon(
+                icon,
+                color: filled ? Colors.white : color,
+                size: iconSize,
+              ),
             ),
           ),
         ),
@@ -383,13 +437,19 @@ class _CircleBtn extends StatelessWidget {
 class _AcceptRateDisplay extends StatelessWidget {
   const _AcceptRateDisplay({
     required this.text,
+    required this.ratio,
     required this.color,
     required this.width,
+    this.scale = 1.0,
+    this.sun = false,
   });
 
   final String text;
+  final String ratio;
   final Color color;
   final double width;
+  final double scale;
+  final bool sun;
 
   @override
   Widget build(BuildContext context) {
@@ -400,12 +460,27 @@ class _AcceptRateDisplay extends StatelessWidget {
           alignment: Alignment.center,
           child: FittedBox(
             fit: BoxFit.scaleDown,
-            child: Text(
-              text,
-              maxLines: 1,
-              softWrap: false,
-              textAlign: TextAlign.center,
-              style: T.rateFor(color),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Transform.scale(
+                  scale: scale,
+                  child: Text(
+                    text,
+                    maxLines: 1,
+                    softWrap: false,
+                    textAlign: TextAlign.center,
+                    style: T.rateOverlayFor(color, sun: sun),
+                  ),
+                ),
+                Text(
+                  ratio,
+                  maxLines: 1,
+                  softWrap: false,
+                  textAlign: TextAlign.center,
+                  style: T.overlayRatioFor(sun: sun),
+                ),
+              ],
             ),
           ),
         ),

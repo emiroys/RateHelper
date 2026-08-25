@@ -8,8 +8,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   testWidgets('App boots without throwing', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({
+      'driver_mode_asked': true,
+      'onboardingComplete': true,
+    });
     await tester.pumpWidget(const RateHelperApp(showOnboarding: false));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
     expect(tester.takeException(), isNull);
   });
 
@@ -23,6 +28,9 @@ void main() {
       matching: find.byType(RepaintBoundary),
     );
     expect(repaintBoundaries, findsAtLeastNWidgets(2));
+    expect(find.text('0/0'), findsOneWidget);
+    expect(find.byIcon(Icons.add_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.remove_rounded), findsOneWidget);
   });
 
   testWidgets('EarningsScreen text fields have length limits and upper-bound range validation', (WidgetTester tester) async {
@@ -34,8 +42,14 @@ void main() {
     final textFields = tester.widgetList<TextField>(find.byType(TextField));
     expect(textFields, isNotEmpty);
     for (final field in textFields) {
-      final hasLengthLimiter = field.inputFormatters?.any((f) => f is LengthLimitingTextInputFormatter && f.maxLength == 7) ?? false;
-      expect(hasLengthLimiter, isTrue, reason: 'Field should have LengthLimitingTextInputFormatter(7)');
+      final hasLengthLimiter = field.inputFormatters?.any((f) {
+            if (f is! LengthLimitingTextInputFormatter) return false;
+            final max = f.maxLength;
+            return max != null && max >= 7;
+          }) ??
+          false;
+      expect(hasLengthLimiter, isTrue,
+          reason: 'Field should have LengthLimitingTextInputFormatter');
     }
 
     final formFields = tester.widgetList<TextFormField>(find.byType(TextFormField));

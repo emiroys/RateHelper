@@ -1,10 +1,89 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'app_colors.dart';
 import 'app_text_styles.dart';
 
 /// Minimum tap area for anything the driver may hit while the car is moving.
 const double kMinTouchTarget = 48.0;
+
+/// Canonical main-card geometry (Phase 2).
+const double kCardRadius = 16.0;
+const double kPageInset = 20.0;
+final BorderRadius kCardBorderRadius = BorderRadius.circular(kCardRadius);
+final Border kCardBorder = Border.all(color: AppColors.hairlineFaint, width: 1);
+
+/// 36×4 grab handle used on every modal bottom sheet.
+class AppSheetHandle extends StatelessWidget {
+  const AppSheetHandle({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 36,
+        height: 4,
+        decoration: BoxDecoration(
+          color: AppColors.hairlineStrong,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+}
+
+/// Circular ripple +/- control matching the overlay pill buttons.
+class AppCircleButton extends StatelessWidget {
+  const AppCircleButton({
+    super.key,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    this.size = 56,
+    this.mediumHaptic = false,
+  });
+
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  final double size;
+
+  /// When true uses [HapticFeedback.mediumImpact] (decrement / destructive).
+  final bool mediumHaptic;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconSize = size * 0.5;
+    return RepaintBoundary(
+      child: Material(
+        color: color.withValues(alpha: 0.28),
+        shape: CircleBorder(
+          side: BorderSide(color: color.withValues(alpha: 0.55), width: 1.5),
+        ),
+        child: InkWell(
+          onTap: () {
+            if (mediumHaptic) {
+              HapticFeedback.mediumImpact();
+            } else {
+              HapticFeedback.lightImpact();
+            }
+            onTap();
+          },
+          customBorder: const CircleBorder(),
+          splashColor: color.withValues(alpha: 0.35),
+          highlightColor: color.withValues(alpha: 0.15),
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Center(
+              child: Icon(icon, color: color, size: iconSize),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Wraps a small visual (usually an icon) in a forgiving [kMinTouchTarget]
 /// square hit area without changing how large the icon itself looks.

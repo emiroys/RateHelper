@@ -25,4 +25,31 @@ void main() {
       isNull,
     );
   });
+
+  test('parses dedicated sun_mode payload', () {
+    final on = <String, String>{
+      'action': OverlaySync.actionSunMode,
+      OverlaySync.keySunMode: '1',
+    };
+    expect(OverlaySync.isSunModeMessage(on), isTrue);
+    expect(OverlaySync.sunModeFromEvent(on), isTrue);
+
+    final off = <String, String>{
+      'action': OverlaySync.actionSunMode,
+      OverlaySync.keySunMode: '0',
+    };
+    expect(OverlaySync.sunModeFromEvent(off), isFalse);
+  });
+
+  test('reads sunMode from a counters reload payload', () {
+    final event = <String, String>{
+      'action': OverlaySync.actionReloadCounters,
+      'accepted': '1',
+      'rejected': '0',
+      'completed': '1',
+      OverlaySync.keySunMode: 'true',
+    };
+    expect(OverlaySync.sunModeFromEvent(event), isTrue);
+    expect(OverlaySync.countersFromEvent(event)?.accepted, 1);
+  });
 }

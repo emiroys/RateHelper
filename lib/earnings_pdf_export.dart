@@ -61,13 +61,14 @@ class EarningsPdfExport {
     List<WeekEarning> weeks, {
     required String rangeLabel,
     String driverName = '',
+    String plate = '',
   }) async {
     if (weeks.isEmpty) return;
 
     final ordered = [...weeks]
       ..sort((a, b) => a.weekStart.compareTo(b.weekStart));
 
-    final bytes = await _buildDocument(ordered, rangeLabel, driverName);
+    final bytes = await _buildDocument(ordered, rangeLabel, driverName, plate);
 
     final dir = await getTemporaryDirectory();
     // Sweep any leftovers from a previous export that was interrupted before its
@@ -130,6 +131,7 @@ class EarningsPdfExport {
     List<WeekEarning> weeks,
     String rangeLabel,
     String driverName,
+    String plate,
   ) async {
     final regular = pw.Font.ttf(
       await rootBundle.load('assets/fonts/DMSans-Regular.ttf'),
@@ -155,7 +157,7 @@ class EarningsPdfExport {
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
         build: (context) => [
-          _header(rangeLabel, driverName),
+          _header(rangeLabel, driverName, plate),
           pw.SizedBox(height: 20),
           _table(weeks),
           pw.SizedBox(height: 18),
@@ -167,11 +169,12 @@ class EarningsPdfExport {
     return doc.save();
   }
 
-  static pw.Widget _header(String rangeLabel, String driverName) {
+  static pw.Widget _header(String rangeLabel, String driverName, String plate) {
     final now = DateTime.now();
     final generated =
         '${_two(now.day)}.${_two(now.month)}.${now.year} ${_two(now.hour)}:${_two(now.minute)}';
     final displayName = sanitizeDriverName(driverName);
+    final plateText = plate.trim().isEmpty ? '—' : plate.trim().toUpperCase();
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -181,6 +184,7 @@ class EarningsPdfExport {
         ),
         pw.SizedBox(height: 12),
         _headerLine('${S.pdfDriver}:', displayName),
+        _headerLine('${S.plateLabel}:', plateText),
         _headerLine('${S.pdfDateRange}:', rangeLabel),
         _headerLine('${S.pdfGeneratedOn}:', generated),
       ],

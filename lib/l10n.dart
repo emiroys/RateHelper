@@ -145,15 +145,15 @@ class S {
   }
 
   static String get driverModeDialogTitle => _p(
-        'Aracı paylaşıyor musun? 🚗',
-        'Do you share the car? 🚗',
-        'Dzielisz samochód z innym kierowcą? 🚗',
+        'Aracı paylaşıyor musun?',
+        'Do you share the car?',
+        'Dzielisz samochód z innym kierowcą?',
       );
   static String get driverModeSolo => _p('Tek Sürücü', 'Single Driver', 'Jeden kierowca');
   static String get driverModePaired => _p('İki Sürücü (Paylaşımlı)', 'Two Drivers (Shared)', 'Dwóch kierowców (Dzielony)');
   static String driverModeLabel(bool paired) => paired
-      ? _p('Sürüş Modu: İki Sürücü ✏️', 'Driving Mode: Two Drivers ✏️', 'Tryb jazdy: Dwóch kierowców ✏️')
-      : _p('Sürüş Modu: Tek Sürücü ✏️', 'Driving Mode: Single Driver ✏️', 'Tryb jazdy: Jeden kierowca ✏️');
+      ? _p('Sürüş Modu: İki Sürücü', 'Driving Mode: Two Drivers', 'Tryb jazdy: Dwóch kierowców')
+      : _p('Sürüş Modu: Tek Sürücü', 'Driving Mode: Single Driver', 'Tryb jazdy: Jeden kierowca');
   static String get pairedTripsHint => _p(
         'İki sürücü modunda: sen ve ortağının birlikte yaptığı toplam yolculuk sayısı',
         'Two-driver mode: combined trips completed by you and your partner',
@@ -225,10 +225,6 @@ class S {
   static String get filterAll => _p('Tümü', 'All', 'Wszystko');
   static String get tapAcceptShort => _p('Kabul', 'Accept', 'Akceptacja');
   static String get tapRejectShort => _p('Red', 'Reject', 'Odrzucenie');
-  static String get overlayOn =>
-      _p('RateHelper Aktif', 'RateHelper Active', 'RateHelper Aktywny');
-  static String get overlayOff =>
-      _p('RateHelper Kapatıldı', 'RateHelper Closed', 'RateHelper Wyłączony');
   static String get overlayToggleFailed => 
       _p('Widget başlatılamadı. Tekrar deneyin.', 'Failed to start widget. Try again.', 'Nie udało się uruchomić widżetu. Spróbuj ponownie.');
   static String get archiveAccept => _p('Kabul', 'Accept', 'Akceptacja');
@@ -285,7 +281,64 @@ class S {
       );
 
   static String get finish => _p('BİTİR', 'FINISH', 'ZAKOŃCZ');
-  static String get skip => _p('Atla', 'Skip', 'Pomiń');
+  static String get skip => _p('Sonra', 'Later', 'Później');
+  static String get skipLater => _p('Sonra', 'Later', 'Później');
+  static String get platePrompt => _p(
+        'Hangi araçla çalışıyorsun?',
+        'Which car do you drive?',
+        'Jakim autem jeździsz?',
+      );
+  static String get plateHint => _p(
+        'Plaka (ör. KK4181R)',
+        'Plate (e.g. KK4181R)',
+        'Tablica (np. KK4181R)',
+      );
+  static String get plateLabel => _p('Plaka', 'Plate', 'Tablica');
+  static String get overlayDemoTitle => _p(
+        'Pigułayı dene',
+        'Try the pill',
+        'Wypróbuj pigułkę',
+      );
+  static String get overlayDemoBody => _p(
+        'Sürükle, dokun. İzin ekranından önce nasıl çalıştığını gör.',
+        'Drag it, tap it. See how it works before the permission screen.',
+        'Przeciągnij, stuknij. Zobacz, jak działa, zanim pojawi się prośba o uprawnienie.',
+      );
+  static String get wrongPhone => _p(
+        'Yanlış telefon?',
+        'Wrong phone?',
+        'Zły telefon?',
+      );
+  static String get displayModeAuto => _p('Oto', 'Auto', 'Auto');
+  static String get displayModeSun => _p('Güneş', 'Sun', 'Słońce');
+  static String get displayModeDark => _p('Gece', 'Night', 'Noc');
+  static String get overlayOn => _p('AÇIK', 'ON', 'WŁ');
+  static String get overlayOff => _p('KAPALI', 'OFF', 'WYŁ');
+  static String get settingsSection => _p('AYARLAR', 'SETTINGS', 'USTAWIENIA');
+  static String get deductions => _p('Kesintiler', 'Deductions', 'Potrącenia');
+  static String get takeHome => _p('Kalan', 'Take-home', 'Na rękę');
+  static String get constraintAccept =>
+      _p('Kabul marjı', 'Accept margin', 'Marża akceptacji');
+  static String get constraintCancel =>
+      _p('İptal marjı', 'Cancel margin', 'Marża anulowań');
+  static String recoveryCount(int n) => _p(
+        '+$n kabul',
+        '+$n accepts',
+        '+$n akceptacji',
+      );
+  static String get cancelBudgetOk =>
+      _p('İptal bütçesi', 'Cancel budget', 'Budżet anulowań');
+  static String get shiftClockTitle => _p(
+        'VARDİYA RİTMİ',
+        'SHIFT RHYTHM',
+        'RYTM ZMIANY',
+      );
+  static String get navRadar => _p('Radar', 'Radar', 'Radar');
+  static String get aboveBreakEven => _p(
+        'Başabaşın üstünde',
+        'Above break-even',
+        'Powyżej progu',
+      );
   static String get setupGuide => _p(
         'Kurulum Rehberi',
         'Setup Guide',
@@ -360,6 +413,7 @@ class S {
 
   static String get navLang => _p('Dil', 'Lang', 'Język');
   static String get navLogs => _p('Kayıtlar', 'Log', 'Logi');
+  static String get navFuel => _p('Yakıt', 'Fuel', 'Paliwo');
   static String get navEarnings => _p('Kazanç', 'Earnings', 'Zarobki');
 
   // Earnings tracker
@@ -407,14 +461,14 @@ class S {
         'Postęp darmowego tygodnia: $current / $total przejazdów',
       );
   static String get freeWeekRewardBadge => _p(
-        '🎉 Ücretsiz hafta hakkın var!',
-        '🎉 You earned a free week!',
-        '🎉 Masz prawo do darmowego tygodnia!',
+        'Ücretsiz hafta hakkın var!',
+        'You earned a free week!',
+        'Masz prawo do darmowego tygodnia!',
       );
   static String freeWeekRewardBadgeCount(int count) => _p(
-        '🎉 Ücretsiz hafta hakkın var! ($count adet)',
-        '🎉 You earned free week(s)! ($count)',
-        '🎉 Masz prawo do darmowego tygodnia! ($count)',
+        'Ücretsiz hafta hakkın var! ($count adet)',
+        'You earned free week(s)! ($count)',
+        'Masz prawo do darmowego tygodnia! ($count)',
       );
   static String get adminCost =>
       _p('İdari Gider', 'Administrative Cost', 'Koszt Administracyjny');
@@ -448,6 +502,9 @@ class S {
         'Brak tygodni. Dodaj pierwszy tydzień.',
       );
   static String get delete => _p('Sil', 'Delete', 'Usuń');
+  static String get undo => _p('Geri Al', 'Undo', 'Cofnij');
+  static String get receiptDeleted =>
+      _p('Fiş silindi', 'Receipt deleted', 'Paragon usunięty');
   static String get deleteWeekConfirm => _p(
         'Bu hafta silinecek. Emin misin?',
         'This week will be deleted. Are you sure?',

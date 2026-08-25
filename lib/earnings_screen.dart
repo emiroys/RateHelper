@@ -1,3 +1,4 @@
+﻿import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -6,9 +7,14 @@ import 'package:rate_helper/fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_colors.dart';
+import 'app_text_styles.dart';
 import 'app_widgets.dart';
 import 'earnings_models.dart';
 import 'earnings_pdf_export.dart';
+import 'instruments/bezel.dart';
+import 'instruments/load_meter.dart';
+import 'instruments/odometer.dart';
+import 'instruments/plate.dart';
 import 'l10n.dart';
 import 'log.dart';
 
@@ -18,8 +24,8 @@ const _cardColor = AppColors.card;
 const _emerald = AppColors.emerald;
 const _crimson = AppColors.crimson;
 const _amber = AppColors.amber;
-final _cardBorder = Border.all(color: AppColors.cardBorderColor, width: 1);
-final _cardRadius = BorderRadius.circular(16);
+final _cardBorder = kCardBorder;
+final _cardRadius = kCardBorderRadius;
 
 /// PLN/hour above which the hourly rate is considered "good" (green).
 const double _goodHourlyThreshold = 30.0;
@@ -34,7 +40,7 @@ const double _kMinTouchTarget = kMinTouchTarget;
 enum _ViewMode { weekly, monthly, yearly }
 
 /// Max number of weeks shown in the weekly trend chart. Fixed so the chart's
-/// width/layout never grows as more history accumulates — older weeks stay
+/// width/layout never grows as more history accumulates â€” older weeks stay
 /// reachable via the history list below instead.
 const int _trendWeekWindow = 8;
 
@@ -47,88 +53,79 @@ Future<void> showDriverModeDialog(
     context: context,
     builder: (ctx) {
       return AlertDialog(
-        backgroundColor: AppColors.dialog,
+        backgroundColor: AppColors.base,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           S.driverModeDialogTitle,
           maxLines: 3,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontFamily: AppFonts.dmSans,
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-          ),
+          style: T.titleLg,
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              tileColor: activeDriverMode == DriverMode.solo
-                  ? AppColors.selected
+            Material(
+              color: activeDriverMode == DriverMode.solo
+                  ? AppColors.raised
                   : Colors.transparent,
-              leading: Icon(
-                Icons.person_rounded,
-                color: activeDriverMode == DriverMode.solo
-                    ? _amber
-                    : AppColors.mutedText,
-              ),
-              title: Text(
-                S.driverModeSolo,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              child: ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                leading: Icon(
+                  Icons.person_rounded,
+                  color: activeDriverMode == DriverMode.solo
+                      ? _amber
+                      : AppColors.mutedText,
+                ),
+                title: Text(
+                  S.driverModeSolo,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: T.titleXs.copyWith(fontWeight: FontWeight.w700),
+                ),
+                onTap: () async {
+                  activeDriverMode = DriverMode.solo;
+                  await prefs.setString(DriverMode.key, 'solo');
+                  await prefs.setBool(DriverMode.askedKey, true);
+                  if (!ctx.mounted) return;
+                  Navigator.of(ctx).pop();
+                  onModeChanged();
+                },
               ),
-              onTap: () async {
-                activeDriverMode = DriverMode.solo;
-                await prefs.setString(DriverMode.key, 'solo');
-                await prefs.setBool(DriverMode.askedKey, true);
-                if (!ctx.mounted) return;
-                Navigator.of(ctx).pop();
-                onModeChanged();
-              },
             ),
             const SizedBox(height: 8),
-            ListTile(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              tileColor: activeDriverMode == DriverMode.paired
-                  ? AppColors.selected
+            Material(
+              color: activeDriverMode == DriverMode.paired
+                  ? AppColors.raised
                   : Colors.transparent,
-              leading: Icon(
-                Icons.people_rounded,
-                color: activeDriverMode == DriverMode.paired
-                    ? _amber
-                    : AppColors.mutedText,
-              ),
-              title: Text(
-                S.driverModePaired,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              child: ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                leading: Icon(
+                  Icons.people_rounded,
+                  color: activeDriverMode == DriverMode.paired
+                      ? _amber
+                      : AppColors.mutedText,
+                ),
+                title: Text(
+                  S.driverModePaired,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: T.titleXs.copyWith(fontWeight: FontWeight.w700),
+                ),
+                onTap: () async {
+                  activeDriverMode = DriverMode.paired;
+                  await prefs.setString(DriverMode.key, 'paired');
+                  await prefs.setBool(DriverMode.askedKey, true);
+                  if (!ctx.mounted) return;
+                  Navigator.of(ctx).pop();
+                  onModeChanged();
+                },
               ),
-              onTap: () async {
-                activeDriverMode = DriverMode.paired;
-                await prefs.setString(DriverMode.key, 'paired');
-                await prefs.setBool(DriverMode.askedKey, true);
-                if (!ctx.mounted) return;
-                Navigator.of(ctx).pop();
-                onModeChanged();
-              },
             ),
           ],
         ),
@@ -151,6 +148,41 @@ String _weekRangeLabel(DateTime start, DateTime end) {
 Color _hourlyColor(double rate) =>
     rate >= _goodHourlyThreshold ? _emerald : (rate > 0 ? _amber : _crimson);
 
+/// Live PLN input: thousand dots + decimal comma, JetBrains-friendly digits.
+class _PlnInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final raw = newValue.text.replaceAll(RegExp(r'[^0-9,]'), '');
+    if (raw.isEmpty) {
+      return const TextEditingValue(text: '');
+    }
+    final parts = raw.split(',');
+    var intDigits = parts.first.replaceAll(RegExp(r'[^0-9]'), '');
+    var decDigits = parts.length > 1
+        ? parts.sublist(1).join().replaceAll(RegExp(r'[^0-9]'), '')
+        : null;
+    if (intDigits.length > 6) intDigits = intDigits.substring(0, 6);
+    if (decDigits != null && decDigits.length > 2) {
+      decDigits = decDigits.substring(0, 2);
+    }
+    final grouped = StringBuffer();
+    for (var i = 0; i < intDigits.length; i++) {
+      if (i > 0 && (intDigits.length - i) % 3 == 0) grouped.write('.');
+      grouped.write(intDigits[i]);
+    }
+    final text = decDigits == null
+        ? (raw.contains(',') ? '$grouped,' : grouped.toString())
+        : '$grouped,$decDigits';
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+}
+
 /// Localized text for an informational cross-check warning.
 String _warningText(EarningsWarning w) {
   switch (w) {
@@ -160,11 +192,18 @@ String _warningText(EarningsWarning w) {
 }
 
 class EarningsScreen extends StatefulWidget {
-  const EarningsScreen({super.key, this.autoAddWeek = false});
+  const EarningsScreen({
+    super.key,
+    this.autoAddWeek = false,
+    this.autoQuickFuel = false,
+  });
 
   /// When true, the "add new week" form for the current week opens
   /// automatically after the first load.
   final bool autoAddWeek;
+
+  /// When true, opens the quick-add-fuel dialog after the first load.
+  final bool autoQuickFuel;
 
   @override
   State<EarningsScreen> createState() => _EarningsScreenState();
@@ -186,6 +225,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
   bool _exporting = false;
   int _weekOffset = 0;
   String _driverName = '';
+  String? _celebrateBestId;
 
   _ViewMode _viewMode = _ViewMode.weekly;
 
@@ -260,7 +300,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
     // --- Lifetime trip odometer migration & load ---
     // One-time backfill: seed the persisted counter from whatever history
     // currently exists. Weeks already evicted by FIFO before this update are
-    // permanently uncounted — the same limitation as before, just frozen.
+    // permanently uncounted â€” the same limitation as before, just frozen.
     if (prefs.getBool(kLifetimeTripsBackfilledKey) != true) {
       final backfill = calculateLifetimeTrips(entries);
       await prefs.setInt(kLifetimeTripsKey, backfill);
@@ -296,10 +336,18 @@ class _EarningsScreenState extends State<EarningsScreen> {
         );
       });
     }
+
+    if (widget.autoQuickFuel && !_autoFuelTriggered) {
+      _autoFuelTriggered = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_quickAddFuel());
+      });
+    }
   }
 
   /// Guards against re-opening the auto-add form on every reload.
   bool _autoAddTriggered = false;
+  bool _autoFuelTriggered = false;
 
   int _cachedLifetimeTrips = 0;
 
@@ -308,7 +356,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
 
   /// Replaces the entry list and refreshes the memoized monthly/yearly rollups.
   /// The only place [_entries] should be reassigned, so the caches never drift.
-  /// Note: _cachedLifetimeTrips is NOT recomputed here — it is loaded from the
+  /// Note: _cachedLifetimeTrips is NOT recomputed here â€” it is loaded from the
   /// persisted SharedPreferences odometer and updated only on new/edited saves.
   void _setEntries(List<WeekEarning> entries) {
     _entries = entries;
@@ -319,7 +367,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
     _histMonths = _computeHistoryMonths(entries);
   }
 
-  /// Distinct calendar months present in [_entries], oldest → newest.
+  /// Distinct calendar months present in [_entries], oldest â†’ newest.
   List<DateTime> _computeHistoryMonths(List<WeekEarning> entries) {
     final seen = <String, DateTime>{};
     for (final e in entries) {
@@ -380,7 +428,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.elevated,
+        backgroundColor: AppColors.raised,
         title: Text(
           S.resetLifetimeTripsTitle,
           style: const TextStyle(
@@ -439,7 +487,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
       newCount = await showDialog<int>(
         context: context,
         builder: (context) => AlertDialog(
-          backgroundColor: AppColors.elevated,
+          backgroundColor: AppColors.raised,
           title: Text(
             S.editLifetimeTripsTitle,
             style: const TextStyle(
@@ -454,12 +502,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
               children: [
                 Text(
                   S.editLifetimeTripsDesc,
-                  style: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    color: AppColors.mutedText,
-                    fontSize: 13,
-                    height: 1.4,
-                  ),
+                  style: T.label.copyWith(height: 1.4),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -545,10 +588,10 @@ class _EarningsScreenState extends State<EarningsScreen> {
     return (diff / 7).round();
   }
 
-  /// Up to the last [_trendWeekWindow] recorded weeks, ordered oldest → newest
+  /// Up to the last [_trendWeekWindow] recorded weeks, ordered oldest â†’ newest
   /// for the chart. [_entries] is kept newest-first, so reverse it to
   /// chronological order first, then keep only the trailing (most recent)
-  /// slice — this caps the chart to a fixed window so it never grows wider as
+  /// slice â€” this caps the chart to a fixed window so it never grows wider as
   /// more weeks accumulate, mirroring the 12-item cap on the monthly/yearly
   /// charts.
   List<WeekEarning> _computeTrendWeeks(List<WeekEarning> entries) {
@@ -573,6 +616,10 @@ class _EarningsScreenState extends State<EarningsScreen> {
       ),
     );
     if (result == null) return;
+    final others = _entries.where((e) => e.id != result.id).toList();
+    final prevBest = bestHourlyRateWeek(others);
+    final isNewBest = result.hourlyRate > 0 &&
+        (prevBest == null || result.hourlyRate > prevBest.hourlyRate);
     final oldTrips = existing?.tripCount ?? 0;
     final tripDelta = result.tripCount - oldTrips;
     setState(() {
@@ -583,7 +630,9 @@ class _EarningsScreenState extends State<EarningsScreen> {
         ..add(result)
         ..sort((a, b) => b.weekStart.compareTo(a.weekStart));
       _setEntries(next);
+      if (isNewBest) _celebrateBestId = result.id;
     });
+    if (isNewBest) HapticFeedback.heavyImpact();
     await _persist();
     if (tripDelta > 0) {
       await _incrementLifetimeTrips(tripDelta);
@@ -655,7 +704,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
         context: context,
         builder: (ctx) {
           return AlertDialog(
-            backgroundColor: AppColors.elevated,
+            backgroundColor: AppColors.raised,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
@@ -672,11 +721,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                color: Colors.white,
-                fontSize: 18,
-              ),
+              style: T.titleLg,
               autofocus: true,
               decoration: InputDecoration(
                 labelText: S.amountPaidLabel,
@@ -690,7 +735,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                   color: _gold,
                 ),
                 enabledBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white24),
+                  borderSide: BorderSide(color: AppColors.hairlineStrong),
                 ),
                 focusedBorder: const UnderlineInputBorder(
                   borderSide: BorderSide(color: _gold),
@@ -803,7 +848,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        backgroundColor: AppColors.track,
+        backgroundColor: AppColors.raised,
         behavior: SnackBarBehavior.floating,
         content: Text(
           S.fuelAddedConfirmation(
@@ -843,12 +888,13 @@ class _EarningsScreenState extends State<EarningsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final sun = Theme.of(context).brightness == Brightness.light;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.scaffold(sun),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _quickAddFuel,
-        backgroundColor: _gold,
-        foregroundColor: Colors.black,
+        backgroundColor: AppColors.emerald,
+        foregroundColor: Colors.white,
         icon: const Icon(Icons.local_gas_station_rounded),
         label: Text(
           S.quickAddFuel,
@@ -859,19 +905,15 @@ class _EarningsScreenState extends State<EarningsScreen> {
         ),
       ),
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: AppColors.scaffold(
+          Theme.of(context).brightness == Brightness.light,
+        ),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
           S.earningsTitle,
-          style: const TextStyle(
-            fontFamily: AppFonts.dmSans,
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-            letterSpacing: 0.3,
-          ),
+          style: T.titleMd,
         ),
         actions: [
           IconButton(
@@ -918,12 +960,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                       Text(
                         S.exportPdfInProgress,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontFamily: AppFonts.dmSans,
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
+                        style: T.titleXs.copyWith(fontWeight: FontWeight.w700),
                       ),
                     ],
                   ),
@@ -937,7 +974,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
 
   /// Shows the "Ad Soyad" text-field dialog, saves the entered name to
   /// SharedPreferences, and returns it. Returns null if the user dismisses
-  /// the dialog without saving (dismissed prompts never block PDF export —
+  /// the dialog without saving (dismissed prompts never block PDF export â€”
   /// callers proceed with an empty name, which the PDF header renders as a
   /// generic placeholder).
   Future<String?> _editDriverName() async {
@@ -950,22 +987,13 @@ class _EarningsScreenState extends State<EarningsScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Text(
             S.driverNamePrompt,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
-            ),
+            style: T.titleXs,
           ),
           content: TextField(
             controller: controller,
             autofocus: true,
             textCapitalization: TextCapitalization.words,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              color: Colors.white,
-              fontSize: 16,
-            ),
+            style: T.titleSm,
             decoration: InputDecoration(
               labelText: S.driverNameLabel,
               labelStyle: const TextStyle(
@@ -973,7 +1001,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                 color: AppColors.mutedText,
               ),
               enabledBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: AppColors.strongBorder),
+                borderSide: BorderSide(color: AppColors.hairlineStrong),
               ),
               focusedBorder: const UnderlineInputBorder(
                 borderSide: BorderSide(color: _emerald, width: 1.5),
@@ -1007,12 +1035,12 @@ class _EarningsScreenState extends State<EarningsScreen> {
     }
   }
 
-  /// Prompts for a range (Bu Ay / Bu Yıl / Tüm Zamanlar), then builds and
+  /// Prompts for a range (Bu Ay / Bu YÄ±l / TÃ¼m Zamanlar), then builds and
   /// shares a plain PDF earnings report for the weeks in that range.
   Future<void> _exportPdf() async {
     final choice = await showModalBottomSheet<_ExportRange>(
       context: context,
-      backgroundColor: AppColors.sheet,
+      backgroundColor: AppColors.base,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1027,7 +1055,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white24,
+                  color: AppColors.hairlineStrong,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1035,13 +1063,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
             const SizedBox(height: 18),
             Text(
               S.exportPdfRangeTitle,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 2,
-                color: AppColors.labelText,
-              ),
+              style: T.sectionHeader,
             ),
             const SizedBox(height: 14),
             _RangeOption(
@@ -1077,7 +1099,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
       case _ExportRange.thisMonth:
         // Reuse aggregateByMonth's bucketing (via weeksForMonth) so "Bu Ay"
         // stays perfectly in sync with the monthly view and the week-belongs-
-        // to-its-weekStart-month rule — no separate ad-hoc filter to drift.
+        // to-its-weekStart-month rule â€” no separate ad-hoc filter to drift.
         weeks = EarningsPdfExport.weeksForMonth(
           _entries,
           DateTime(now.year, now.month, 1),
@@ -1116,6 +1138,9 @@ class _EarningsScreenState extends State<EarningsScreen> {
         weeks,
         rangeLabel: rangeLabel,
         driverName: driverName,
+        plate: (await SharedPreferences.getInstance())
+                .getString(kDriverPlateKey) ??
+            '',
       );
     } catch (e, s) {
       loge('pdf export failed', name: 'earnings', error: e, stack: s);
@@ -1136,7 +1161,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
     final monthsNewestFirst = _months.reversed.toList();
     return showModalBottomSheet<DateTime>(
       context: context,
-      backgroundColor: AppColors.sheet,
+      backgroundColor: AppColors.base,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -1153,7 +1178,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.white24,
+                    color: AppColors.hairlineStrong,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -1161,13 +1186,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
               const SizedBox(height: 18),
               Text(
                 S.exportPickMonthTitle,
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 2,
-                  color: AppColors.labelText,
-                ),
+                style: T.sectionHeader,
               ),
               const SizedBox(height: 14),
               Flexible(
@@ -1209,39 +1228,51 @@ class _EarningsScreenState extends State<EarningsScreen> {
               ),
               const SizedBox(width: 8),
               Flexible(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () async {
-                    final prefs = await _getPrefs();
-                    if (!mounted) return;
-                    await showDriverModeDialog(context, prefs, () {
-                      if (mounted) setState(() {});
-                    });
-                  },
-                  child: SizedBox(
-                    height: _kMinTouchTarget,
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.elevated,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: AppColors.disabledText),
-                        ),
-                        child: Text(
-                          S.driverModeLabel(
-                            activeDriverMode == DriverMode.paired,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () async {
+                      HapticFeedback.selectionClick();
+                      final prefs = await _getPrefs();
+                      if (!mounted) return;
+                      await showDriverModeDialog(context, prefs, () {
+                        if (mounted) setState(() {});
+                      });
+                    },
+                    child: SizedBox(
+                      height: _kMinTouchTarget,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: AppFonts.dmSans,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.mutedText,
+                          decoration: BoxDecoration(
+                            color: AppColors.raised,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: AppColors.disabledText),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  S.driverModeLabel(
+                                    activeDriverMode == DriverMode.paired,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: T.captionSm.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(
+                                Icons.edit_rounded,
+                                size: 14,
+                                color: AppColors.labelText,
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -1287,12 +1318,19 @@ class _EarningsScreenState extends State<EarningsScreen> {
 
   /// Best-week records card, shown in the monthly view below the chart. Receives
   /// only the currently selected month's weeks so it re-filters with selection.
-  Widget _recordsSliver(List<WeekEarning> weeks) => SliverToBoxAdapter(
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      child: _RecordsCard(weeks: weeks),
-    ),
-  );
+  Widget _recordsSliver(List<WeekEarning> weeks) =>
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          child: _RecordsCard(
+            weeks: weeks,
+            celebrateId: _celebrateBestId,
+            onCelebrateDone: () {
+              if (mounted) setState(() => _celebrateBestId = null);
+            },
+          ),
+        ),
+      );
 
   List<Widget> _weeklySlivers() {
     final start = weekStartForOffset(_weekOffset);
@@ -1352,7 +1390,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
               onDeleteReceipt: (receiptId) =>
                   _deleteReceiptFromEntry(entry, receiptId),
               // Break-even uses THIS week's own fuel + rental, never a
-              // historical average — consistent with the live entry-form
+              // historical average â€” consistent with the live entry-form
               // preview and every other fuel figure in the app.
               breakEven: calculateBreakEven(
                 fixedCosts: entry.fuelAfterDiscount + entry.rentalFee,
@@ -1401,20 +1439,14 @@ class _EarningsScreenState extends State<EarningsScreen> {
           ),
         ),
       // With no saved weeks at all the empty week card above already tells the
-      // whole story — an extra "HISTORY / no data" block would just repeat it.
+      // whole story â€” an extra "HISTORY / no data" block would just repeat it.
       if (_entries.isNotEmpty) ...[
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
             child: Text(
               S.history,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 2,
-                color: AppColors.labelText,
-              ),
+              style: T.sectionHeader,
             ),
           ),
         ),
@@ -1511,6 +1543,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                   heightFactor: maxRate > 0
                       ? (m.avgHourlyRate / maxRate).clamp(0.0, 1.0)
                       : 0,
+                  color: _hourlyColor(m.avgHourlyRate),
                   label: S.months[m.month.month],
                   selected:
                       m.month.year == selected.month.year &&
@@ -1527,13 +1560,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
           child: Text(
             _monthTitle(selected.month).toUpperCase(),
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 2,
-              color: AppColors.labelText,
-            ),
+            style: T.sectionHeader,
           ),
         ),
       ),
@@ -1599,6 +1626,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                   heightFactor: maxRate > 0
                       ? (y.avgHourlyRate / maxRate).clamp(0.0, 1.0)
                       : 0,
+                  color: _hourlyColor(y.avgHourlyRate),
                   label: '${y.year}',
                   selected: y.year == selected.year,
                   onTap: () => setState(() => _selectedYear = y.year),
@@ -1698,36 +1726,39 @@ class _HistoryMonthChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
-        constraints: const BoxConstraints(minHeight: _kMinTouchTarget),
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
+    return Material(
+      color: selected
+          ? _emerald.withValues(alpha: 0.12)
+          : AppColors.hairlineFaint,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
           color: selected
-              ? _emerald.withValues(alpha: 0.12)
-              : const Color(0x0AFFFFFF),
-          border: Border.all(
-            color: selected
-                ? _emerald.withValues(alpha: 0.45)
-                : AppColors.cardBorderColor,
-            width: selected ? 1.5 : 1,
-          ),
-          borderRadius: BorderRadius.circular(10),
+              ? _emerald.withValues(alpha: 0.45)
+              : AppColors.hairlineFaint,
+          width: selected ? 1.5 : 1,
         ),
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontFamily: AppFonts.dmSans,
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-            color: selected ? Colors.white : AppColors.labelText,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          constraints: const BoxConstraints(minHeight: _kMinTouchTarget),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: T.labelStrong.copyWith(
+              color: selected ? Colors.white : AppColors.labelText,
+              fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+            ),
           ),
         ),
       ),
@@ -1747,49 +1778,42 @@ class _DriverNameRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final display = name.trim().isEmpty ? S.driverNameDefault : name.trim();
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        height: _kMinTouchTarget,
-        child: Row(
-          children: [
-            Flexible(
-              child: Text(
-                '${S.driverNameLabel}: ',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.mutedText,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          height: _kMinTouchTarget,
+          child: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  '${S.driverNameLabel}: ',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: T.caption,
                 ),
               ),
-            ),
-            Flexible(
-              child: Text(
-                display,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.mutedText,
+              Flexible(
+                child: Text(
+                  display,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: T.caption.copyWith(fontWeight: FontWeight.w800),
                 ),
               ),
-            ),
-            const SizedBox(width: 6),
-            const Icon(
-              Icons.edit_rounded,
-              size: 14,
-              color: AppColors.mutedText,
-            ),
-          ],
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.edit_rounded,
+                size: 14,
+                color: AppColors.mutedText,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1820,25 +1844,15 @@ class _WeekSelector extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _arrow(Icons.chevron_left_rounded, true, () {
-            HapticFeedback.selectionClick();
-            onPrev();
-          }),
+          _arrow(Icons.chevron_left_rounded, true, onPrev),
           Expanded(
             child: Text(
               label,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: 0.3,
-              ),
+              style: T.titleSm.copyWith(letterSpacing: 0.3),
             ),
           ),
           _arrow(Icons.chevron_right_rounded, canGoForward, () {
-            HapticFeedback.selectionClick();
             onNext?.call();
           }),
         ],
@@ -1847,19 +1861,25 @@ class _WeekSelector extends StatelessWidget {
   }
 
   Widget _arrow(IconData icon, bool enabled, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: Container(
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          color: const Color(0x0AFFFFFF),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Icon(
-          icon,
-          size: 30,
-          color: enabled ? Colors.white : const Color(0x26FFFFFF),
+    return Material(
+      color: AppColors.hairlineFaint,
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: enabled
+            ? () {
+                HapticFeedback.selectionClick();
+                onTap();
+              }
+            : null,
+        child: SizedBox(
+          width: 52,
+          height: 52,
+          child: Icon(
+            icon,
+            size: 30,
+            color: enabled ? Colors.white : AppColors.disabledText,
+          ),
         ),
       ),
     );
@@ -1868,20 +1888,41 @@ class _WeekSelector extends StatelessWidget {
 
 /// Animated count-up for hero numbers. On value change it lerps from the
 /// previously shown value to the new one over 400ms, formatting each frame
-/// with the app's PLN formatter — the single highest-impact "alive" touch.
-class _CountUp extends StatelessWidget {
+/// with the app's PLN formatter â€” the single highest-impact "alive" touch.
+class _CountUp extends StatefulWidget {
   const _CountUp({required this.value, required this.style});
 
   final double value;
   final TextStyle style;
 
   @override
+  State<_CountUp> createState() => _CountUpState();
+}
+
+class _CountUpState extends State<_CountUp> {
+  late double _begin;
+
+  @override
+  void initState() {
+    super.initState();
+    _begin = widget.value;
+  }
+
+  @override
+  void didUpdateWidget(covariant _CountUp oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) _begin = oldWidget.value;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0, end: value),
-      duration: const Duration(milliseconds: 400),
+      tween: Tween<double>(begin: _begin, end: widget.value),
+      duration: _begin == widget.value
+          ? Duration.zero
+          : const Duration(milliseconds: 400),
       curve: Curves.easeOutCubic,
-      builder: (context, v, _) => Text(formatPln(v), style: style),
+      builder: (context, v, _) => Text(formatPln(v), style: widget.style),
     );
   }
 }
@@ -1907,13 +1948,7 @@ class _HeroCard extends StatelessWidget {
         children: [
           Text(
             S.hourlyRate,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 2,
-              color: AppColors.labelText,
-            ),
+            style: T.body.copyWith(color: AppColors.labelText, fontWeight: FontWeight.w700, letterSpacing: 1.2),
           ),
           const SizedBox(height: 10),
           FittedBox(
@@ -1925,25 +1960,14 @@ class _HeroCard extends StatelessWidget {
               children: [
                 _CountUp(
                   value: entry.hourlyRate,
-                  style: TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    fontSize: 56,
-                    fontWeight: FontWeight.w900,
-                    color: color,
-                    height: 1,
-                  ),
+                  style: T.heroXLarge.copyWith(color: color),
                 ),
                 const SizedBox(width: 8),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Text(
                     S.perHour,
-                    style: TextStyle(
-                      fontFamily: AppFonts.dmSans,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: color.withValues(alpha: 0.7),
-                    ),
+                    style: T.titleSm.copyWith(color: color.withValues(alpha: 0.7), fontWeight: FontWeight.w700),
                   ),
                 ),
               ],
@@ -1991,13 +2015,7 @@ class _WarningChip extends StatelessWidget {
       preferBelow: false,
       margin: const EdgeInsets.symmetric(horizontal: 20),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      textStyle: const TextStyle(
-        fontFamily: AppFonts.dmSans,
-        fontSize: 12.5,
-        fontWeight: FontWeight.w600,
-        color: Colors.white,
-        height: 1.35,
-      ),
+      textStyle: T.caption.copyWith(color: Colors.white, height: 1.35),
       decoration: BoxDecoration(
         color: _cardColor,
         border: Border.all(color: _amber.withValues(alpha: 0.4), width: 1),
@@ -2018,12 +2036,7 @@ class _WarningChip extends StatelessWidget {
                 text,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: _amber,
-                ),
+                style: T.caption.copyWith(color: _amber),
               ),
             ),
           ],
@@ -2040,15 +2053,19 @@ class _TrendChart extends StatelessWidget {
     required this.onBarTap,
   });
 
-  /// Oldest → newest, up to 12 weeks.
+  /// Oldest â†’ newest, up to 12 weeks.
   final List<WeekEarning> weeks;
   final DateTime selectedStart;
   final void Function(WeekEarning) onBarTap;
 
   @override
   Widget build(BuildContext context) {
-    final maxRate = weeks.fold<double>(0, (m, w) => math.max(m, w.hourlyRate));
-    final safeMax = maxRate > 0 ? maxRate : 1.0;
+    final maxProfit = weeks.fold<double>(
+      0,
+      (m, w) => math.max(m, w.netProfit.abs()),
+    );
+    final safeMax = maxProfit > 0 ? maxProfit : 1.0;
+    final currentStart = weekStartForOffset(0);
 
     final n = weeks.length;
     final last4 = weeks.sublist(math.max(0, n - 4));
@@ -2073,13 +2090,7 @@ class _TrendChart extends StatelessWidget {
         children: [
           Text(
             S.trendTitle,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 2,
-              color: AppColors.labelText,
-            ),
+            style: T.body.copyWith(color: AppColors.labelText, fontWeight: FontWeight.w700, letterSpacing: 1.2),
           ),
           const SizedBox(height: 8),
           Row(
@@ -2087,12 +2098,7 @@ class _TrendChart extends StatelessWidget {
               Expanded(
                 child: Text(
                   S.fourWeekAverage(formatPln(last4Avg)),
-                  style: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
+                  style: T.labelStrong.copyWith(fontWeight: FontWeight.w800),
                 ),
               ),
               if (hasTrend) ...[
@@ -2107,25 +2113,72 @@ class _TrendChart extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           SizedBox(
-            height: 132,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            height: 148,
+            child: Stack(
               children: [
-                for (var i = 0; i < weeks.length; i++)
-                  Expanded(
-                    child: _ChartBar(
-                      index: i,
-                      value: weeks[i].hourlyRate,
-                      heightFactor: (weeks[i].hourlyRate / safeMax).clamp(
-                        0.0,
-                        1.0,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    for (var i = 0; i < weeks.length; i++)
+                      Expanded(
+                        child: _ChartBar(
+                          index: i,
+                          value: weeks[i].netProfit,
+                          heightFactor: (weeks[i].netProfit.abs() / safeMax)
+                              .clamp(0.0, 1.0),
+                          color: _hourlyColor(weeks[i].hourlyRate),
+                          label:
+                              '${weeks[i].weekStart.day}.${weeks[i].weekStart.month}',
+                          selected:
+                              isSameDate(weeks[i].weekStart, selectedStart),
+                          ghosted:
+                              isSameDate(weeks[i].weekStart, currentStart),
+                          onTap: () => onBarTap(weeks[i]),
+                        ),
                       ),
-                      label:
-                          '${weeks[i].weekStart.day}.${weeks[i].weekStart.month}',
-                      selected: isSameDate(weeks[i].weekStart, selectedStart),
-                      onTap: () => onBarTap(weeks[i]),
+                  ],
+                ),
+                if (safeMax > 0) ...[
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _DashedAvgPainter(
+                          fraction: () {
+                            var beSum = 0.0;
+                            var beN = 0;
+                            for (final w in weeks) {
+                              final be = calculateBreakEven(
+                                fixedCosts:
+                                    w.fuelAfterDiscount + w.rentalFee,
+                              );
+                              if (be > 0) {
+                                beSum += be;
+                                beN++;
+                              }
+                            }
+                            if (beN == 0) return 0.0;
+                            return ((beSum / beN) / safeMax).clamp(0.0, 1.0);
+                          }(),
+                          color: _amber,
+                        ),
+                      ),
                     ),
                   ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _HourlyOverlayPainter(
+                          rates: [for (final w in weeks) w.hourlyRate],
+                          maxRate: weeks.fold<double>(
+                            1,
+                            (m, w) => math.max(m, w.hourlyRate),
+                          ),
+                          color: Colors.white.withValues(alpha: 0.65),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -2137,7 +2190,7 @@ class _TrendChart extends StatelessWidget {
 
 /// Shared bar for both the weekly trend and the aggregate (monthly/yearly)
 /// charts. Grows its height in with an [index]-staggered cascade (30ms per bar)
-/// and paints a top→bottom green gradient with rounded top corners.
+/// and paints a topâ†’bottom green gradient with rounded top corners.
 class _ChartBar extends StatefulWidget {
   const _ChartBar({
     required this.index,
@@ -2146,6 +2199,8 @@ class _ChartBar extends StatefulWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    required this.color,
+    this.ghosted = false,
   });
 
   final int index;
@@ -2153,6 +2208,8 @@ class _ChartBar extends StatefulWidget {
   final double heightFactor;
   final String label;
   final bool selected;
+  final bool ghosted;
+  final Color color;
   final VoidCallback onTap;
 
   @override
@@ -2181,70 +2238,151 @@ class _ChartBarState extends State<_ChartBar> {
   @override
   Widget build(BuildContext context) {
     final selected = widget.selected;
-    final topColor = selected ? _emerald : _emerald.withValues(alpha: 0.32);
+    final ghosted = widget.ghosted;
+    final base = widget.color;
+    final topColor = selected
+        ? base
+        : base.withValues(alpha: ghosted ? 0.18 : 0.45);
     final bottomColor = selected
-        ? Color.lerp(_emerald, Colors.black, 0.32)!
-        : _emerald.withValues(alpha: 0.12);
-    return GestureDetector(
-      onTap: widget.onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Text(
-              formatPln(widget.value).split(',').first,
-              style: TextStyle(
-                fontFamily: AppFonts.jetBrainsMono,
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                color: selected ? _emerald : AppColors.labelText,
+        ? Color.lerp(base, Colors.black, 0.32)!
+        : base.withValues(alpha: 0.12);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          widget.onTap();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              SizedBox(
+                height: 16,
+                child: selected
+                    ? Text(
+                        formatPln(widget.value).split(',').first,
+                        style: T.caption.copyWith(color: base, fontWeight: FontWeight.w700, fontFamily: AppFonts.jetBrainsMono),
+                      )
+                    : const SizedBox.shrink(),
               ),
-            ),
-            const SizedBox(height: 4),
-            Expanded(
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween<double>(begin: 0, end: _target),
-                  duration: const Duration(milliseconds: 400),
-                  curve: Curves.easeOutCubic,
-                  builder: (context, f, _) => FractionallySizedBox(
-                    heightFactor: f <= 0 ? 0.015 : f,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [topColor, bottomColor],
-                        ),
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(4),
+              const SizedBox(height: 4),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0, end: _target),
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, f, _) => FractionallySizedBox(
+                      heightFactor: f <= 0 ? 0.015 : f,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [topColor, bottomColor],
+                          ),
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(4),
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              widget.label,
-              maxLines: 1,
-              overflow: TextOverflow.clip,
-              style: TextStyle(
-                fontFamily: AppFonts.jetBrainsMono,
-                fontSize: 8,
-                fontWeight: FontWeight.w500,
-                color: selected ? Colors.white : AppColors.mutedText,
+              const SizedBox(height: 6),
+              Text(
+                widget.label,
+                maxLines: 1,
+                overflow: TextOverflow.clip,
+                style: T.caption.copyWith(color: selected ? Colors.white : AppColors.mutedText, fontWeight: FontWeight.w500, fontFamily: AppFonts.jetBrainsMono),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _DashedAvgPainter extends CustomPainter {
+  const _DashedAvgPainter({required this.fraction, required this.color});
+
+  final double fraction;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final y = size.height * (1.0 - fraction.clamp(0.0, 1.0));
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.55)
+      ..strokeWidth = 1;
+    const dash = 5.0;
+    const gap = 4.0;
+    var x = 0.0;
+    while (x < size.width) {
+      canvas.drawLine(
+        Offset(x, y),
+        Offset(math.min(x + dash, size.width), y),
+        paint,
+      );
+      x += dash + gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedAvgPainter oldDelegate) =>
+      oldDelegate.fraction != fraction || oldDelegate.color != color;
+}
+
+class _HourlyOverlayPainter extends CustomPainter {
+  const _HourlyOverlayPainter({
+    required this.rates,
+    required this.maxRate,
+    required this.color,
+  });
+
+  final List<double> rates;
+  final double maxRate;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (rates.isEmpty || maxRate <= 0) return;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.6
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    final path = Path();
+    final n = rates.length;
+    final slot = size.width / n;
+    for (var i = 0; i < n; i++) {
+      final x = slot * (i + 0.5);
+      final y = size.height * (1.0 - (rates[i] / maxRate).clamp(0.0, 1.0));
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(path, paint);
+    final dot = Paint()..color = color;
+    for (var i = 0; i < n; i++) {
+      final x = slot * (i + 0.5);
+      final y = size.height * (1.0 - (rates[i] / maxRate).clamp(0.0, 1.0));
+      canvas.drawCircle(Offset(x, y), 2.2, dot);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HourlyOverlayPainter old) =>
+      old.maxRate != maxRate ||
+      old.color != color ||
+      old.rates.length != rates.length;
 }
 
 class _ViewToggle extends StatelessWidget {
@@ -2275,39 +2413,38 @@ class _ViewToggle extends StatelessWidget {
   Widget _segment(String label, _ViewMode value) {
     final selected = mode == value;
     return Expanded(
-      child: GestureDetector(
-        onTap: selected
-            ? null
-            : () {
-                HapticFeedback.selectionClick();
-                onChanged(value);
-              },
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-          height: _kMinTouchTarget,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? _emerald : Colors.transparent,
-            borderRadius: BorderRadius.circular(9),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: _emerald.withValues(alpha: 0.35),
-                      blurRadius: 12,
-                      offset: const Offset(0, 3),
-                    ),
-                  ]
-                : null,
-          ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: selected
+              ? null
+              : () {
+                  HapticFeedback.selectionClick();
+                  onChanged(value);
+                },
+          borderRadius: BorderRadius.circular(9),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            height: _kMinTouchTarget,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? _emerald : Colors.transparent,
+              borderRadius: BorderRadius.circular(9),
+              boxShadow: selected
+                  ? [
+                      BoxShadow(
+                        color: _emerald.withValues(alpha: 0.35),
+                        blurRadius: 12,
+                        offset: const Offset(0, 3),
+                      ),
+                    ]
+                  : null,
+            ),
           child: AnimatedDefaultTextStyle(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOutCubic,
-            style: TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 13.5,
-              fontWeight: FontWeight.w800,
+            style: T.bodyStrong.copyWith(
               color: selected ? Colors.white : AppColors.labelText,
             ),
             child: Padding(
@@ -2319,6 +2456,7 @@ class _ViewToggle extends StatelessWidget {
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -2332,6 +2470,7 @@ class _BarDatum {
     required this.label,
     required this.selected,
     required this.onTap,
+    required this.color,
   });
 
   final double value;
@@ -2339,6 +2478,7 @@ class _BarDatum {
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final Color color;
 }
 
 class _AggregateChart extends StatelessWidget {
@@ -2364,13 +2504,7 @@ class _AggregateChart extends StatelessWidget {
             title,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 2,
-              color: AppColors.labelText,
-            ),
+            style: T.body.copyWith(color: AppColors.labelText, fontWeight: FontWeight.w700, letterSpacing: 1.2),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -2384,6 +2518,7 @@ class _AggregateChart extends StatelessWidget {
                       index: i,
                       value: bars[i].value,
                       heightFactor: bars[i].heightFactor,
+                      color: _hourlyColor(bars[i].value),
                       label: bars[i].label,
                       selected: bars[i].selected,
                       onTap: () {
@@ -2431,24 +2566,12 @@ class _SummaryCard extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-              letterSpacing: 0.3,
-            ),
+            style: T.titleXs.copyWith(fontWeight: FontWeight.w900, letterSpacing: 0.3),
           ),
           const SizedBox(height: 4),
           Text(
             S.totalNetProfit,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 2,
-              color: AppColors.labelText,
-            ),
+            style: T.body.copyWith(color: AppColors.labelText, fontWeight: FontWeight.w700, letterSpacing: 1.2),
           ),
           const SizedBox(height: 10),
           FittedBox(
@@ -2460,22 +2583,14 @@ class _SummaryCard extends StatelessWidget {
               children: [
                 _CountUp(
                   value: totalNetProfit,
-                  style: TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    fontSize: 46,
-                    fontWeight: FontWeight.w900,
-                    color: totalNetProfit >= 0 ? _emerald : _crimson,
-                    height: 1,
-                  ),
+                  style: T.heroMedium.copyWith(color: totalNetProfit >= 0 ? _emerald : _crimson),
                 ),
                 const SizedBox(width: 8),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Text(
                     'PLN',
-                    style: TextStyle(
-                      fontFamily: AppFonts.dmSans,
-                      fontSize: 16,
+                    style: T.titleSm.copyWith(
                       fontWeight: FontWeight.w700,
                       color: (totalNetProfit >= 0 ? _emerald : _crimson)
                           .withValues(alpha: 0.7),
@@ -2508,22 +2623,12 @@ class _SummaryCard extends StatelessWidget {
         children: [
           Text(
             value,
-            style: const TextStyle(
-              fontFamily: AppFonts.jetBrainsMono,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
+            style: T.body.copyWith(fontWeight: FontWeight.w700, fontFamily: AppFonts.jetBrainsMono),
           ),
           const SizedBox(height: 3),
           Text(
             label,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: AppColors.labelText,
-            ),
+            style: T.micro.copyWith(color: AppColors.labelText),
           ),
         ],
       ),
@@ -2534,16 +2639,76 @@ class _SummaryCard extends StatelessWidget {
 /// Single "best week" card: the week with the highest hourly rate within the
 /// currently viewed period ([weeks]). Shows the week's date range plus its net
 /// profit and hourly rate side by side.
-class _RecordsCard extends StatelessWidget {
-  const _RecordsCard({required this.weeks});
+class _RecordsCard extends StatefulWidget {
+  const _RecordsCard({
+    required this.weeks,
+    this.celebrateId,
+    this.onCelebrateDone,
+  });
 
   final List<WeekEarning> weeks;
+  final String? celebrateId;
+  final VoidCallback? onCelebrateDone;
+
+  @override
+  State<_RecordsCard> createState() => _RecordsCardState();
+}
+
+class _RecordsCardState extends State<_RecordsCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _stamp;
+
+  @override
+  void initState() {
+    super.initState();
+    _stamp = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+    _maybeCelebrate();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RecordsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.celebrateId != widget.celebrateId) _maybeCelebrate();
+  }
+
+  void _maybeCelebrate() {
+    final id = widget.celebrateId;
+    if (id == null) return;
+    final best = bestHourlyRateWeek(widget.weeks);
+    if (best == null || best.id != id) return;
+    _stamp.forward(from: 0).whenComplete(() {
+      widget.onCelebrateDone?.call();
+    });
+  }
+
+  @override
+  void dispose() {
+    _stamp.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final best = bestHourlyRateWeek(weeks);
+    final best = bestHourlyRateWeek(widget.weeks);
+    final celebrating = widget.celebrateId != null &&
+        best != null &&
+        best.id == widget.celebrateId;
 
-    return Container(
+    return AnimatedBuilder(
+      animation: _stamp,
+      builder: (context, child) {
+        final t = celebrating ? Curves.easeOutBack.transform(_stamp.value) : 1.0;
+        final scale = celebrating ? (1.15 - 0.15 * t.clamp(0.0, 1.0)) : 1.0;
+        final angle = celebrating ? (0.04 * (1 - t)) : 0.0;
+        return Transform.rotate(
+          angle: angle,
+          child: Transform.scale(scale: scale, child: child),
+        );
+      },
+      child: Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: BoxDecoration(
@@ -2553,9 +2718,9 @@ class _RecordsCard extends StatelessWidget {
         boxShadow: best != null
             ? [
                 BoxShadow(
-                  color: _gold.withValues(alpha: 0.14),
-                  blurRadius: 20,
-                  spreadRadius: -6,
+                  color: _gold.withValues(alpha: celebrating ? 0.35 : 0.14),
+                  blurRadius: celebrating ? 28 : 20,
+                  spreadRadius: celebrating ? 2 : -6,
                 ),
               ]
             : null,
@@ -2565,17 +2730,15 @@ class _RecordsCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text('🏆', style: TextStyle(fontSize: 16)),
+              const Icon(
+                Icons.emoji_events_rounded,
+                size: 18,
+                color: _gold,
+              ),
               const SizedBox(width: 8),
               Text(
                 S.bestWeek,
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
-                  color: _gold,
-                ),
+                style: T.caption.copyWith(color: _gold, fontWeight: FontWeight.w800, letterSpacing: 1.5),
               ),
             ],
           ),
@@ -2583,22 +2746,12 @@ class _RecordsCard extends StatelessWidget {
           if (best == null)
             Text(
               S.bestWeekEmpty,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.mutedText,
-              ),
+              style: T.label,
             )
           else ...[
             Text(
               _weekRangeLabel(best.weekStart, best.weekEnd),
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-              ),
+              style: T.titleXs,
             ),
             const SizedBox(height: 16),
             Row(
@@ -2618,6 +2771,7 @@ class _RecordsCard extends StatelessWidget {
           ],
         ],
       ),
+      ),
     );
   }
 
@@ -2630,23 +2784,12 @@ class _RecordsCard extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: color,
-            ),
+            style: T.titleLg.copyWith(color: color, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 3),
           Text(
             label,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-              color: AppColors.labelText,
-            ),
+            style: T.micro.copyWith(color: AppColors.labelText, fontWeight: FontWeight.w700, letterSpacing: 1),
           ),
         ],
       ),
@@ -2674,7 +2817,7 @@ class _MonthRow extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              border: Border.all(color: AppColors.cardBorderColor, width: 1),
+              border: Border.all(color: AppColors.hairlineFaint, width: 1),
               borderRadius: _cardRadius,
             ),
             child: Row(
@@ -2685,21 +2828,12 @@ class _MonthRow extends StatelessWidget {
                     children: [
                       Text(
                         _monthTitle(summary.month),
-                        style: const TextStyle(
-                          fontFamily: AppFonts.dmSans,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
+                        style: T.body.copyWith(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 3),
                       Text(
                         '${formatPln(summary.totalNetProfit)} PLN · ${S.weekCountLabel(summary.weekCount)}',
-                        style: const TextStyle(
-                          fontFamily: AppFonts.jetBrainsMono,
-                          fontSize: 11,
-                          color: AppColors.mutedText,
-                        ),
+                        style: T.captionSm.copyWith(fontFamily: AppFonts.jetBrainsMono),
                       ),
                     ],
                   ),
@@ -2710,23 +2844,17 @@ class _MonthRow extends StatelessWidget {
                   children: [
                     Text(
                       formatPln(summary.avgHourlyRate),
-                      style: TextStyle(
-                        fontFamily: AppFonts.dmSans,
+                      style: T.titleSm.copyWith(
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
                         color: color,
                         height: 1,
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
                     Text(
                       S.perHour,
-                      style: TextStyle(
-                        fontFamily: AppFonts.dmSans,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        color: color.withValues(alpha: 0.6),
-                        letterSpacing: 0.5,
-                      ),
+                      style: T.nano.copyWith(color: color.withValues(alpha: 0.6), fontWeight: FontWeight.w700, letterSpacing: 0.5),
                     ),
                   ],
                 ),
@@ -2769,12 +2897,7 @@ class _EmptyWeekCard extends StatelessWidget {
           Text(
             S.noEarnings,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              color: AppColors.mutedText,
-              fontSize: 14,
-              height: 1.4,
-            ),
+            style: T.body.copyWith(color: AppColors.mutedText, height: 1.4),
           ),
           const SizedBox(height: 18),
           _ActionButton(
@@ -2850,39 +2973,37 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        onTap();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: filled ? _emerald : _cardColor,
-          border: filled ? null : Border.all(color: _emerald, width: 1.5),
-          borderRadius: _cardRadius,
-        ),
-        alignment: Alignment.center,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 20, color: filled ? Colors.white : _emerald),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1,
-                  color: filled ? Colors.white : _emerald,
+    return Material(
+      color: filled ? _emerald : _cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: _cardRadius,
+        side: filled
+            ? BorderSide.none
+            : const BorderSide(color: _emerald, width: 1.5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 20, color: filled ? Colors.white : _emerald),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: T.bodyStrong.copyWith(color: filled ? Colors.white : _emerald, fontWeight: FontWeight.w900, letterSpacing: 1),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2902,17 +3023,23 @@ class _IconOnlyButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 54,
-        height: 54,
-        decoration: BoxDecoration(
-          color: _cardColor,
-          border: Border.all(color: color.withValues(alpha: 0.5), width: 1.5),
-          borderRadius: _cardRadius,
+    return Material(
+      color: _cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: _cardRadius,
+        side: BorderSide(color: color.withValues(alpha: 0.5), width: 1.5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        child: SizedBox(
+          width: 54,
+          height: 54,
+          child: Center(child: Icon(icon, color: color, size: 24)),
         ),
-        child: Icon(icon, color: color, size: 24),
       ),
     );
   }
@@ -2960,7 +3087,7 @@ class _LazyReceiptList extends StatelessWidget {
   }
 }
 
-class _BreakdownCard extends StatelessWidget {
+class _BreakdownCard extends StatefulWidget {
   const _BreakdownCard({
     required this.entry,
     this.breakEven,
@@ -2968,131 +3095,203 @@ class _BreakdownCard extends StatelessWidget {
   });
 
   final WeekEarning entry;
-
-  /// Break-even net-income threshold for this week. When [entry.netIncome] is
-  /// below it, an informational (non-blocking) amber note is shown.
   final double? breakEven;
   final ValueChanged<String>? onDeleteReceipt;
 
   @override
+  State<_BreakdownCard> createState() => _BreakdownCardState();
+}
+
+class _BreakdownCardState extends State<_BreakdownCard> {
+  bool _expanded = false;
+
+  WeekEarning get entry => widget.entry;
+
+  @override
   Widget build(BuildContext context) {
-    final threshold = breakEven;
+    final sun = Theme.of(context).brightness == Brightness.light;
+    final threshold = widget.breakEven;
     final belowBreakEven = threshold != null && entry.netIncome < threshold;
+    final deductions = entry.rentalFee +
+        entry.fuelAfterDiscount +
+        entry.vat +
+        entry.settlementFee;
+    final segments = [
+      LoadSegment(
+        label: S.rental,
+        value: entry.rentalFee,
+        color: AppColors.amberFor(sun),
+      ),
+      LoadSegment(
+        label: S.fuelDiscounted,
+        value: entry.fuelAfterDiscount,
+        color: AppColors.mutedFor(sun),
+      ),
+      LoadSegment(
+        label: S.vat,
+        value: entry.vat,
+        color: AppColors.mutedFor(sun),
+      ),
+      LoadSegment(
+        label: S.settlementFee,
+        value: entry.settlementFee,
+        color: AppColors.labelFor(sun),
+      ),
+      LoadSegment(
+        label: S.takeHome,
+        value: entry.netProfit.clamp(0, double.infinity),
+        color: entry.netProfit < 0
+            ? AppColors.crimsonFor(sun)
+            : AppColors.emeraldFor(sun),
+      ),
+    ];
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        border: _cardBorder,
-        borderRadius: _cardRadius,
-      ),
+      decoration: instrumentBezel(sun: sun),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             S.breakdown,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 2,
-              color: AppColors.labelText,
-            ),
-          ),
-          const SizedBox(height: 14),
-          _line(S.netIncome, entry.netIncome, income: true, bold: true),
-          const SizedBox(height: 6),
-          _line(S.rental, -entry.rentalFee),
-          if (entry.driverMode == DriverMode.paired)
-            Padding(
-              padding: const EdgeInsets.only(left: 12, bottom: 4),
-              child: Text(
-                S.pairedCarTotalSubtitle(formatPln(entry.totalCarRentalFee)),
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 11,
-                  color: AppColors.labelText,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ),
-          if (entry.fuelReceipts.isNotEmpty)
-            _buildFuelReceiptsBreakdown()
-          // A bare "-0,00 PLN" fuel row reads as a bug; drop the line entirely
-          // when no fuel was recorded for the week.
-          else if (entry.fuelAfterDiscount > 0)
-            _line(S.fuelDiscounted, -entry.fuelAfterDiscount),
-          _line(S.vat, -entry.vat),
-          _line(S.settlementFee, -entry.settlementFee),
-          _divider(),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  S.netProfit,
-                  style: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              Text(
-                '${formatPln(entry.netProfit)} PLN',
-                style: TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: entry.netProfit >= 0 ? _emerald : _crimson,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-            ],
+            style: T.micro.copyWith(color: AppColors.labelFor(sun), fontWeight: FontWeight.w700, letterSpacing: 2),
           ),
           const SizedBox(height: 12),
-          _line(
-            '🏦 ${S.bankDeposit}',
-            entry.bankDeposit,
-            color: entry.bankDeposit >= 0 ? _emerald : _crimson,
-            showSign: false,
+          _line(S.netIncome, entry.netIncome, income: true, bold: true, sun: sun),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: Column(
+              children: [
+                _line(
+                  S.rental,
+                  -entry.rentalFee,
+                  color: AppColors.mutedFor(sun),
+                  sun: sun,
+                ),
+                if (entry.driverMode == DriverMode.paired)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 0, bottom: 4),
+                    child: Text(
+                      S.pairedCarTotalSubtitle(
+                        formatPln(entry.totalCarRentalFee),
+                      ),
+                      style: T.caption.copyWith(color: AppColors.labelFor(sun)),
+                    ),
+                  ),
+                if (entry.fuelReceipts.isNotEmpty)
+                  _buildFuelReceiptsBreakdown()
+                else if (entry.fuelAfterDiscount > 0)
+                  _line(
+                    S.fuelDiscounted,
+                    -entry.fuelAfterDiscount,
+                    color: AppColors.mutedFor(sun),
+                    sun: sun,
+                  ),
+                _line(
+                  S.vat,
+                  -entry.vat,
+                  color: AppColors.mutedFor(sun),
+                  sun: sun,
+                ),
+                _line(
+                  S.settlementFee,
+                  -entry.settlementFee,
+                  color: AppColors.mutedFor(sun),
+                  sun: sun,
+                ),
+              ],
+            ),
           ),
-          _line(
-            '💵 ${S.cashInHand}',
-            entry.cashInHand,
-            color: _amber,
-            showSign: false,
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  S.hourlyRate,
-                  style: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.mutedText,
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+            decoration: BoxDecoration(
+              color: AppColors.inset,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.hairlineFaint),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  S.netProfit,
+                  style: T.caption.copyWith(color: AppColors.labelFor(sun), fontWeight: FontWeight.w700, letterSpacing: 1.2),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${formatPln(entry.netProfit)} PLN',
+                  style: T.heroSmall.copyWith(
+                    fontSize: 28,
+                    fontFamily: AppFonts.jetBrainsMono,
+                    fontWeight: FontWeight.w700,
+                    color: entry.netProfit >= 0
+                        ? AppColors.emeraldFor(sun)
+                        : AppColors.crimsonFor(sun),
                   ),
                 ),
-              ),
-              Text(
-                '${formatPln(entry.hourlyRate)} ${S.perHour}',
-                style: TextStyle(
-                  fontFamily: AppFonts.jetBrainsMono,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: _hourlyColor(entry.hourlyRate),
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-          if (belowBreakEven) ...[
-            const SizedBox(height: 14),
-            _WarningChip(text: S.belowBreakEven),
-          ],
+          const SizedBox(height: 12),
+          _iconLine(
+            icon: Icons.account_balance_rounded,
+            label: S.bankDeposit,
+            value: entry.bankDeposit,
+            color: entry.bankDeposit >= 0
+                ? AppColors.emeraldFor(sun)
+                : AppColors.crimsonFor(sun),
+            sun: sun,
+          ),
+          _iconLine(
+            icon: Icons.payments_rounded,
+            label: S.cashInHand,
+            value: entry.cashInHand,
+            color: AppColors.amberFor(sun),
+            sun: sun,
+          ),
+          const SizedBox(height: 14),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                setState(() => _expanded = !_expanded);
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${S.deductions}  −${formatPln(deductions)} PLN',
+                          style: T.body.copyWith(color: AppColors.ink(sun), fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      Icon(
+                        _expanded
+                            ? Icons.expand_less_rounded
+                            : Icons.expand_more_rounded,
+                        color: AppColors.labelFor(sun),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  LoadMeter(segments: segments, sun: sun),
+                  const SizedBox(height: 8),
+                  LoadMeterLegend(segments: segments, sun: sun),
+                  const SizedBox(height: 8),
+                  Text(
+                    belowBreakEven ? S.belowBreakEven : S.aboveBreakEven,
+                    style: T.labelStrong.copyWith(color: belowBreakEven
+                          ? AppColors.amberFor(sun)
+                          : AppColors.emeraldFor(sun)),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -3103,8 +3302,8 @@ class _BreakdownCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.dialog,
-        border: Border.all(color: Colors.white12),
+        color: AppColors.base,
+        border: Border.all(color: AppColors.hairlineFaint),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
@@ -3112,12 +3311,7 @@ class _BreakdownCard extends StatelessWidget {
         children: [
           Text(
             S.fuelReceiptsTitle,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              color: AppColors.mutedText,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
+            style: T.caption.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           _LazyReceiptList(
@@ -3139,7 +3333,7 @@ class _BreakdownCard extends StatelessWidget {
                   ),
                 ),
                 onDismissed: (_) {
-                  onDeleteReceipt?.call(receipt.id);
+                  widget.onDeleteReceipt?.call(receipt.id);
                 },
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
@@ -3147,26 +3341,17 @@ class _BreakdownCard extends StatelessWidget {
                     children: [
                       Text(
                         '  ${i + 1}. ',
-                        style: const TextStyle(
-                          fontFamily: AppFonts.dmSans,
-                          color: _gold,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                        ),
+                        style: T.labelStrong.copyWith(color: _gold),
                       ),
                       Expanded(
                         child: Text(
-                          '${S.formatReceiptTimestamp(receipt.timestamp)} — ${formatPln(receipt.amountPaid)} PLN',
-                          style: const TextStyle(
-                            fontFamily: AppFonts.dmSans,
-                            color: Colors.white,
-                            fontSize: 13,
-                          ),
+                          '${S.formatReceiptTimestamp(receipt.timestamp)} â€” ${formatPln(receipt.amountPaid)} PLN',
+                          style: T.label.copyWith(color: Colors.white),
                         ),
                       ),
-                      if (onDeleteReceipt != null)
+                      if (widget.onDeleteReceipt != null)
                         AppTapTarget(
-                          onTap: () => onDeleteReceipt?.call(receipt.id),
+                          onTap: () => widget.onDeleteReceipt?.call(receipt.id),
                           tooltip: S.delete,
                           child: const Icon(
                             Icons.delete_outline_rounded,
@@ -3182,7 +3367,7 @@ class _BreakdownCard extends StatelessWidget {
           ),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 6),
-            child: Divider(color: Colors.white24, height: 1),
+            child: Divider(color: AppColors.hairlineStrong, height: 1),
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3192,24 +3377,14 @@ class _BreakdownCard extends StatelessWidget {
                   S.totalPumpPaid,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    color: AppColors.mutedText,
-                    fontSize: 12,
-                  ),
+                  style: T.caption,
                 ),
               ),
               const SizedBox(width: 8),
               Text(
                 '${formatPln(entry.fuelPumpPaidTotal)} PLN',
                 maxLines: 1,
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12,
-                  fontFeatures: [FontFeature.tabularFigures()],
-                ),
+                style: T.caption.copyWith(color: Colors.white),
               ),
             ],
           ),
@@ -3222,24 +3397,14 @@ class _BreakdownCard extends StatelessWidget {
                   S.totalFuelDiscounted,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    color: AppColors.mutedText,
-                    fontSize: 12,
-                  ),
+                  style: T.caption,
                 ),
               ),
               const SizedBox(width: 8),
               Text(
                 '-${formatPln(entry.fuelAfterDiscount)} PLN',
                 maxLines: 1,
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  color: _crimson,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                  fontFeatures: [FontFeature.tabularFigures()],
-                ),
+                style: T.caption.copyWith(color: _crimson, fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -3248,10 +3413,35 @@ class _BreakdownCard extends StatelessWidget {
     );
   }
 
-  Widget _divider() => const Padding(
-    padding: EdgeInsets.symmetric(vertical: 8),
-    child: Divider(color: Color(0x14FFFFFF), height: 1),
-  );
+  // divider removed — ledger banding uses spacing instead.
+
+  Widget _iconLine({
+    required IconData icon,
+    required String label,
+    required double value,
+    required Color color,
+    required bool sun,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: T.body.copyWith(color: AppColors.mutedFor(sun), fontWeight: FontWeight.w600),
+            ),
+          ),
+          Text(
+            '${formatPln(value)} PLN',
+            style: T.body.copyWith(color: color, fontWeight: FontWeight.w600, fontFamily: AppFonts.jetBrainsMono),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _line(
     String label,
@@ -3260,9 +3450,16 @@ class _BreakdownCard extends StatelessWidget {
     bool bold = false,
     bool showSign = true,
     Color? color,
+    bool sun = false,
   }) {
-    final resolved = color ?? (income ? _emerald : _crimson);
-    final prefix = (showSign && value > 0) ? '+' : '';
+    final resolved = color ??
+        (income ? AppColors.emeraldFor(sun) : AppColors.mutedFor(sun));
+    final prefix = showSign
+        ? (value < 0 ? 'âˆ’' : (value > 0 ? '+' : ''))
+        : '';
+    final absLabel = showSign && value < 0
+        ? formatPln(value.abs())
+        : formatPln(value);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -3270,25 +3467,20 @@ class _BreakdownCard extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 14,
-                fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
-                color: bold ? Colors.white : AppColors.mutedText,
-              ),
+              style: T.bodyStrong.copyWith(color: bold ? AppColors.ink(sun) : AppColors.mutedFor(sun), fontWeight: bold ? FontWeight.w800 : FontWeight.w600),
             ),
           ),
           const SizedBox(width: 12),
           Text(
-            '$prefix${formatPln(value)} PLN',
+            '$prefix$absLabel PLN',
             textAlign: TextAlign.right,
-            style: TextStyle(
-              fontFamily: AppFonts.jetBrainsMono,
-              fontSize: 13,
-              fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
-              color: bold ? Colors.white : resolved,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
+            style: T.body.copyWith(color: bold
+                  ? (income
+                      ? AppColors.emeraldFor(sun)
+                      : (value < 0
+                          ? AppColors.crimsonFor(sun)
+                          : AppColors.ink(sun)))
+                  : resolved, fontWeight: bold ? FontWeight.w700 : FontWeight.w500, fontFamily: AppFonts.jetBrainsMono),
           ),
         ],
       ),
@@ -3324,7 +3516,7 @@ class _HistoryRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
               border: Border.all(
-                color: selected ? _emerald : AppColors.cardBorderColor,
+                color: selected ? _emerald : AppColors.hairlineFaint,
                 width: selected ? 1.5 : 1,
               ),
               borderRadius: _cardRadius,
@@ -3337,21 +3529,12 @@ class _HistoryRow extends StatelessWidget {
                     children: [
                       Text(
                         rangeLabel,
-                        style: const TextStyle(
-                          fontFamily: AppFonts.dmSans,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
+                        style: T.body.copyWith(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 3),
                       Text(
                         '${formatPln(entry.netProfit)} PLN · ${entry.tripCount} ${S.tripCount}',
-                        style: const TextStyle(
-                          fontFamily: AppFonts.jetBrainsMono,
-                          fontSize: 11,
-                          color: AppColors.mutedText,
-                        ),
+                        style: T.captionSm.copyWith(fontFamily: AppFonts.jetBrainsMono),
                       ),
                     ],
                   ),
@@ -3362,23 +3545,17 @@ class _HistoryRow extends StatelessWidget {
                   children: [
                     Text(
                       formatPln(entry.hourlyRate),
-                      style: TextStyle(
-                        fontFamily: AppFonts.dmSans,
+                      style: T.titleSm.copyWith(
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
                         color: color,
                         height: 1,
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
                     Text(
                       S.perHour,
-                      style: TextStyle(
-                        fontFamily: AppFonts.dmSans,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        color: color.withValues(alpha: 0.6),
-                        letterSpacing: 0.5,
-                      ),
+                      style: T.nano.copyWith(color: color.withValues(alpha: 0.6), fontWeight: FontWeight.w700, letterSpacing: 0.5),
                     ),
                   ],
                 ),
@@ -3482,10 +3659,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
     }
   }
 
-  String _num(double v) {
-    if (v == v.roundToDouble()) return v.toStringAsFixed(0);
-    return v.toString();
-  }
+  String _num(double v) => formatPln(v);
 
   /// Parses a money/decimal field, clamping negatives to 0. The input
   /// formatters already block a typed minus sign; this is a defensive backstop
@@ -3564,20 +3738,17 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.base,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: AppColors.scaffold(
+          Theme.of(context).brightness == Brightness.light,
+        ),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
           widget.existing == null ? S.addWeek : S.editWeek,
-          style: const TextStyle(
-            fontFamily: AppFonts.dmSans,
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-          ),
+          style: T.titleMd,
         ),
         actions: [
           TextButton(
@@ -3639,26 +3810,16 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
               _buildFuelReceiptsSection(),
               _numField(_cashCtrl, S.cashReceived, suffix: 'PLN'),
               _label(S.onlineTime),
-              Row(
-                children: [
-                  Expanded(
-                    child: _numField(
-                      _hoursCtrl,
-                      S.hoursShort,
-                      integer: true,
-                      dense: true,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _numField(
-                      _minutesCtrl,
-                      S.minutesShort,
-                      integer: true,
-                      dense: true,
-                    ),
-                  ),
-                ],
+              _DurationField(
+                totalMinutes:
+                    _parseInt(_hoursCtrl) * 60 + _parseInt(_minutesCtrl),
+                onChanged: (mins) {
+                  final clamped = mins.clamp(0, 999 * 60);
+                  _hoursCtrl.text = '${clamped ~/ 60}';
+                  _minutesCtrl.text = '${clamped % 60}';
+                  _maybeClearTimeError();
+                  setState(() {});
+                },
               ),
               if (_onlineTimeMissing) _inlineError(S.onlineTimeMissing),
               ListenableBuilder(
@@ -3714,7 +3875,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       child: Row(
         children: [
           const Icon(
-            Icons.lock_outline_rounded,
+            Icons.lock_rounded,
             size: 16,
             color: AppColors.labelText,
           ),
@@ -3722,12 +3883,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
           Expanded(
             child: Text(
               _weekRangeLabel(widget.weekStart, widget.weekEnd),
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-              ),
+              style: T.titleXs,
             ),
           ),
         ],
@@ -3739,13 +3895,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
     padding: const EdgeInsets.only(left: 4, bottom: 8, top: 4),
     child: Text(
       text,
-      style: const TextStyle(
-        fontFamily: AppFonts.dmSans,
-        fontSize: 12,
-        fontWeight: FontWeight.w800,
-        letterSpacing: 1.5,
-        color: AppColors.labelText,
-      ),
+      style: T.caption.copyWith(color: AppColors.labelText, fontWeight: FontWeight.w800, letterSpacing: 1.5),
     ),
   );
 
@@ -3757,7 +3907,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
         context: context,
         builder: (ctx) {
           return AlertDialog(
-            backgroundColor: AppColors.elevated,
+            backgroundColor: AppColors.raised,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
@@ -3774,11 +3924,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                color: Colors.white,
-                fontSize: 18,
-              ),
+              style: T.titleLg,
               autofocus: true,
               decoration: InputDecoration(
                 labelText: S.amountPaidLabel,
@@ -3792,7 +3938,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                   color: _gold,
                 ),
                 enabledBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white24),
+                  borderSide: BorderSide(color: AppColors.hairlineStrong),
                 ),
                 focusedBorder: const UnderlineInputBorder(
                   borderSide: BorderSide(color: _gold),
@@ -3879,12 +4025,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                       S.addReceipt,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: AppFonts.dmSans,
-                        color: _gold,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
+                      style: T.labelStrong.copyWith(color: _gold),
                     ),
                   ),
                 ),
@@ -3894,14 +4035,14 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
               Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: AppColors.dialog,
-                  border: Border.all(color: Colors.white12),
+                  color: AppColors.base,
+                  border: Border.all(color: AppColors.hairlineFaint),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: AppEmptyState(
                   compact: true,
                   accent: _gold,
-                  icon: Icons.local_gas_station_outlined,
+                  icon: Icons.local_gas_station_rounded,
                   title: S.fuelReceiptsTitle,
                   description: S.noFuelReceipts,
                   actionLabel: S.addReceipt,
@@ -3912,8 +4053,8 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
               Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: AppColors.dialog,
-                  border: Border.all(color: Colors.white12),
+                  color: AppColors.base,
+                  border: Border.all(color: AppColors.hairlineFaint),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -3922,7 +4063,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                       itemCount: receipts.length,
                       estimatedItemExtent: 72,
                       separatorBuilder: (_, _) =>
-                          const Divider(color: Colors.white10, height: 1),
+                          const Divider(color: AppColors.hairlineFaint, height: 1),
                       itemBuilder: (context, i) {
                         final item = receipts[i];
                         return Dismissible(
@@ -3938,10 +4079,32 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                             ),
                           ),
                           onDismissed: (_) {
+                            final removed = item;
+                            final idx = i;
                             _fuelReceiptsNotifier.value =
                                 _fuelReceiptsNotifier.value
                                     .where((r) => r.id != item.id)
                                     .toList();
+                            ScaffoldMessenger.of(context).clearSnackBars();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                duration: const Duration(seconds: 4),
+                                content: Text(S.receiptDeleted),
+                                action: SnackBarAction(
+                                  label: S.undo,
+                                  onPressed: () {
+                                    final next = [
+                                      ..._fuelReceiptsNotifier.value,
+                                    ];
+                                    final insertAt =
+                                        idx.clamp(0, next.length);
+                                    next.insert(insertAt, removed);
+                                    _fuelReceiptsNotifier.value =
+                                        capFuelReceipts(next);
+                                  },
+                                ),
+                              ),
+                            );
                           },
                           child: ListTile(
                             contentPadding: const EdgeInsets.symmetric(
@@ -3953,30 +4116,16 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                               backgroundColor: _gold.withValues(alpha: 0.15),
                               child: Text(
                                 '${i + 1}',
-                                style: const TextStyle(
-                                  fontFamily: AppFonts.dmSans,
-                                  color: _gold,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 12,
-                                ),
+                                style: T.caption.copyWith(color: _gold, fontWeight: FontWeight.w800),
                               ),
                             ),
                             title: Text(
                               '${formatPln(item.amountPaid)} PLN',
-                              style: const TextStyle(
-                                fontFamily: AppFonts.dmSans,
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
-                              ),
+                              style: T.titleXs.copyWith(fontWeight: FontWeight.w700),
                             ),
                             subtitle: Text(
                               S.formatReceiptTimestamp(item.timestamp),
-                              style: const TextStyle(
-                                fontFamily: AppFonts.dmSans,
-                                color: AppColors.mutedText,
-                                fontSize: 12,
-                              ),
+                              style: T.caption,
                             ),
                             trailing: IconButton(
                               tooltip: S.delete,
@@ -3996,7 +4145,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                         );
                       },
                     ),
-                    const Divider(color: Colors.white24, height: 1),
+                    const Divider(color: AppColors.hairlineStrong, height: 1),
                     Padding(
                       padding: const EdgeInsets.all(14),
                       child: Column(
@@ -4009,23 +4158,14 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                                   S.totalPumpPaid,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontFamily: AppFonts.dmSans,
-                                    color: AppColors.mutedText,
-                                    fontSize: 13,
-                                  ),
+                                  style: T.label,
                                 ),
                               ),
                               const SizedBox(width: 8),
                               Text(
                                 '${formatPln(totalPaid)} PLN',
                                 maxLines: 1,
-                                style: const TextStyle(
-                                  fontFamily: AppFonts.dmSans,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
-                                ),
+                                style: T.body.copyWith(fontWeight: FontWeight.w700),
                               ),
                             ],
                           ),
@@ -4038,24 +4178,14 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                                   S.totalFuelDiscounted,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontFamily: AppFonts.dmSans,
-                                    color: _emerald,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                  style: T.label.copyWith(color: _emerald),
                                 ),
                               ),
                               const SizedBox(width: 8),
                               Text(
                                 '${formatPln(discounted)} PLN',
                                 maxLines: 1,
-                                style: const TextStyle(
-                                  fontFamily: AppFonts.dmSans,
-                                  color: _emerald,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 15,
-                                ),
+                                style: T.titleXs.copyWith(color: _emerald),
                               ),
                             ],
                           ),
@@ -4084,8 +4214,8 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       computeFuelAfterDiscount(_fuelPumpTotal);
 
   /// Subtle, live break-even reference under the Net Gelir field. Reads the LIVE
-  /// pump-paid field (× 0.90 discount) plus the rental toggle / trip count, so
-  /// the driver sees — updated on every keystroke — the turnover they have to
+  /// pump-paid field (Ã— 0.90 discount) plus the rental toggle / trip count, so
+  /// the driver sees â€” updated on every keystroke â€” the turnover they have to
   /// clear this week before the week pays for itself.
   Widget _breakEvenReference() {
     final threshold = calculateBreakEven(
@@ -4095,18 +4225,12 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       padding: const EdgeInsets.only(left: 4, bottom: 12),
       child: Row(
         children: [
-          const Icon(Icons.flag_outlined, size: 15, color: _amber),
+          const Icon(Icons.flag_rounded, size: 15, color: _amber),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
               S.breakEvenLabel(formatPln(threshold)),
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: _amber,
-                height: 1.3,
-              ),
+              style: T.caption.copyWith(color: _amber, height: 1.3),
             ),
           ),
         ],
@@ -4132,12 +4256,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
             S.hasRentalDiscountToggle,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
+            style: T.body.copyWith(fontWeight: FontWeight.w700),
           ),
           value: _hasRentalDiscount,
           onChanged: (val) {
@@ -4171,12 +4290,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-              ),
+              style: T.bodyStrong,
             ),
           ),
         ],
@@ -4195,12 +4309,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: _crimson,
-            ),
+            style: T.caption.copyWith(color: _crimson, fontWeight: FontWeight.w700),
           ),
         ),
       ],
@@ -4258,15 +4367,10 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                 LengthLimitingTextInputFormatter(7),
               ]
             : [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                LengthLimitingTextInputFormatter(7),
+                _PlnInputFormatter(),
+                LengthLimitingTextInputFormatter(12),
               ],
-        style: const TextStyle(
-          fontFamily: AppFonts.dmSans,
-          color: Colors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
-        ),
+        style: T.titleSm.copyWith(fontWeight: FontWeight.w700, fontFamily: integer ? AppFonts.dmSans : AppFonts.jetBrainsMono),
         validator: (v) => _validateField(
           v,
           required: required,
@@ -4275,25 +4379,12 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
         ),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: const TextStyle(
-            fontFamily: AppFonts.dmSans,
-            color: AppColors.mutedText,
-            fontSize: 14,
-          ),
+          labelStyle: T.body.copyWith(color: AppColors.mutedText),
           helperText: helper,
           helperMaxLines: 3,
-          helperStyle: const TextStyle(
-            fontFamily: AppFonts.dmSans,
-            color: AppColors.labelText,
-            fontSize: 11,
-            height: 1.3,
-          ),
+          helperStyle: T.captionSm.copyWith(color: AppColors.labelText, height: 1.3),
           suffixText: suffix,
-          suffixStyle: const TextStyle(
-            fontFamily: AppFonts.jetBrainsMono,
-            color: AppColors.labelText,
-            fontSize: 13,
-          ),
+          suffixStyle: T.label.copyWith(color: AppColors.labelText, fontFamily: AppFonts.jetBrainsMono),
           filled: true,
           fillColor: _cardColor,
           contentPadding: EdgeInsets.symmetric(
@@ -4302,7 +4393,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: _cardRadius,
-            borderSide: const BorderSide(color: AppColors.cardBorderColor, width: 1),
+            borderSide: const BorderSide(color: AppColors.hairlineFaint, width: 1),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: _cardRadius,
@@ -4334,43 +4425,40 @@ class _RangeOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-        decoration: BoxDecoration(
-          color: _cardColor,
-          border: _cardBorder,
-          borderRadius: _cardRadius,
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.calendar_month_rounded, size: 20, color: _emerald),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
+    return Material(
+      color: _cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: _cardRadius,
+        side: const BorderSide(color: AppColors.hairlineFaint, width: 1),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+          child: Row(
+            children: [
+              const Icon(Icons.calendar_month_rounded, size: 20, color: _emerald),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: T.titleSm,
                 ),
               ),
-            ),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.labelText),
-          ],
+              const Icon(Icons.chevron_right_rounded, color: AppColors.labelText),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _FreeWeekProgressCard extends StatelessWidget {
+class _FreeWeekProgressCard extends StatefulWidget {
   const _FreeWeekProgressCard({
     required this.lifetimeTrips,
     required this.onReset,
@@ -4382,10 +4470,62 @@ class _FreeWeekProgressCard extends StatelessWidget {
   final VoidCallback onEdit;
 
   @override
-  Widget build(BuildContext context) {
-    final progress = calculateCurrentFreeWeekProgress(lifetimeTrips);
-    final earned = calculateFreeWeeksEarned(lifetimeTrips);
+  State<_FreeWeekProgressCard> createState() => _FreeWeekProgressCardState();
+}
+
+class _FreeWeekProgressCardState extends State<_FreeWeekProgressCard>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _ensurePulse();
+  }
+
+  @override
+  void didUpdateWidget(covariant _FreeWeekProgressCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _ensurePulse();
+  }
+
+  void _ensurePulse() {
+    final progress =
+        calculateCurrentFreeWeekProgress(widget.lifetimeTrips);
     final frac = (progress / kFreeWeekTripThreshold).clamp(0.0, 1.0);
+    final near = frac >= 0.90 && frac < 1.0;
+    if (near && _pulse == null) {
+      _pulse = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 2000),
+      )..repeat(reverse: true);
+    } else if (!near && _pulse != null) {
+      _pulse!.dispose();
+      _pulse = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress =
+        calculateCurrentFreeWeekProgress(widget.lifetimeTrips);
+    final earned = calculateFreeWeeksEarned(widget.lifetimeTrips);
+    final frac = (progress / kFreeWeekTripThreshold).clamp(0.0, 1.0);
+    final bar = ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: LinearProgressIndicator(
+        value: frac,
+        backgroundColor: AppColors.raised,
+        valueColor: const AlwaysStoppedAnimation<Color>(_gold),
+        minHeight: 6,
+      ),
+    );
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -4406,37 +4546,47 @@ class _FreeWeekProgressCard extends StatelessWidget {
                   S.freeWeekProgress(progress, kFreeWeekTripThreshold),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
+                  style: T.bodyStrong,
                 ),
               ),
+              Odometer(value: widget.lifetimeTrips, digits: 4, digitHeight: 22),
               const SizedBox(width: 4),
               AppTapTarget(
-                onTap: onEdit,
+                onTap: widget.onEdit,
                 tooltip: S.editLifetimeTripsTitle,
-                child: const Icon(Icons.edit_outlined, size: 20, color: _gold),
+                child: const Icon(Icons.edit_rounded, size: 20, color: _gold),
               ),
               AppTapTarget(
-                onTap: onReset,
+                onTap: widget.onReset,
                 tooltip: S.resetLifetimeTripsTitle,
-                child: const Icon(Icons.restart_alt, size: 20, color: _gold),
+                child: const Icon(Icons.restart_alt_rounded, size: 20, color: _gold),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: frac,
-              backgroundColor: AppColors.track,
-              valueColor: const AlwaysStoppedAnimation<Color>(_gold),
-              minHeight: 6,
-            ),
-          ),
+          if (_pulse != null)
+            AnimatedBuilder(
+              animation: _pulse!,
+              builder: (context, child) {
+                final glow = 0.35 + 0.45 * _pulse!.value;
+                return Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _gold.withValues(alpha: glow * 0.55),
+                        blurRadius: 10,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: child,
+                );
+              },
+              child: bar,
+            )
+          else
+            bar,
           if (earned > 0) ...[
             const SizedBox(height: 12),
             Container(
@@ -4452,17 +4602,18 @@ class _FreeWeekProgressCard extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  const Icon(
+                    Icons.card_giftcard_rounded,
+                    size: 16,
+                    color: _gold,
+                  ),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       earned > 1
                           ? S.freeWeekRewardBadgeCount(earned)
                           : S.freeWeekRewardBadge,
-                      style: const TextStyle(
-                        fontFamily: AppFonts.dmSans,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        color: _gold,
-                      ),
+                      style: T.caption.copyWith(color: _gold, fontWeight: FontWeight.w800),
                     ),
                   ),
                 ],
@@ -4470,6 +4621,61 @@ class _FreeWeekProgressCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Single `H:MM` online-time control with ±15 minute steppers.
+class _DurationField extends StatelessWidget {
+  const _DurationField({
+    required this.totalMinutes,
+    required this.onChanged,
+  });
+
+  final int totalMinutes;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final h = totalMinutes ~/ 60;
+    final m = totalMinutes % 60;
+    final label = '$h:${m.toString().padLeft(2, '0')}';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: _cardColor,
+          borderRadius: _cardRadius,
+          border: _cardBorder,
+        ),
+        child: Row(
+          children: [
+            AppCircleButton(
+              icon: Icons.remove_rounded,
+              color: AppColors.crimson,
+              mediumHaptic: true,
+              onTap: () => onChanged(totalMinutes - 15),
+            ),
+            Expanded(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: T.heroSmall.copyWith(
+                  fontSize: 28,
+                  fontFamily: AppFonts.jetBrainsMono,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            AppCircleButton(
+              icon: Icons.add_rounded,
+              color: AppColors.emerald,
+              onTap: () => onChanged(totalMinutes + 15),
+            ),
+          ],
+        ),
       ),
     );
   }

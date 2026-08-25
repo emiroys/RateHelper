@@ -4,19 +4,41 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
 
     private val channelName = "com.ratehelper.app/system"
+    private val lightChannelName = "com.ratehelper.app/light"
     private var methodChannel: MethodChannel? = null
+
+    private var sensorManager: SensorManager? = null
+    private var lightSensor: Sensor? = null
+    private var lightEventSink: EventChannel.EventSink? = null
+    private var lightListening = false
+
+    private val lightListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            if (event.sensor.type == Sensor.TYPE_LIGHT) {
+                lightEventSink?.success(event.values[0].toDouble())
+            }
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
 
     private val mediaKeyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -29,6 +51,8 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        sensorManager = getSystemService(SENSOR_SERVICE) as? SensorManager
+        lightSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_LIGHT)
         val filter = IntentFilter("com.ratehelper.app.MEDIA_KEY_INCREMENT")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(mediaKeyReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -37,8 +61,20 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (lightListening) startLightSensor()
+    }
+
+    override fun onPause() {
+        stopLightSensor()
+        super.onPause()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        stopLightSensor()
+        lightEventSink = null
         runCatching { unregisterReceiver(mediaKeyReceiver) }
         methodChannel = null
     }
@@ -92,9 +128,58 @@ class MainActivity : FlutterActivity() {
                     result.success(mapOf("accepted" to accepted, "rejected" to rejected))
                 }
 
+                "setScreenBrightness" -> {
+                    val value = (call.argument<Double>("value") ?: 1.0).toFloat().coerceIn(0f, 1f)
+                    runOnUiThread {
+                        val lp = window.attributes
+                        lp.screenBrightness = value
+                        window.attributes = lp
+                    }
+                    result.success(true)
+                }
+
+                "clearScreenBrightness" -> {
+                    runOnUiThread {
+                        val lp = window.attributes
+                        lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                        window.attributes = lp
+                    }
+                    result.success(true)
+                }
+
                 else -> result.notImplemented()
             }
         }
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, lightChannelName)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    lightEventSink = events
+                    lightListening = true
+                    startLightSensor()
+                    if (lightSensor == null) {
+                        events.error("NO_SENSOR", "TYPE_LIGHT unavailable", null)
+                    }
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    lightListening = false
+                    stopLightSensor()
+                    lightEventSink = null
+                }
+            })
+    }
+
+    private fun startLightSensor() {
+        val sm = sensorManager ?: return
+        val sensor = lightSensor ?: return
+        runCatching {
+            sm.registerListener(lightListener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+    }
+
+    private fun stopLightSensor() {
+        runCatching { sensorManager?.unregisterListener(lightListener) }
     }
 
     /**
@@ -138,4 +223,3 @@ class MainActivity : FlutterActivity() {
         }.getOrDefault(false)
     }
 }
-
