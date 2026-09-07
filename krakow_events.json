@@ -54,6 +54,18 @@
     "surgeLevel": "High"
   },
   {
+    "title": "I Mistrzostwa Polski w Ratownictwie Medycznym Strażaków PSP",
+    "venue": "Schody TAURON Areny Kraków",
+    "date": "2026-09-09T08:00:00",
+    "surgeLevel": "Medium"
+  },
+  {
+    "title": "Wisła Kraków vs. Jagiellonia Białystok (Ekstraklasa)",
+    "venue": "Stadion Miejski im. Henryka Reymana",
+    "date": "2026-09-11T20:30:00",
+    "surgeLevel": "High"
+  },
+  {
     "title": "ADCC World Championship 2026 - Dzień 1",
     "venue": "TAURON Arena Kraków (Arena Główna)",
     "date": "2026-09-12T10:00:00",
@@ -66,9 +78,51 @@
     "surgeLevel": "High"
   },
   {
+    "title": "Spotkanie z Zuzanną Witych (Decathlon Freeride)",
+    "venue": "TAURON Arena Kraków",
+    "date": "2026-09-15T19:00:00",
+    "surgeLevel": "Low"
+  },
+  {
+    "title": "Wisła Kraków vs. Śląsk Wrocław (Ekstraklasa)",
+    "venue": "Stadion Miejski im. Henryka Reymana",
+    "date": "2026-09-18T20:30:00",
+    "surgeLevel": "High"
+  },
+  {
     "title": "Melanie Martinez - HADES: THE SACRIFICE",
     "venue": "TAURON Arena Kraków (Arena Główna)",
     "date": "2026-09-23T19:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "MKS Cracovia vs. Zagłębie Lubin (Ekstraklasa)",
+    "venue": "Stadion Cracovii im. Józefa Piłsudskiego",
+    "date": "2026-10-10T14:45:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "MKS Cracovia vs. Legia Warszawa (Ekstraklasa)",
+    "venue": "Stadion Cracovii im. Józefa Piłsudskiego",
+    "date": "2026-10-17T17:30:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Wisła Kraków vs. Raków Częstochowa (Ekstraklasa)",
+    "venue": "Stadion Miejski im. Henryka Reymana",
+    "date": "2026-10-24T18:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "MKS Cracovia vs. Motor Lublin (Ekstraklasa)",
+    "venue": "Stadion Cracovii im. Józefa Piłsudskiego",
+    "date": "2026-10-31T17:30:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Derby Krakowa: Wisła Kraków vs. MKS Cracovia",
+    "venue": "Stadion Miejski im. Henryka Reymana",
+    "date": "2026-11-07T18:00:00",
     "surgeLevel": "High"
   }
 ]
