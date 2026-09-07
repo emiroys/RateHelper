@@ -288,8 +288,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     ),
                     filled: true,
                     fillColor: AppColors.inset,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                    border: const OutlineInputBorder(
+                      borderRadius: AppRadius.smRadius,
                       borderSide: BorderSide.none,
                     ),
                   ),
@@ -520,6 +520,8 @@ class _DemoBtn extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         customBorder: const CircleBorder(),
+        splashColor: color.withValues(alpha: 0.35),
+        highlightColor: color.withValues(alpha: 0.15),
         child: SizedBox(
           width: 56,
           height: 56,
@@ -641,9 +643,9 @@ class _BatteryCard extends StatelessWidget {
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: AppColors.inset,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadius.smRadius,
             ),
             child: Text(
               brand.steps,
@@ -703,10 +705,12 @@ class _BrandChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: selected ? Colors.white12 : AppColors.inset,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: AppRadius.pillRadius,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: AppRadius.pillRadius,
+        splashColor: Colors.white.withValues(alpha: 0.12),
+        highlightColor: Colors.white.withValues(alpha: 0.06),
         child: Container(
           constraints: const BoxConstraints(minHeight: kMinTouchTarget),
           alignment: Alignment.center,
@@ -743,7 +747,7 @@ class _BigCta extends StatelessWidget {
     return Material(
       color: enabled ? color.withValues(alpha: 0.18) : Colors.white12,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: AppRadius.mdRadius,
         side: BorderSide(
           color: enabled ? color.withValues(alpha: 0.55) : AppColors.disabledText,
           width: 1.4,
@@ -757,6 +761,8 @@ class _BigCta extends StatelessWidget {
                 onTap?.call();
               }
             : null,
+        splashColor: enabled ? color.withValues(alpha: 0.25) : null,
+        highlightColor: enabled ? color.withValues(alpha: 0.12) : null,
         child: Container(
           height: 60,
           alignment: Alignment.center,

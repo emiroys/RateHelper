@@ -15,8 +15,11 @@ BoxDecoration instrumentBezel({
     color: base,
     borderRadius: BorderRadius.circular(radius),
     border: Border.all(
-      color: flash ?? AppColors.borderFor(sun),
-      width: flash != null ? 2 : 1,
+      color: flash ??
+          (glow != null
+              ? glow.withValues(alpha: 0.45)
+              : AppColors.borderFor(sun)),
+      width: flash != null ? 2 : (glow != null ? 1.5 : 1),
     ),
     boxShadow: [
       BoxShadow(
@@ -33,9 +36,9 @@ BoxDecoration instrumentBezel({
         ),
       if (glow != null)
         BoxShadow(
-          color: glow.withValues(alpha: 0.10),
-          blurRadius: 24,
-          spreadRadius: -8,
+          color: glow.withValues(alpha: sun ? 0.08 : 0.18),
+          blurRadius: 28,
+          spreadRadius: -4,
         ),
     ],
   );

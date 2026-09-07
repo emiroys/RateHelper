@@ -9,7 +9,9 @@ WeekEarning buildWeek({
   bool hasRentalDiscount = true,
   double fuelPumpPaid = 298.9555555556,
   double onlineHours = 40,
-  int tripCount = 130,
+  int? driverTripCount,
+  int? tripCount,
+  int? carTripCountOverride,
   DriverMode? driverMode,
 }) {
   return WeekEarning(
@@ -20,7 +22,8 @@ WeekEarning buildWeek({
     netIncome: netIncome,
     cashReceived: cashReceived,
     onlineHours: onlineHours,
-    tripCount: tripCount,
+    driverTripCount: driverTripCount ?? tripCount ?? 130,
+    carTripCountOverride: carTripCountOverride,
     hasRentalDiscount: hasRentalDiscount,
     fuelPumpPaid: fuelPumpPaid,
   );
@@ -49,32 +52,32 @@ void main() {
     });
   });
 
-  group('flat 3% settlement fee on net income', () {
-    test('SETTLEMENT_FEE_RATE constant is 3%', () {
-      expect(SETTLEMENT_FEE_RATE, 0.03);
+  group('flat 4.3125% settlement fee on net income', () {
+    test('SETTLEMENT_FEE_RATE constant is 4.3125%', () {
+      expect(SETTLEMENT_FEE_RATE, 0.043125);
     });
 
-    test('settlementFee = netIncome * 0.03 = 150.00', () {
-      expect(buildWeek().settlementFee, closeTo(150.00, 0.001));
+    test('settlementFee = netIncome * 0.043125 = 215.62', () {
+      expect(buildWeek().settlementFee, closeTo(215.62, 0.001));
     });
   });
 
   group('net profit', () {
-    test('netIncome - fuel - vat - rental - settlementFee = 3280.94', () {
-      // 5000 - 269.06(fuel) - 600(vat) - 700(rental) - 150(settlement) = 3280.94
-      expect(buildWeek().netProfit, closeTo(3280.94, 0.001));
+    test('netIncome - fuel - vat - rental - settlementFee = 3215.32', () {
+      // 5000 - 269.06(fuel) - 600(vat) - 700(rental) - 215.62(settlement) = 3215.32
+      expect(buildWeek().netProfit, closeTo(3215.32, 0.001));
     });
 
     test('rental fallback when hasRentalDiscount is false', () {
       final w = buildWeek(hasRentalDiscount: false);
       expect(w.rentalFee, 900);
-      expect(w.netProfit, closeTo(3080.94, 0.001));
+      expect(w.netProfit, closeTo(3015.32, 0.001));
     });
   });
 
   group('bank deposit vs cash in hand', () {
-    test('bankDeposit = netProfit - cashReceived = 2882.94', () {
-      expect(buildWeek().bankDeposit, closeTo(2882.94, 0.001));
+    test('bankDeposit = netProfit - cashReceived = 2817.32', () {
+      expect(buildWeek().bankDeposit, closeTo(2817.32, 0.001));
     });
 
     test('cashInHand equals the cash received', () {
@@ -91,7 +94,7 @@ void main() {
     test('netProfit / online hours', () {
       final w = buildWeek(onlineHours: 40);
       expect(w.hourlyRate, closeTo(w.netProfit / 40, 0.001));
-      expect(w.hourlyRate, closeTo(82.0235, 0.01));
+      expect(w.hourlyRate, closeTo(80.38, 0.01));
     });
 
     test('25 sa 59 dk online -> decimal 25.9833', () {
@@ -170,7 +173,7 @@ void main() {
           netIncome: 4000 + index.toDouble(),
           cashReceived: 300,
           onlineHours: 40,
-          tripCount: 130,
+          driverTripCount: 130,
           hasRentalDiscount: true,
           fuelPumpPaid: 277.7777777778,
         );
@@ -249,7 +252,7 @@ void main() {
         netIncome: 3000,
         cashReceived: 0,
         onlineHours: 30,
-        tripCount: 100,
+        driverTripCount: 100,
         hasRentalDiscount: true,
         fuelReceipts: receipts,
       );
@@ -283,7 +286,7 @@ void main() {
         netIncome: 3000,
         cashReceived: 0,
         onlineHours: 30,
-        tripCount: 100,
+        driverTripCount: 100,
         hasRentalDiscount: true,
         fuelReceipts: receipts,
       );
@@ -516,7 +519,7 @@ void main() {
           netIncome: netIncome,
           cashReceived: 0,
           onlineHours: hours,
-          tripCount: 100,
+          driverTripCount: 100,
           hasRentalDiscount: true,
           fuelPumpPaid: 0,
         );
@@ -547,7 +550,7 @@ void main() {
         netIncome: netIncome,
         cashReceived: 0,
         onlineHours: onlineHours,
-        tripCount: 100,
+        driverTripCount: 100,
         hasRentalDiscount: true,
         fuelPumpPaid: 0,
       );
@@ -648,12 +651,12 @@ void main() {
 
     test('netProfit can be negative (not clamped or abs-ed)', () {
       expect(bad.netProfit, lessThan(0));
-      expect(bad.netProfit, closeTo(-795.0, 0.001));
+      expect(bad.netProfit, closeTo(-796.31, 0.001));
     });
 
     test('formatPln keeps the minus sign for a negative profit', () {
       expect(formatPln(bad.netProfit), startsWith('-'));
-      expect(formatPln(bad.netProfit), '-795,00');
+      expect(formatPln(bad.netProfit), '-796,31');
     });
 
     test('a negative hourlyRate stays negative (not abs-ed)', () {
@@ -711,7 +714,7 @@ void main() {
     test('fromJson ignores unknown/removed keys without throwing', () {
       final decoded = WeekEarning.fromJson(legacyEntry())!;
       expect(decoded.netIncome, 5000);
-      expect(decoded.tripCount, 130);
+      expect(decoded.driverTripCount, 130);
       expect(decoded.fuelPumpPaid, 300);
       expect(decoded.rentalFee, 700);
     });
@@ -741,7 +744,7 @@ void main() {
         netIncome: 4000,
         cashReceived: 0,
         onlineHours: 40,
-        tripCount: 100,
+        driverTripCount: 100,
         hasRentalDiscount: true,
         fuelPumpPaid: 0,
       );
@@ -759,7 +762,7 @@ void main() {
         netIncome: 4000,
         cashReceived: 0,
         onlineHours: 40,
-        tripCount: 100,
+        driverTripCount: 100,
         hasRentalDiscount: true,
         fuelPumpPaid: 0,
       );
@@ -817,7 +820,7 @@ void main() {
           netIncome: 4000,
           cashReceived: 0,
           onlineHours: 40,
-          tripCount: 100,
+          driverTripCount: 100,
           hasRentalDiscount: true,
           fuelPumpPaid: 0,
         );
@@ -887,7 +890,7 @@ void main() {
         netIncome: breakEven,
         cashReceived: 0,
         onlineHours: 1,
-        tripCount: tripCount,
+        driverTripCount: tripCount,
         hasRentalDiscount: true,
         fuelPumpPaid: fuelPumpPaid,
       );
@@ -947,7 +950,7 @@ void main() {
         netIncome: 3000,
         cashReceived: 0,
         onlineHours: 0,
-        tripCount: 100,
+        driverTripCount: 100,
         hasRentalDiscount: true,
         fuelPumpPaid: 0,
       );
@@ -1144,7 +1147,7 @@ void main() {
         netIncome: 0,
         cashReceived: 0,
         onlineHours: 0,
-        tripCount: 0,
+        driverTripCount: 0,
         fuelReceipts: receipts,
       );
       expect(week.fuelReceipts, hasLength(kMaxFuelReceipts));
@@ -1175,6 +1178,113 @@ void main() {
       expect(week, isNotNull);
       expect(week!.fuelReceipts, hasLength(kMaxFuelReceipts));
       expect(week.fuelReceipts.first.amountPaid, 3);
+    });
+  });
+
+  group('trip count split: driverTripCount (personal milestone) vs carTripCountOverride (rental fee)', () {
+    test('solo mode: carTripCount == driverTripCount always', () {
+      final soloWithoutOverride = buildWeek(
+        driverMode: DriverMode.solo,
+        driverTripCount: 120,
+      );
+      expect(soloWithoutOverride.driverTripCount, 120);
+      expect(soloWithoutOverride.carTripCount, 120);
+      expect(soloWithoutOverride.rentalFee, expectedRentalFee(120, DriverMode.solo));
+
+      final soloWithOverride = buildWeek(
+        driverMode: DriverMode.solo,
+        driverTripCount: 120,
+        carTripCountOverride: 250,
+      );
+      expect(soloWithOverride.driverTripCount, 120);
+      expect(soloWithOverride.carTripCount, 120);
+      expect(soloWithOverride.rentalFee, expectedRentalFee(120, DriverMode.solo));
+    });
+
+    test('paired mode with override set: rental uses override, lifetime counter uses driverTripCount only', () {
+      final week = buildWeek(
+        driverMode: DriverMode.paired,
+        driverTripCount: 100,
+        carTripCountOverride: 220,
+      );
+      expect(week.driverTripCount, 100);
+      expect(week.carTripCountOverride, 220);
+      expect(week.carTripCount, 220);
+      // Tier for 220 trips in paired mode is 150 PLN (instead of 450 PLN for 100 trips)
+      expect(week.rentalFee, 150);
+      expect(expectedRentalFee(220, DriverMode.paired), 150);
+      expect(week.totalCarRentalFee, 300);
+
+      // Lifetime trip odometer sums driverTripCount exclusively
+      final lifetime = calculateLifetimeTrips([week]);
+      expect(lifetime, 100);
+    });
+
+    test('paired mode with override null: falls back correctly to driverTripCount', () {
+      final week = buildWeek(
+        driverMode: DriverMode.paired,
+        driverTripCount: 100,
+        carTripCountOverride: null,
+      );
+      expect(week.driverTripCount, 100);
+      expect(week.carTripCountOverride, isNull);
+      expect(week.carTripCount, 100);
+      // Fee for 100 trips in paired mode is 450 PLN
+      expect(week.rentalFee, 450);
+      expect(expectedRentalFee(100, DriverMode.paired), 450);
+      expect(week.totalCarRentalFee, 900);
+
+      // Lifetime counter uses driverTripCount
+      expect(calculateLifetimeTrips([week]), 100);
+    });
+
+    test('legacy JSON migration: maps legacy tripCount key to driverTripCount with null override', () {
+      final legacyJson = {
+        'id': 'legacy-migration',
+        'weekStart': '2026-06-22T00:00:00.000',
+        'weekEnd': '2026-06-28T00:00:00.000',
+        'driverMode': 'paired',
+        'netIncome': 4500,
+        'cashReceived': 200,
+        'onlineHours': 35,
+        'tripCount': 175,
+      };
+
+      final decoded = WeekEarning.fromJson(legacyJson);
+      expect(decoded, isNotNull);
+      expect(decoded!.driverTripCount, 175);
+      expect(decoded.carTripCountOverride, isNull);
+      expect(decoded.carTripCount, 175);
+      expect(decoded.rentalFee, expectedRentalFee(175, DriverMode.paired));
+      expect(calculateLifetimeTrips([decoded]), 175);
+    });
+
+    test('round-trip JSON serialization preserves driverTripCount and carTripCountOverride', () {
+      final week = buildWeek(
+        driverMode: DriverMode.paired,
+        driverTripCount: 90,
+        carTripCountOverride: 230,
+      );
+      final json = week.toJson();
+      expect(json['driverTripCount'], 90);
+      expect(json['carTripCountOverride'], 230);
+      expect(json.containsKey('tripCount'), isFalse);
+
+      final restored = WeekEarning.fromJson(json)!;
+      expect(restored.driverTripCount, 90);
+      expect(restored.carTripCountOverride, 230);
+      expect(restored.carTripCount, 230);
+      expect(restored.rentalFee, week.rentalFee);
+    });
+
+    test('calculateLifetimeTrips sums driverTripCount across multiple mixed entries', () {
+      final weeks = [
+        buildWeek(driverMode: DriverMode.solo, driverTripCount: 130),
+        buildWeek(driverMode: DriverMode.paired, driverTripCount: 100, carTripCountOverride: 250),
+        buildWeek(driverMode: DriverMode.paired, driverTripCount: 120, carTripCountOverride: null),
+      ];
+      // 130 + 100 + 120 = 350 (carTripCountOverride does not pollute lifetime trips)
+      expect(calculateLifetimeTrips(weeks), 350);
     });
   });
 }

@@ -45,7 +45,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.ratehelper.app"
+        applicationId = "com.ratehelper.app.test"
         // API 26+: covers ~99% of the active Android install base in 2026
         // and is the minimum for FOREGROUND_SERVICE_SPECIAL_USE fallbacks.
         minSdk = 26

@@ -7,11 +7,26 @@ import 'app_text_styles.dart';
 /// Minimum tap area for anything the driver may hit while the car is moving.
 const double kMinTouchTarget = 48.0;
 
-/// Canonical main-card geometry (Phase 2).
-const double kCardRadius = 16.0;
+/// Standard 3-tier token system for shapes & corner radii.
+abstract final class AppRadius {
+  /// sm = 8.0: chips, small badges, inputs, inner tags.
+  static const double sm = 8.0;
+  static const BorderRadius smRadius = BorderRadius.all(Radius.circular(sm));
+
+  /// md = 16.0: all standard cards, modal containers, sheets, dialogs.
+  static const double md = 16.0;
+  static const BorderRadius mdRadius = BorderRadius.all(Radius.circular(md));
+
+  /// pill = 999.0: pill buttons, floating tags, circular buttons.
+  static const double pill = 999.0;
+  static const BorderRadius pillRadius = BorderRadius.all(Radius.circular(pill));
+}
+
+/// Canonical main-card geometry.
+const double kCardRadius = AppRadius.md;
 const double kPageInset = 20.0;
-final BorderRadius kCardBorderRadius = BorderRadius.circular(kCardRadius);
-final Border kCardBorder = Border.all(color: AppColors.hairlineFaint, width: 1);
+final BorderRadius kCardBorderRadius = AppRadius.mdRadius;
+final Border kCardBorder = Border.all(color: AppColors.border, width: 1);
 
 /// 36×4 grab handle used on every modal bottom sheet.
 class AppSheetHandle extends StatelessWidget {
@@ -23,9 +38,9 @@ class AppSheetHandle extends StatelessWidget {
       child: Container(
         width: 36,
         height: 4,
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           color: AppColors.hairlineStrong,
-          borderRadius: BorderRadius.circular(2),
+          borderRadius: AppRadius.pillRadius,
         ),
       ),
     );
@@ -56,7 +71,7 @@ class AppCircleButton extends StatelessWidget {
     final iconSize = size * 0.5;
     return RepaintBoundary(
       child: Material(
-        color: color.withValues(alpha: 0.28),
+        color: color.withValues(alpha: 0.20),
         shape: CircleBorder(
           side: BorderSide(color: color.withValues(alpha: 0.55), width: 1.5),
         ),
@@ -76,7 +91,7 @@ class AppCircleButton extends StatelessWidget {
             width: size,
             height: size,
             child: Center(
-              child: Icon(icon, color: color, size: iconSize),
+              child: Icon(icon, color: Colors.white, size: iconSize),
             ),
           ),
         ),
@@ -196,7 +211,7 @@ class AppEmptyState extends StatelessWidget {
                       vertical: 14,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadius.smRadius,
                       side: BorderSide(color: accent.withValues(alpha: 0.5)),
                     ),
                   ),

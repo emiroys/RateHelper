@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -170,7 +170,7 @@ class _PlnInputFormatter extends TextInputFormatter {
     }
     final grouped = StringBuffer();
     for (var i = 0; i < intDigits.length; i++) {
-      if (i > 0 && (intDigits.length - i) % 3 == 0) grouped.write('.');
+      if (i > 0 && (intDigits.length - i) % 3 == 0) grouped.write('\u00A0');
       grouped.write(intDigits[i]);
     }
     final text = decDigits == null
@@ -428,7 +428,10 @@ class _EarningsScreenState extends State<EarningsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.raised,
+        backgroundColor: AppColors.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: AppRadius.mdRadius,
+        ),
         title: Text(
           S.resetLifetimeTripsTitle,
           style: const TextStyle(
@@ -487,7 +490,10 @@ class _EarningsScreenState extends State<EarningsScreen> {
       newCount = await showDialog<int>(
         context: context,
         builder: (context) => AlertDialog(
-          backgroundColor: AppColors.raised,
+          backgroundColor: AppColors.surface,
+          shape: const RoundedRectangleBorder(
+            borderRadius: AppRadius.mdRadius,
+          ),
           title: Text(
             S.editLifetimeTripsTitle,
             style: const TextStyle(
@@ -620,8 +626,8 @@ class _EarningsScreenState extends State<EarningsScreen> {
     final prevBest = bestHourlyRateWeek(others);
     final isNewBest = result.hourlyRate > 0 &&
         (prevBest == null || result.hourlyRate > prevBest.hourlyRate);
-    final oldTrips = existing?.tripCount ?? 0;
-    final tripDelta = result.tripCount - oldTrips;
+    final oldTrips = existing?.driverTripCount ?? 0;
+    final tripDelta = result.driverTripCount - oldTrips;
     setState(() {
       final next = [..._entries]
         ..removeWhere(
@@ -704,9 +710,9 @@ class _EarningsScreenState extends State<EarningsScreen> {
         context: context,
         builder: (ctx) {
           return AlertDialog(
-            backgroundColor: AppColors.raised,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+            backgroundColor: AppColors.surface,
+            shape: const RoundedRectangleBorder(
+              borderRadius: AppRadius.mdRadius,
             ),
             title: Text(
               S.quickAddFuelTitle,
@@ -732,13 +738,13 @@ class _EarningsScreenState extends State<EarningsScreen> {
                 suffixText: 'PLN',
                 suffixStyle: const TextStyle(
                   fontFamily: AppFonts.dmSans,
-                  color: _gold,
+                  color: _amber,
                 ),
                 enabledBorder: const UnderlineInputBorder(
                   borderSide: BorderSide(color: AppColors.hairlineStrong),
                 ),
                 focusedBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: _gold),
+                  borderSide: BorderSide(color: _amber),
                 ),
               ),
               onSubmitted: (_) {
@@ -763,7 +769,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _gold,
+                  backgroundColor: _amber,
                   foregroundColor: Colors.black,
                 ),
                 onPressed: () {
@@ -826,7 +832,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
         netIncome: 0,
         cashReceived: 0,
         onlineHours: 0,
-        tripCount: 0,
+        driverTripCount: 0,
         hasRentalDiscount: true,
         fuelReceipts: [newReceipt],
       );
@@ -868,6 +874,9 @@ class _EarningsScreenState extends State<EarningsScreen> {
     WeekEarning entry,
     String receiptId,
   ) async {
+    final idx = entry.fuelReceipts.indexWhere((r) => r.id == receiptId);
+    if (idx < 0) return;
+    final removedReceipt = entry.fuelReceipts[idx];
     final nextReceipts = entry.fuelReceipts
         .where((r) => r.id != receiptId)
         .toList();
@@ -884,6 +893,38 @@ class _EarningsScreenState extends State<EarningsScreen> {
       _setEntries(nextList);
     });
     await _persist();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 4),
+        content: Text(S.receiptDeleted),
+        action: SnackBarAction(
+          label: S.undo,
+          onPressed: () async {
+            final restoredReceipts = [...nextEntry.fuelReceipts];
+            final insertAt = idx.clamp(0, restoredReceipts.length);
+            restoredReceipts.insert(insertAt, removedReceipt);
+            final restoredEntry = nextEntry.copyWith(
+              fuelReceipts: capFuelReceipts(restoredReceipts),
+            );
+            setState(() {
+              final restoredList = [..._entries]
+                ..removeWhere(
+                  (e) =>
+                      e.id == restoredEntry.id ||
+                      isSameDate(e.weekStart, restoredEntry.weekStart),
+                )
+                ..add(restoredEntry)
+                ..sort((a, b) => b.weekStart.compareTo(a.weekStart));
+              _setEntries(restoredList);
+            });
+            await _persist();
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -1040,9 +1081,9 @@ class _EarningsScreenState extends State<EarningsScreen> {
   Future<void> _exportPdf() async {
     final choice = await showModalBottomSheet<_ExportRange>(
       context: context,
-      backgroundColor: AppColors.base,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.md)),
       ),
       builder: (ctx) => Padding(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
@@ -1050,16 +1091,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.hairlineStrong,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
+            const Center(child: AppSheetHandle()),
             const SizedBox(height: 18),
             Text(
               S.exportPdfRangeTitle,
@@ -1161,10 +1193,10 @@ class _EarningsScreenState extends State<EarningsScreen> {
     final monthsNewestFirst = _months.reversed.toList();
     return showModalBottomSheet<DateTime>(
       context: context,
-      backgroundColor: AppColors.base,
+      backgroundColor: AppColors.surface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.md)),
       ),
       builder: (ctx) => SafeArea(
         child: Padding(
@@ -1173,16 +1205,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.hairlineStrong,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
+              const Center(child: AppSheetHandle()),
               const SizedBox(height: 18),
               Text(
                 S.exportPickMonthTitle,
@@ -1443,7 +1466,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
       if (_entries.isNotEmpty) ...[
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
             child: Text(
               S.history,
               style: T.sectionHeader,
@@ -1557,7 +1580,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
       _recordsSliver(selected.weeks),
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
           child: Text(
             _monthTitle(selected.month).toUpperCase(),
             style: T.sectionHeader,
@@ -1937,7 +1960,7 @@ class _HeroCard extends StatelessWidget {
     final color = _hourlyColor(entry.hourlyRate);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 20),
+      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
       decoration: BoxDecoration(
         color: _cardColor,
         border: _cardBorder,
@@ -2079,7 +2102,7 @@ class _TrendChart extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       decoration: BoxDecoration(
         color: _cardColor,
         border: _cardBorder,
@@ -2143,23 +2166,18 @@ class _TrendChart extends StatelessWidget {
                     child: IgnorePointer(
                       child: CustomPaint(
                         painter: _DashedAvgPainter(
-                          fraction: () {
-                            var beSum = 0.0;
-                            var beN = 0;
-                            for (final w in weeks) {
-                              final be = calculateBreakEven(
-                                fixedCosts:
-                                    w.fuelAfterDiscount + w.rentalFee,
-                              );
-                              if (be > 0) {
-                                beSum += be;
-                                beN++;
-                              }
-                            }
-                            if (beN == 0) return 0.0;
-                            return ((beSum / beN) / safeMax).clamp(0.0, 1.0);
-                          }(),
-                          color: _amber,
+                          fraction: safeMax > 0
+                              ? ((last4.isEmpty
+                                          ? 0.0
+                                          : last4.fold<double>(
+                                                  0.0,
+                                                  (sum, w) =>
+                                                      sum + w.netProfit) /
+                                              last4.length) /
+                                      safeMax)
+                                  .clamp(0.0, 1.0)
+                              : 0.0,
+                          color: _emerald,
                         ),
                       ),
                     ),
@@ -2491,7 +2509,7 @@ class _AggregateChart extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       decoration: BoxDecoration(
         color: _cardColor,
         border: _cardBorder,
@@ -2518,7 +2536,7 @@ class _AggregateChart extends StatelessWidget {
                       index: i,
                       value: bars[i].value,
                       heightFactor: bars[i].heightFactor,
-                      color: _hourlyColor(bars[i].value),
+                      color: bars[i].color,
                       label: bars[i].label,
                       selected: bars[i].selected,
                       onTap: () {
@@ -2555,7 +2573,7 @@ class _SummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 20),
+      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
       decoration: BoxDecoration(
         color: _cardColor,
         border: _cardBorder,
@@ -2623,7 +2641,7 @@ class _SummaryCard extends StatelessWidget {
         children: [
           Text(
             value,
-            style: T.body.copyWith(fontWeight: FontWeight.w700, fontFamily: AppFonts.jetBrainsMono),
+            style: T.body.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 3),
           Text(
@@ -2710,7 +2728,7 @@ class _RecordsCardState extends State<_RecordsCard>
       },
       child: Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       decoration: BoxDecoration(
         color: _cardColor,
         border: _cardBorder,
@@ -2833,7 +2851,7 @@ class _MonthRow extends StatelessWidget {
                       const SizedBox(height: 3),
                       Text(
                         '${formatPln(summary.totalNetProfit)} PLN · ${S.weekCountLabel(summary.weekCount)}',
-                        style: T.captionSm.copyWith(fontFamily: AppFonts.jetBrainsMono),
+                        style: T.captionSm,
                       ),
                     ],
                   ),
@@ -2844,12 +2862,9 @@ class _MonthRow extends StatelessWidget {
                   children: [
                     Text(
                       formatPln(summary.avgHourlyRate),
-                      style: T.titleSm.copyWith(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
+                      style: T.displaySmall.copyWith(
                         color: color,
                         height: 1,
-                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
                     Text(
@@ -2876,7 +2891,7 @@ class _EmptyWeekCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
       decoration: BoxDecoration(
         color: _cardColor,
         border: _cardBorder,
@@ -2987,6 +3002,8 @@ class _ActionButton extends StatelessWidget {
           HapticFeedback.lightImpact();
           onTap();
         },
+        splashColor: (filled ? Colors.white : _emerald).withValues(alpha: 0.25),
+        highlightColor: (filled ? Colors.white : _emerald).withValues(alpha: 0.12),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 16),
           child: Row(
@@ -3035,6 +3052,8 @@ class _IconOnlyButton extends StatelessWidget {
           HapticFeedback.lightImpact();
           onTap();
         },
+        splashColor: color.withValues(alpha: 0.25),
+        highlightColor: color.withValues(alpha: 0.12),
         child: SizedBox(
           width: 54,
           height: 54,
@@ -3147,7 +3166,7 @@ class _BreakdownCardState extends State<_BreakdownCard> {
     ];
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
       decoration: instrumentBezel(sun: sun),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3170,8 +3189,8 @@ class _BreakdownCardState extends State<_BreakdownCard> {
                   sun: sun,
                 ),
                 if (entry.driverMode == DriverMode.paired)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 0, bottom: 4),
+                  Align(
+                    alignment: Alignment.centerLeft,
                     child: Text(
                       S.pairedCarTotalSubtitle(
                         formatPln(entry.totalCarRentalFee),
@@ -3221,10 +3240,7 @@ class _BreakdownCardState extends State<_BreakdownCard> {
                 const SizedBox(height: 6),
                 Text(
                   '${formatPln(entry.netProfit)} PLN',
-                  style: T.heroSmall.copyWith(
-                    fontSize: 28,
-                    fontFamily: AppFonts.jetBrainsMono,
-                    fontWeight: FontWeight.w700,
+                  style: T.priceLg.copyWith(
                     color: entry.netProfit >= 0
                         ? AppColors.emeraldFor(sun)
                         : AppColors.crimsonFor(sun),
@@ -3298,6 +3314,7 @@ class _BreakdownCardState extends State<_BreakdownCard> {
   }
 
   Widget _buildFuelReceiptsBreakdown() {
+    final sun = Theme.of(context).brightness == Brightness.light;
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.all(12),
@@ -3341,7 +3358,7 @@ class _BreakdownCardState extends State<_BreakdownCard> {
                     children: [
                       Text(
                         '  ${i + 1}. ',
-                        style: T.labelStrong.copyWith(color: _gold),
+                        style: T.labelStrong.copyWith(color: _amber),
                       ),
                       Expanded(
                         child: Text(
@@ -3404,7 +3421,10 @@ class _BreakdownCardState extends State<_BreakdownCard> {
               Text(
                 '-${formatPln(entry.fuelAfterDiscount)} PLN',
                 maxLines: 1,
-                style: T.caption.copyWith(color: _crimson, fontWeight: FontWeight.w700),
+                style: T.caption.copyWith(
+                  color: AppColors.mutedFor(sun),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -3426,7 +3446,7 @@ class _BreakdownCardState extends State<_BreakdownCard> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: color),
+          Icon(icon, size: 18, color: sun ? AppColors.ink(sun) : Colors.white),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -3436,7 +3456,7 @@ class _BreakdownCardState extends State<_BreakdownCard> {
           ),
           Text(
             '${formatPln(value)} PLN',
-            style: T.body.copyWith(color: color, fontWeight: FontWeight.w600, fontFamily: AppFonts.jetBrainsMono),
+            style: T.body.copyWith(color: color, fontWeight: FontWeight.w600),
           ),
         ],
       ),
@@ -3455,7 +3475,7 @@ class _BreakdownCardState extends State<_BreakdownCard> {
     final resolved = color ??
         (income ? AppColors.emeraldFor(sun) : AppColors.mutedFor(sun));
     final prefix = showSign
-        ? (value < 0 ? 'âˆ’' : (value > 0 ? '+' : ''))
+        ? (value < 0 ? '−' : (value > 0 ? '+' : ''))
         : '';
     final absLabel = showSign && value < 0
         ? formatPln(value.abs())
@@ -3480,7 +3500,7 @@ class _BreakdownCardState extends State<_BreakdownCard> {
                       : (value < 0
                           ? AppColors.crimsonFor(sun)
                           : AppColors.ink(sun)))
-                  : resolved, fontWeight: bold ? FontWeight.w700 : FontWeight.w500, fontFamily: AppFonts.jetBrainsMono),
+                  : resolved, fontWeight: bold ? FontWeight.w700 : FontWeight.w500),
           ),
         ],
       ),
@@ -3533,8 +3553,8 @@ class _HistoryRow extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '${formatPln(entry.netProfit)} PLN · ${entry.tripCount} ${S.tripCount}',
-                        style: T.captionSm.copyWith(fontFamily: AppFonts.jetBrainsMono),
+                        '${formatPln(entry.netProfit)} PLN · ${entry.driverTripCount} ${S.tripCount}',
+                        style: T.captionSm,
                       ),
                     ],
                   ),
@@ -3545,12 +3565,9 @@ class _HistoryRow extends StatelessWidget {
                   children: [
                     Text(
                       formatPln(entry.hourlyRate),
-                      style: T.titleSm.copyWith(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
+                      style: T.displaySmall.copyWith(
                         color: color,
                         height: 1,
-                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
                     Text(
@@ -3590,7 +3607,8 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
   late final TextEditingController _cashCtrl;
   late final TextEditingController _hoursCtrl;
   late final TextEditingController _minutesCtrl;
-  late final TextEditingController _tripsCtrl;
+  late final TextEditingController _driverTripsCtrl;
+  late final TextEditingController _carTripsOverrideCtrl;
   late bool _hasRentalDiscount;
   late final ValueNotifier<List<FuelReceipt>> _fuelReceiptsNotifier;
   List<FuelReceipt> get _fuelReceipts => _fuelReceiptsNotifier.value;
@@ -3622,7 +3640,14 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
     _minutesCtrl = TextEditingController(
       text: e != null ? '${((hours - hours.truncate()) * 60).round()}' : '',
     );
-    _tripsCtrl = TextEditingController(text: e != null ? '${e.tripCount}' : '');
+    _driverTripsCtrl = TextEditingController(
+      text: e != null ? '${e.driverTripCount}' : '',
+    );
+    _carTripsOverrideCtrl = TextEditingController(
+      text: (e != null && e.carTripCountOverride != null)
+          ? '${e.carTripCountOverride}'
+          : '',
+    );
     _hasRentalDiscount = e?.hasRentalDiscount ?? true;
     final initialReceipts =
         capFuelReceipts(List<FuelReceipt>.from(e?.fuelReceipts ?? []));
@@ -3639,7 +3664,8 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       _netIncomeCtrl,
       _hoursCtrl,
       _minutesCtrl,
-      _tripsCtrl,
+      _driverTripsCtrl,
+      _carTripsOverrideCtrl,
       _cashCtrl,
       _fuelReceiptsNotifier,
     ]);
@@ -3667,6 +3693,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
   double _parse(TextEditingController c) {
     final t = c.text
         .trim()
+        .replaceAll('\u00A0', '')
         .replaceAll(' ', '')
         .replaceAll('.', '')
         .replaceAll(',', '.');
@@ -3689,12 +3716,25 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
     _cashCtrl.dispose();
     _hoursCtrl.dispose();
     _minutesCtrl.dispose();
-    _tripsCtrl.dispose();
+    _driverTripsCtrl.dispose();
+    _carTripsOverrideCtrl.dispose();
     _fuelReceiptsNotifier.dispose();
     super.dispose();
   }
 
   bool _saved = false;
+
+  int get _currentDriverTrips => _parseInt(_driverTripsCtrl);
+
+  int? get _currentCarTripOverride =>
+      _formDriverMode == DriverMode.paired &&
+              _carTripsOverrideCtrl.text.trim().isNotEmpty
+          ? _parseInt(_carTripsOverrideCtrl)
+          : null;
+
+  int get _currentCarTrips => _formDriverMode == DriverMode.paired
+      ? (_currentCarTripOverride ?? _currentDriverTrips)
+      : _currentDriverTrips;
 
   void _save() {
     // Re-entrancy guard: a second tap during the pop transition would
@@ -3724,16 +3764,17 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       netIncome: _parse(_netIncomeCtrl),
       cashReceived: _parse(_cashCtrl),
       onlineHours: hours,
-      tripCount: _parseInt(_tripsCtrl),
+      driverTripCount: _currentDriverTrips,
+      carTripCountOverride: _currentCarTripOverride,
       hasRentalDiscount: _hasRentalDiscount,
       fuelReceipts: _fuelReceipts,
     );
     Navigator.of(context).pop(entry);
   }
 
-  /// Rental tier bracket for the currently entered trip count and mode.
+  /// Rental tier bracket for the currently entered car trip count and mode.
   RentalTier _rentalTier() =>
-      expectedRentalTier(_parseInt(_tripsCtrl), _formDriverMode);
+      expectedRentalTier(_currentCarTrips, _formDriverMode);
 
   @override
   Widget build(BuildContext context) {
@@ -3750,25 +3791,6 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
           widget.existing == null ? S.addWeek : S.editWeek,
           style: T.titleMd,
         ),
-        actions: [
-          TextButton(
-            onPressed: _save,
-            style: TextButton.styleFrom(
-              minimumSize: const Size(0, _kMinTouchTarget),
-            ),
-            child: Text(
-              S.save,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                color: _emerald,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1,
-              ),
-            ),
-          ),
-        ],
       ),
       body: SafeArea(
         top: false,
@@ -3792,15 +3814,21 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                 builder: (context, _) => _breakEvenReference(),
               ),
               _numField(
-                _tripsCtrl,
-                S.tripCountLabel,
+                _driverTripsCtrl,
+                S.driverTripCountLabel,
                 integer: true,
                 required: true,
                 positive: true,
-                helper: _formDriverMode == DriverMode.paired
-                    ? S.pairedTripsHint
-                    : null,
               ),
+              if (_formDriverMode == DriverMode.paired)
+                _numField(
+                  _carTripsOverrideCtrl,
+                  S.carTripCountOverrideLabel,
+                  integer: true,
+                  required: false,
+                  positive: false,
+                  helper: S.carTripCountOverrideHint,
+                ),
               _rentalDiscountToggleRow(),
               ListenableBuilder(
                 listenable: _previewListenable,
@@ -3836,7 +3864,8 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                       _parseInt(_hoursCtrl),
                       _parseInt(_minutesCtrl),
                     ),
-                    tripCount: _parseInt(_tripsCtrl),
+                    driverTripCount: _currentDriverTrips,
+                    carTripCountOverride: _currentCarTripOverride,
                     hasRentalDiscount: _hasRentalDiscount,
                     fuelReceipts: _fuelReceipts,
                   );
@@ -3907,9 +3936,9 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
         context: context,
         builder: (ctx) {
           return AlertDialog(
-            backgroundColor: AppColors.raised,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+            backgroundColor: AppColors.surface,
+            shape: const RoundedRectangleBorder(
+              borderRadius: AppRadius.mdRadius,
             ),
             title: Text(
               S.quickAddFuelTitle,
@@ -3935,13 +3964,13 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                 suffixText: 'PLN',
                 suffixStyle: const TextStyle(
                   fontFamily: AppFonts.dmSans,
-                  color: _gold,
+                  color: _amber,
                 ),
                 enabledBorder: const UnderlineInputBorder(
                   borderSide: BorderSide(color: AppColors.hairlineStrong),
                 ),
                 focusedBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: _gold),
+                  borderSide: BorderSide(color: _amber),
                 ),
               ),
               onSubmitted: (_) {
@@ -3966,7 +3995,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _gold,
+                  backgroundColor: _amber,
                   foregroundColor: Colors.black,
                 ),
                 onPressed: () {
@@ -4020,12 +4049,12 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                     style: TextButton.styleFrom(
                       minimumSize: const Size(0, _kMinTouchTarget),
                     ),
-                    icon: const Icon(Icons.add_rounded, size: 18, color: _gold),
+                    icon: const Icon(Icons.add_rounded, size: 18, color: _amber),
                     label: Text(
                       S.addReceipt,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: T.labelStrong.copyWith(color: _gold),
+                      style: T.labelStrong.copyWith(color: _amber),
                     ),
                   ),
                 ),
@@ -4037,11 +4066,11 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                 decoration: BoxDecoration(
                   color: AppColors.base,
                   border: Border.all(color: AppColors.hairlineFaint),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppRadius.mdRadius,
                 ),
                 child: AppEmptyState(
                   compact: true,
-                  accent: _gold,
+                  accent: _amber,
                   icon: Icons.local_gas_station_rounded,
                   title: S.fuelReceiptsTitle,
                   description: S.noFuelReceipts,
@@ -4055,7 +4084,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                 decoration: BoxDecoration(
                   color: AppColors.base,
                   border: Border.all(color: AppColors.hairlineFaint),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppRadius.mdRadius,
                 ),
                 child: Column(
                   children: [
@@ -4113,10 +4142,10 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                             ),
                             leading: CircleAvatar(
                               radius: 13,
-                              backgroundColor: _gold.withValues(alpha: 0.15),
+                              backgroundColor: _amber.withValues(alpha: 0.15),
                               child: Text(
                                 '${i + 1}',
-                                style: T.caption.copyWith(color: _gold, fontWeight: FontWeight.w800),
+                                style: T.caption.copyWith(color: _amber, fontWeight: FontWeight.w800),
                               ),
                             ),
                             title: Text(
@@ -4327,6 +4356,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
   }) {
     final t = (v ?? '')
         .trim()
+        .replaceAll('\u00A0', '')
         .replaceAll(' ', '')
         .replaceAll('.', '')
         .replaceAll(',', '.');
@@ -4662,11 +4692,7 @@ class _DurationField extends StatelessWidget {
               child: Text(
                 label,
                 textAlign: TextAlign.center,
-                style: T.heroSmall.copyWith(
-                  fontSize: 28,
-                  fontFamily: AppFonts.jetBrainsMono,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: T.displayMedium,
               ),
             ),
             AppCircleButton(

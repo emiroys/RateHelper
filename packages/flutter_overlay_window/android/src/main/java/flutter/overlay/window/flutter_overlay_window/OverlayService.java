@@ -152,24 +152,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         flutterView.setFocusable(true);
         flutterView.setFocusableInTouchMode(true);
         flutterView.setBackgroundColor(Color.TRANSPARENT);
-        flutterChannel.setMethodCallHandler((call, result) -> {
-            if (call.method.equals("updateFlag")) {
-                String flag = call.argument("flag").toString();
-                updateOverlayFlag(result, flag);
-            } else if (call.method.equals("updateOverlayPosition")) {
-                int x = call.<Integer>argument("x");
-                int y = call.<Integer>argument("y");
-                moveOverlay(x, y, result);
-            } else if (call.method.equals("resizeOverlay")) {
-                int width = call.argument("width");
-                int height = call.argument("height");
-                boolean enableDrag = call.argument("enableDrag");
-                resizeOverlay(width, height, enableDrag, result);
-            }
-        });
-        overlayMessageChannel.setMessageHandler((message, reply) -> {
-            WindowSetup.messenger.send(message);
-        });
+        setupChannels(engine);
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
@@ -267,15 +250,54 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
 
+    private void setupChannels(FlutterEngine engine) {
+        if (engine == null) return;
+        if (flutterChannel == null) {
+            flutterChannel = new MethodChannel(engine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
+        }
+        flutterChannel.setMethodCallHandler((call, result) -> {
+            if (call.method.equals("updateFlag")) {
+                String flag = call.argument("flag").toString();
+                updateOverlayFlag(result, flag);
+            } else if (call.method.equals("updateOverlayPosition")) {
+                int x = call.<Integer>argument("x");
+                int y = call.<Integer>argument("y");
+                moveOverlay(x, y, result);
+            } else if (call.method.equals("resizeOverlay")) {
+                int width = call.argument("width");
+                int height = call.argument("height");
+                boolean enableDrag = call.argument("enableDrag");
+                resizeOverlay(width, height, enableDrag, result);
+            } else {
+                result.notImplemented();
+            }
+        });
+
+        if (overlayMessageChannel == null) {
+            overlayMessageChannel = new BasicMessageChannel<>(engine.getDartExecutor(), OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
+        }
+        overlayMessageChannel.setMessageHandler((message, reply) -> {
+            if (WindowSetup.messenger != null) {
+                WindowSetup.messenger.send(message);
+            }
+        });
+    }
+
     private void resizeOverlay(int width, int height, boolean enableDrag, MethodChannel.Result result) {
-        if (windowManager != null) {
+        WindowSetup.width = width;
+        WindowSetup.height = height;
+        WindowSetup.enableDrag = enableDrag;
+        if (windowManager != null && flutterView != null && flutterView.getLayoutParams() instanceof WindowManager.LayoutParams) {
             WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
             params.width = resolveOverlayWidth(width);
             params.height = resolveOverlayHeight(height);
-            WindowSetup.enableDrag = enableDrag;
             windowManager.updateViewLayout(flutterView, params);
-            result.success(true);
-        } else {
+            if (result != null) {
+                result.success(true);
+            }
+            return;
+        }
+        if (result != null) {
             result.success(false);
         }
     }
@@ -349,16 +371,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     /* dartVmArgs */ null,
                     options.getAutomaticallyRegisterPlugins());
             registerOverlayPlugins(flutterEngine);
+
+            // Register channels and handlers BEFORE executing the Dart entrypoint
+            // so the secondary engine isolate never encounters a MissingPluginException on startup.
+            setupChannels(flutterEngine);
             flutterEngine.getDartExecutor().executeDartEntrypoint(options.getDartEntrypoint());
 
             // Cache the created FlutterEngine for future use
             FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, flutterEngine);
-        }
-
-        // Create the MethodChannel with the properly initialized FlutterEngine
-        if (flutterEngine != null) {
-            flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
-            overlayMessageChannel = new BasicMessageChannel(flutterEngine.getDartExecutor(), OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
+        } else {
+            setupChannels(flutterEngine);
         }
 
         createNotificationChannel();

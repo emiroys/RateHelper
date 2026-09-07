@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -354,14 +354,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       showDialog<void>(
         context: context,
         barrierDismissible: false,
-        builder: (ctx) => PopScope(
+        builder: (ctx) => const PopScope(
           canPop: false,
           child: AlertDialog(
-            backgroundColor: AppColors.card,
+            backgroundColor: AppColors.surface,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: AppRadius.mdRadius,
             ),
-            title: const Text(
+            title: Text(
               'Güvenlik Uyarısı',
               style: TextStyle(
                 fontFamily: AppFonts.dmSans,
@@ -369,7 +369,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 fontWeight: FontWeight.w900,
               ),
             ),
-            content: const Text(
+            content: Text(
               'Bu uygulama değiştirilmiş. Güvenliğiniz için kapatılıyor.',
               style: TextStyle(
                 fontFamily: AppFonts.dmSans,
@@ -982,8 +982,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: AppColors.surface,
+        shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdRadius),
         title: Text(
           title,
           style: const TextStyle(
@@ -1055,9 +1055,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _showLanguageSelector() async {
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.base,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.md)),
       ),
       builder: (ctx) => Padding(
         padding: const EdgeInsets.only(top: 12, bottom: 8),
@@ -1177,10 +1177,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.base,
+      backgroundColor: AppColors.surface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.md)),
       ),
       builder: (ctx) => _HistorySheet(
         archive: archive,
@@ -1210,10 +1210,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.base,
+      backgroundColor: AppColors.surface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.md)),
       ),
       builder: (ctx) => SafeArea(
         child: Padding(
@@ -1315,8 +1315,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: AppColors.surface,
+        shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdRadius),
         title: Text(
           S.resetWeekTitle,
           style: const TextStyle(
@@ -1430,11 +1430,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       if (mounted) setState(() {});
                     });
                   });
+                } else if (v == 'language') {
+                  _showLanguageSelector();
                 } else if (v == 'display') {
                   DisplayMode.instance.cyclePref();
                 }
               },
               itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'language',
+                  child: Row(
+                    children: [
+                      Icon(Icons.language_rounded, size: 20, color: ink),
+                      const SizedBox(width: 10),
+                      Text(
+                        S.navLang,
+                        style: TextStyle(
+                          fontFamily: AppFonts.dmSans,
+                          color: ink,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 PopupMenuItem(
                   value: 'setup',
                   child: Text(
@@ -1544,6 +1562,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
                               decoration: instrumentBezel(
                                 sun: sun,
+                                glow: stateColor,
                                 flash: _flashColor == null
                                     ? null
                                     : AppColors.stateFor(_flashColor!, sun),
@@ -1619,11 +1638,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                               formatRatePercent(
                                                 cancellationRate,
                                               ),
-                                              style: T.rateFor(
-                                                cancelColor,
-                                                sun: sun,
-                                              ).copyWith(
-                                                fontSize: 22,
+                                              style: T.displaySmall.copyWith(
                                                 color: sun &&
                                                         cancellationRate >= 5
                                                     ? Colors.white
@@ -1675,12 +1690,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                     _sectionHeader(S.trips),
                     const SizedBox(height: 12),
-                    _buildAutoCompleteSwitch(),
-                    const SizedBox(height: 10),
-                    _buildSteeringWheelSwitch(),
-                    const SizedBox(height: 10),
-                    _buildKeepScreenOnSwitch(),
-                    const SizedBox(height: 10),
                     _CounterRow(
                       label: S.completed,
                       valueListenable: _completed,
@@ -1703,10 +1712,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     ),
 
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 28),
+
+                    _sectionHeader(S.settingsSection),
+                    const SizedBox(height: 12),
+                    _buildAutoCompleteSwitch(),
+                    const SizedBox(height: 10),
+                    _buildSteeringWheelSwitch(),
+                    const SizedBox(height: 10),
+                    _buildKeepScreenOnSwitch(),
+
+                    const SizedBox(height: 36),
 
                     Material(
-                      color: _cardColor,
+                      color: _crimson.withValues(alpha: 0.12),
                       borderRadius: _cardRadius,
                       child: InkWell(
                         onTap: () {
@@ -1714,19 +1733,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           _showManualResetDialog();
                         },
                         borderRadius: _cardRadius,
+                        splashColor: _crimson.withValues(alpha: 0.30),
+                        highlightColor: _crimson.withValues(alpha: 0.15),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
                           decoration: BoxDecoration(
-                            border: _cardBorder,
+                            border: Border.all(
+                              color: _crimson.withValues(alpha: 0.45),
+                              width: 1.5,
+                            ),
                             borderRadius: _cardRadius,
                           ),
                           alignment: Alignment.center,
-                          child: Text(
-                            S.resetWeek,
-                            style: T.labelStrong.copyWith(
-                              letterSpacing: 2,
-                              color: _crimson,
-                            ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.restart_alt_rounded,
+                                color: _crimson,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                S.resetWeek,
+                                style: T.labelStrong.copyWith(
+                                  letterSpacing: 2,
+                                  fontWeight: FontWeight.w900,
+                                  color: _crimson,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -1775,10 +1811,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       color: AppColors.elevatedBg(sun),
       elevation: 12,
       shadowColor: Colors.black54,
-      borderRadius: BorderRadius.circular(32),
+      borderRadius: AppRadius.pillRadius,
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(32),
+          borderRadius: AppRadius.pillRadius,
           border: Border.all(color: AppColors.hairlineFor(sun)),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
@@ -1786,9 +1822,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           children: [
             Expanded(
               child: _BottomBarAction(
-                icon: Icons.language_rounded,
-                label: S.navLang,
-                onTap: _showLanguageSelector,
+                icon: Icons.local_gas_station_rounded,
+                label: S.navFuel,
+                onTap: _openQuickFuel,
               ),
             ),
             Expanded(
@@ -1837,6 +1873,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } finally {
       _navInFlight = false;
     }
+  }
+
+  Future<void> _openQuickFuel() async {
+    await _pushGuarded(() => const EarningsScreen(autoQuickFuel: true));
+    if (mounted) setState(() {});
   }
 
   void _openRadar() => unawaited(_pushGuarded(() => const RadarScreen()));
@@ -1934,13 +1975,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 SelectableText(
                   'SIG: $_debugBuildSignature',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontFamily: AppFonts.jetBrainsMono,
-                    fontSize: 8,
-                    color: Color(0x55FFFFFF),
-                    letterSpacing: 0.5,
-                    height: 1.3,
-                  ),
+                  style: T.monoNano,
                 ),
               ],
             ],
@@ -1993,9 +2028,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _showTripGoalSelector() {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.base,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.md)),
       ),
       builder: (ctx) {
         return SafeArea(
@@ -2084,8 +2119,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         children: [
           Text(
             S.recoveryCount(recovery),
-            style: T.heroOverlay.copyWith(
-              fontSize: 28,
+            style: T.displayMedium.copyWith(
               color: sun ? Colors.white : color,
             ),
           ),
@@ -2139,20 +2173,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return const SizedBox.shrink();
     }
 
-    final fill = sun ? color : AppColors.cardBg(sun);
+    final fill = sun ? color : color.withValues(alpha: 0.10);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: fill,
-        border: Border.all(color: color.withValues(alpha: sun ? 0 : 0.55)),
-        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: sun ? 0 : 0.40)),
+        borderRadius: AppRadius.mdRadius,
       ),
-      child: Row(
-        children: [
-          Icon(icon, color: sun ? Colors.white : color, size: 22),
-          const SizedBox(width: 12),
-          Expanded(child: body),
-        ],
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: 4,
+              color: sun ? Colors.white : color,
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Row(
+                  children: [
+                    Icon(icon, color: sun ? Colors.white : color, size: 22),
+                    const SizedBox(width: 12),
+                    Expanded(child: body),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2272,9 +2322,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           final bool? open = await showDialog<bool>(
             context: context,
             builder: (ctx) => AlertDialog(
-              backgroundColor: AppColors.raised,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+              backgroundColor: AppColors.surface,
+              shape: const RoundedRectangleBorder(
+                borderRadius: AppRadius.mdRadius,
               ),
               title: Text(
                 S.steeringWheelDialogTitle,
@@ -2369,7 +2419,10 @@ class _CounterRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sun = Theme.of(context).brightness == Brightness.light;
-    final valueStyle = _valueStyle.copyWith(color: AppColors.ink(sun));
+    final valueStyle = _valueStyle.copyWith(
+      color: AppColors.ink(sun),
+      decoration: TextDecoration.none,
+    );
     final labelStyle = _labelStyle.copyWith(color: AppColors.mutedFor(sun));
     return RepaintBoundary(
       child: Container(
@@ -2489,20 +2542,28 @@ class _BottomBarAction extends StatelessWidget {
           HapticFeedback.selectionClick();
           onTap();
         },
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        borderRadius: AppRadius.pillRadius,
+        splashColor: (sun ? Colors.black : Colors.white).withValues(alpha: 0.12),
+        highlightColor: (sun ? Colors.black : Colors.white).withValues(alpha: 0.06),
+        child: Container(
+          height: 64,
+          padding: const EdgeInsets.symmetric(horizontal: 2),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 22, color: AppColors.ink(sun)),
-              const SizedBox(height: 4),
+              SizedBox(
+                height: 38,
+                child: Center(
+                  child: Icon(icon, size: 23, color: AppColors.ink(sun)),
+                ),
+              ),
+              const SizedBox(height: 2),
               Text(
                 label,
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: T.body.copyWith(
+                style: T.captionSm.copyWith(
                   fontWeight: FontWeight.w700,
                   color: AppColors.mutedFor(sun),
                   letterSpacing: 0.2,
@@ -2540,42 +2601,50 @@ class _BottomBarWidgetToggle extends StatelessWidget {
                 HapticFeedback.selectionClick();
                 onTap();
               },
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        borderRadius: AppRadius.mdRadius,
+        splashColor: _emerald.withValues(alpha: 0.35),
+        highlightColor: _emerald.withValues(alpha: 0.15),
+        child: Container(
+          height: 64,
+          padding: const EdgeInsets.symmetric(horizontal: 2),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: active ? _emerald : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: active ? _emerald : _emerald.withValues(alpha: 0.55),
-                    width: 1.5,
+              SizedBox(
+                height: 38,
+                child: Center(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: active ? _emerald : Colors.transparent,
+                      borderRadius: AppRadius.smRadius,
+                      border: Border.all(
+                        color: active ? _emerald : _emerald.withValues(alpha: 0.55),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: busy
+                        ? Center(
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: active ? Colors.white : _emerald,
+                              ),
+                            ),
+                          )
+                        : Icon(
+                            active ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                            color: active ? Colors.white : _emerald,
+                            size: 22,
+                          ),
                   ),
                 ),
-                child: busy
-                    ? Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.6,
-                            color: active ? Colors.white : _emerald,
-                          ),
-                        ),
-                      )
-                    : Icon(
-                        active ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                        color: active ? Colors.white : _emerald,
-                        size: 28,
-                      ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
                 active ? S.widgetStop : S.widgetStart,
                 textAlign: TextAlign.center,
@@ -2589,6 +2658,7 @@ class _BottomBarWidgetToggle extends StatelessWidget {
                       )
                     : T.captionSm.copyWith(
                         fontWeight: FontWeight.w800,
+                        color: AppColors.mutedText,
                         letterSpacing: 0.2,
                       ),
               ),
@@ -2685,8 +2755,8 @@ class _HistorySheetState extends State<_HistorySheet>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: AppColors.surface,
+        shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdRadius),
         title: Text(
           S.tapLogTab,
           style: const TextStyle(
@@ -2740,8 +2810,8 @@ class _HistorySheetState extends State<_HistorySheet>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: AppColors.surface,
+        shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdRadius),
         title: Text(
           S.weeklyTab,
           style: const TextStyle(
@@ -3135,7 +3205,7 @@ class _FilterChip extends StatelessWidget {
           ? AppColors.emerald.withValues(alpha: 0.15)
           : AppColors.card,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: AppRadius.smRadius,
         side: BorderSide(
           color: selected ? AppColors.emerald : AppColors.hairlineFaint,
           width: 1,
@@ -3143,6 +3213,8 @@ class _FilterChip extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
+        splashColor: AppColors.emerald.withValues(alpha: 0.25),
+        highlightColor: AppColors.emerald.withValues(alpha: 0.12),
         onTap: () {
           HapticFeedback.selectionClick();
           onTap();

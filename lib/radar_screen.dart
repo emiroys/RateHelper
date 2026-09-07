@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:rate_helper/fonts.dart';
 
 import 'app_colors.dart';
 import 'app_text_styles.dart';
@@ -47,11 +46,32 @@ class _RadarScreenState extends State<RadarScreen> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final day = DateTime(date.year, date.month, date.day);
-    final diff = day.difference(today).inDays;
+    final diffDays = day.difference(today).inDays;
     final hh = date.hour.toString().padLeft(2, '0');
     final mm = date.minute.toString().padLeft(2, '0');
-    if (diff == 0) return '${S.filterToday.toUpperCase()} $hh:$mm';
-    if (diff == 1) return '${_tomorrowLabel()} $hh:$mm';
+
+    if (diffDays == 0) {
+      final diffMins = date.difference(now).inMinutes;
+      if (diffMins > 0 && diffMins <= 180) {
+        if (diffMins < 60) {
+          return switch (S.lang) {
+            AppLang.tr => '$diffMins DAKİKA İÇİNDE',
+            AppLang.pl => 'ZA $diffMins MIN',
+            AppLang.en => 'IN $diffMins MINS',
+          };
+        }
+        final hours = (diffMins / 60).round();
+        return switch (S.lang) {
+          AppLang.tr => '$hours SAAT İÇİNDE',
+          AppLang.pl => 'ZA $hours GODZ.',
+          AppLang.en => 'IN $hours HOURS',
+        };
+      }
+      return '${S.filterToday.toUpperCase()} $hh:$mm';
+    }
+    if (diffDays == 1) {
+      return '${_tomorrowLabel()} $hh:$mm';
+    }
     return date.formattedRadarChip;
   }
 
@@ -76,11 +96,12 @@ class _RadarScreenState extends State<RadarScreen> {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: _emerald.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppRadius.smRadius,
                 border: Border.all(color: _emerald.withValues(alpha: 0.3)),
               ),
               child: const Icon(Icons.radar_rounded, color: _emerald, size: 20),
             ),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 S.eventRadarTitle,
@@ -148,9 +169,9 @@ class _RadarScreenState extends State<RadarScreen> {
     return Container(
       padding: const EdgeInsets.all(kPageInset),
       decoration: BoxDecoration(
-        color: AppColors.raised,
+        color: _cardColor,
         borderRadius: _cardRadius,
-        border: Border.all(color: _emerald.withValues(alpha: 0.3), width: 1),
+        border: _cardBorder,
       ),
       child: Row(
         children: [
@@ -222,16 +243,17 @@ class _RadarScreenState extends State<RadarScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
+              color: _amber.withValues(alpha: 0.15),
+              borderRadius: AppRadius.smRadius,
+              border: Border.all(color: _amber.withValues(alpha: 0.40)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(
-                  Icons.calendar_today_rounded,
+                  Icons.access_time_filled_rounded,
                   size: 14,
-                  color: AppColors.mutedText,
+                  color: _amber,
                 ),
                 const SizedBox(width: 6),
                 Flexible(
@@ -239,7 +261,12 @@ class _RadarScreenState extends State<RadarScreen> {
                     _relativeChip(event.date),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: T.labelStrong.copyWith(letterSpacing: 0.4, fontFamily: AppFonts.jetBrainsMono),
+                    style: T.labelStrong.copyWith(
+                      letterSpacing: 0.8,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
                 ),
               ],
@@ -258,7 +285,7 @@ class _RadarScreenState extends State<RadarScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: surgeColor.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadius.smRadius,
               border: Border.all(color: surgeColor.withValues(alpha: 0.45)),
             ),
             child: Row(
@@ -362,98 +389,42 @@ extension on DateTime {
   }
 }
 
-class _ShimmerList extends StatefulWidget {
+class _ShimmerList extends StatelessWidget {
   const _ShimmerList();
 
   @override
-  State<_ShimmerList> createState() => _ShimmerListState();
-}
-
-class _ShimmerListState extends State<_ShimmerList>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _pulse,
-      builder: (context, _) {
-        final opacity = 0.35 + (_pulse.value * 0.40);
-        return ListView.separated(
-          padding: const EdgeInsets.all(kPageInset),
-          itemCount: 4,
-          separatorBuilder: (context, index) => const SizedBox(height: 16),
-          itemBuilder: (context, index) {
-            return Opacity(
-              opacity: opacity,
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: _cardColor,
-                  border: _cardBorder,
-                  borderRadius: _cardRadius,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 130,
-                      height: 26,
-                      decoration: BoxDecoration(
-                        color: AppColors.hairlineFaint,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
-                      height: 22,
-                      decoration: BoxDecoration(
-                        color: AppColors.hairlineFaint,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Container(
-                      width: double.infinity,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: AppColors.hairlineFaint,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Container(
-                      width: 180,
-                      height: 16,
-                      decoration: BoxDecoration(
-                        color: AppColors.hairlineFaint,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ],
-                ),
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _emerald.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+              border: Border.all(color: _emerald.withValues(alpha: 0.30)),
+            ),
+            child: const SizedBox(
+              width: 32,
+              height: 32,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: _emerald,
               ),
-            );
-          },
-        );
-      },
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            S.eventRadarTitle,
+            style: T.caption.copyWith(
+              color: AppColors.mutedText,
+              letterSpacing: 1.2,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -133,6 +133,11 @@ class _OverlayWidgetState extends State<OverlayWidget>
         OverlayWidget.nativeWindowHeightDp,
         true,
       );
+    } on MissingPluginException catch (e) {
+      // Benign startup race or environment without the native overlay service (e.g. tests).
+      logd('overlay resize channel not ready: $e', name: 'overlay');
+    } on PlatformException catch (e) {
+      logd('overlay resize platform error: $e', name: 'overlay');
     } catch (e, s) {
       loge('overlay resize failed', name: 'overlay', error: e, stack: s);
     }

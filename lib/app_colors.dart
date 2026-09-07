@@ -13,32 +13,36 @@ abstract final class AppColors {
   /// Achievements / records only — not for FABs or generic accents.
   static const gold = Color(0xFFFFD54A);
 
-  // ── Dark surfaces (exactly 3) ──────────────────────────────────────────
-  /// Page / sheet / dialog canvas.
+  /// Fuel / gas & expense action triggers — distinct from achievement gold.
+  static const expense = amber;
+
+  // ── Dark surfaces (exactly 3 OLED-friendly levels) ─────────────────────
+  /// Level 1: Page / scaffold canvas.
   static const base = Color(0xFF121212);
+  static const background = base;
 
-  /// Cards, elevated chrome, selected rows, tracks.
+  /// Level 2: Cards, bottom sheets, dialogs, elevated chrome.
   static const raised = Color(0xFF1A1A1A);
+  static const surface = raised;
+  static const card = surface;
 
-  /// Recessed wells and input fills.
+  /// Level 3: Recessed wells and input fills.
   static const inset = Color(0xFF0F0F0F);
 
-  /// Canonical card fill — alias of [raised] (Phase 2 geometry contract).
-  static const card = raised;
-
-  // Legacy aliases — call sites still use pre-consolidation names.
-  static const sheet = base;
-  static const dialog = Color(0xFF161616);
-  static const elevated = Color(0xFF1E1E1E);
+  // Normalized surface aliases — eliminated tinted bluish/greenish modal backgrounds.
+  static const sheet = surface;
+  static const dialog = surface;
+  static const elevated = surface;
   static const selected = Color(0xFF242424);
   static const track = Color(0xFF2A2A2A);
-  static const dialogAlt = Color(0xFF1E2430);
-  static const radarHeader = Color(0xFF1A2E26);
+  static const dialogAlt = surface;
+  static const radarHeader = surface;
   static const designerGold = Color(0xFFD4AF37);
 
-  // ── Hairlines (exactly 3) ──────────────────────────────────────────────
+  // ── Hairlines / borders (subtle divider stroke) ────────────────────────
   /// ~5% white — default card border.
   static const hairlineFaint = Color(0x0DFFFFFF);
+  static const border = hairlineFaint;
 
   /// ~10% white — secondary dividers / chrome.
   static const hairline = Color(0x1AFFFFFF);
@@ -79,14 +83,17 @@ abstract final class AppColors {
   static const sunMuted = Color(0xCC0A0A0A); // 80%
 
   static Color scaffold(bool sun) => sun ? sunField : base;
-  static Color cardBg(bool sun) => sun ? sunCard : raised;
-  static Color elevatedBg(bool sun) => sun ? sunElevated : raised;
+  static Color backgroundFor(bool sun) => sun ? sunField : background;
+  static Color cardBg(bool sun) => sun ? sunCard : surface;
+  static Color surfaceFor(bool sun) => sun ? sunCard : surface;
+  static Color elevatedBg(bool sun) => sun ? sunElevated : surface;
   static Color ink(bool sun) => sun ? sunInk : Colors.white;
   static Color labelFor(bool sun) => sun ? sunLabel : labelText;
   static Color mutedFor(bool sun) => sun ? sunMuted : mutedText;
   static Color crimsonFor(bool sun) => sun ? sunCrimson : crimson;
   static Color emeraldFor(bool sun) => sun ? sunEmerald : emerald;
   static Color amberFor(bool sun) => sun ? sunAmber : amber;
+  static Color expenseFor(bool sun) => sun ? sunAmber : expense;
   static Color goldFor(bool sun) => sun ? const Color(0xFFA16207) : gold;
   static Color borderFor(bool sun) =>
       sun ? const Color(0x33000000) : hairlineFaint;

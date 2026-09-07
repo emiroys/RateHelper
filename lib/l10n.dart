@@ -433,11 +433,11 @@ class S {
       );
   static String get cashReceived =>
       _p('Alınan Nakit', 'Cash Received', 'Otrzymana Gotówka');
-  static String get vat => _p('VAT (%12)', 'VAT (12%)', 'VAT (12%)');
+  static String get vat => _p('VAT', 'VAT', 'VAT');
   static String get settlementFee => _p(
-        'Hesap Kesim Ücreti (%3)',
-        'Settlement Fee (3%)',
-        'Opłata rozliczeniowa (3%)',
+        'Hesap Kesim Ücreti',
+        'Settlement Fee',
+        'Opłata rozliczeniowa',
       );
   static String get rental => _p('Kira', 'Rental', 'Wynajem');
   static String rentalComputed(String range, String value) => _p(
@@ -491,6 +491,14 @@ class S {
   static String get tripCount => _p('Yolculuk', 'Trips', 'Przejazdy');
   static String get tripCountLabel =>
       _p('Yolculuk Sayısı', 'Trip Count', 'Liczba Przejazdów');
+  static String get driverTripCountLabel =>
+      _p('Kendi Yolculuk Sayın', 'Your Trip Count', 'Twoja liczba przejazdów');
+  static String get carTripCountOverrideLabel =>
+      _p('Ortağınla Toplam (Kira için)', 'Total with Partner (for rent)', 'Łącznie z partnerem (do wynajmu)');
+  static String get carTripCountOverrideHint =>
+      _p('Boş bırakırsan kendi sayınla aynı kabul edilir',
+          'If left blank, assumed same as your own count',
+          'Jeśli puste, przyjęta zostanie Twoja liczba');
   static String get edit => _p('Düzenle', 'Edit', 'Edytuj');
   static String get addWeek =>
       _p('Yeni Hafta Ekle', 'Add Week', 'Dodaj Tydzień');
@@ -666,11 +674,11 @@ class S {
       _p('Net Gelir', 'Net Income', 'Dochód netto');
   static String get pdfColRental => _p('Kira', 'Rental', 'Wynajem');
   static String get pdfColFuel => _p('Yakıt', 'Fuel', 'Paliwo');
-  static String get pdfColVat => _p('VAT (%12)', 'VAT (12%)', 'VAT (12%)');
+  static String get pdfColVat => _p('VAT', 'VAT', 'VAT');
   static String get pdfColSettlementFee => _p(
-        'Kesim Ücreti (%3)',
-        'Settlement (3%)',
-        'Rozliczenie (3%)',
+        'Kesim Ücreti',
+        'Settlement',
+        'Rozliczenie',
       );
   static String get pdfColNetProfit =>
       _p('Net Kâr', 'Net Profit', 'Zysk netto');
@@ -683,9 +691,9 @@ class S {
         'Całkowity dochód netto',
       );
   static String get pdfSummaryVat => _p(
-        'Toplam Ödenen VAT (%12)',
-        'Total VAT Paid (12%)',
-        'Całkowity zapłacony VAT (12%)',
+        'Toplam Ödenen VAT',
+        'Total VAT Paid',
+        'Całkowity zapłacony VAT',
       );
   static String get pdfSummaryNetProfit => _p(
         'Toplam Net Kâr',

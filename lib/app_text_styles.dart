@@ -8,7 +8,38 @@ import 'app_colors.dart';
 abstract final class T {
   static const _tabular = [FontFeature.tabularFigures()];
 
-  // ── Heroes (tabular figures — counters / financial metrics) ────────────
+  // ── Display / KPI Numbers (tabular figures — counters & financial metrics) ──
+  /// Display Large: primary counters & top KPIs.
+  static const displayLarge = TextStyle(
+    fontFamily: AppFonts.dmSans,
+    fontSize: 48,
+    fontWeight: FontWeight.w900,
+    color: Colors.white,
+    height: 1,
+    fontFeatures: _tabular,
+  );
+
+  /// Display Medium: secondary summary metrics (unified 28px).
+  static const displayMedium = TextStyle(
+    fontFamily: AppFonts.dmSans,
+    fontSize: 28,
+    fontWeight: FontWeight.w700,
+    color: Colors.white,
+    height: 1,
+    fontFeatures: _tabular,
+  );
+
+  /// Display Small: tertiary metrics, hourly rates & recovery counts (unified 20px).
+  static const displaySmall = TextStyle(
+    fontFamily: AppFonts.dmSans,
+    fontSize: 20,
+    fontWeight: FontWeight.w800,
+    color: Colors.white,
+    height: 1,
+    fontFeatures: _tabular,
+  );
+
+  // ── Legacy Hero aliases ────────────────────────────────────────────────
   static const heroXLarge = TextStyle(
     fontFamily: AppFonts.dmSans,
     fontSize: 56,
@@ -17,14 +48,7 @@ abstract final class T {
     height: 1,
     fontFeatures: _tabular,
   );
-  static const heroLarge = TextStyle(
-    fontFamily: AppFonts.dmSans,
-    fontSize: 48,
-    fontWeight: FontWeight.w900,
-    color: Colors.white,
-    height: 1,
-    fontFeatures: _tabular,
-  );
+  static const heroLarge = displayLarge;
   static const heroMedium = TextStyle(
     fontFamily: AppFonts.dmSans,
     fontSize: 46,
@@ -37,6 +61,32 @@ abstract final class T {
     fontFamily: AppFonts.dmSans,
     fontSize: 36,
     fontWeight: FontWeight.w900,
+    color: Colors.white,
+    height: 1,
+    fontFeatures: _tabular,
+  );
+
+  // ── Standard Price / Currency Readouts (DM Sans + Tabular Figures) ──────
+  static const priceLg = TextStyle(
+    fontFamily: AppFonts.dmSans,
+    fontSize: 28,
+    fontWeight: FontWeight.w700,
+    color: Colors.white,
+    height: 1,
+    fontFeatures: _tabular,
+  );
+  static const priceMd = TextStyle(
+    fontFamily: AppFonts.dmSans,
+    fontSize: 20,
+    fontWeight: FontWeight.w800,
+    color: Colors.white,
+    height: 1,
+    fontFeatures: _tabular,
+  );
+  static const priceSm = TextStyle(
+    fontFamily: AppFonts.dmSans,
+    fontSize: 16,
+    fontWeight: FontWeight.w700,
     color: Colors.white,
     height: 1,
     fontFeatures: _tabular,
@@ -369,5 +419,12 @@ abstract final class T {
     fontFamily: AppFonts.jetBrainsMono,
     fontSize: 13,
     color: Colors.white,
+  );
+  static const monoNano = TextStyle(
+    fontFamily: AppFonts.jetBrainsMono,
+    fontSize: 8,
+    color: Color(0x55FFFFFF),
+    letterSpacing: 0.5,
+    height: 1.3,
   );
 }
