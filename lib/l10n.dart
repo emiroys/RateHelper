@@ -24,6 +24,7 @@ class S {
 
   static String get requests => _p('GELEN İSTEKLER', 'REQUESTS', 'ZLECENIA');
   static String get trips => _p('YOLCULUKLAR', 'TRIPS', 'PRZEJAZDY');
+  static String get settings => _p('AYARLAR', 'SETTINGS', 'USTAWIENIA');
   static String get acceptRate => _p('KABUL ORANI', 'ACCEPT RATE', 'AKCEPTACJA %');
   static String get cancelRate => _p('İPTAL ORANI', 'CANCEL RATE', 'ANULOWANIE %');
   static String formatPercent(String val) => _p('%$val', '$val%', '$val%');
@@ -359,6 +360,7 @@ class S {
   static String get designer => _p('Tasarımcı', 'Designer', 'Projektant');
 
   static String get navLang => _p('Dil', 'Lang', 'Język');
+  static String get quickFuelNavLabel => _p('Yakıt', 'Fuel', 'Paliwo');
   static String get navLogs => _p('Kayıtlar', 'Log', 'Logi');
   static String get navEarnings => _p('Kazanç', 'Earnings', 'Zarobki');
 
@@ -381,9 +383,9 @@ class S {
       _p('Alınan Nakit', 'Cash Received', 'Otrzymana Gotówka');
   static String get vat => _p('VAT (%12)', 'VAT (12%)', 'VAT (12%)');
   static String get settlementFee => _p(
-        'Hesap Kesim Ücreti (%3)',
-        'Settlement Fee (3%)',
-        'Opłata rozliczeniowa (3%)',
+        'Hesap Kesim Ücreti (%4.31)',
+        'Settlement Fee (4.31%)',
+        'Opłata rozliczeniowa (4.31%)',
       );
   static String get rental => _p('Kira', 'Rental', 'Wynajem');
   static String rentalComputed(String range, String value) => _p(
@@ -436,7 +438,19 @@ class S {
       _p('Çevrimiçi Süre', 'Online Time', 'Czas Online');
   static String get tripCount => _p('Yolculuk', 'Trips', 'Przejazdy');
   static String get tripCountLabel =>
-      _p('Yolculuk Sayısı', 'Trip Count', 'Liczba Przejazdów');
+      _p('Kendi Yolculuk Sayın', 'Your Trip Count', 'Twoje Przejazdy');
+  static String get driverTripCountLabel =>
+      _p('Kendi Yolculuk Sayın', 'Your Trip Count', 'Twoje Przejazdy');
+  static String get carTripCountOverrideLabel => _p(
+        'Ortağınla Toplam (Kira için)',
+        'Total with Partner (for rental)',
+        'Łącznie z partnerem (do wynajmu)',
+      );
+  static String get carTripCountOverrideHint => _p(
+        'Boş bırakırsan kendi sayınla aynı kabul edilir',
+        'If left empty, assumed equal to your own trips',
+        'Jeśli puste, przyjęta zostanie Twoja liczba przejazdów',
+      );
   static String get edit => _p('Düzenle', 'Edit', 'Edytuj');
   static String get addWeek =>
       _p('Yeni Hafta Ekle', 'Add Week', 'Dodaj Tydzień');
@@ -611,9 +625,9 @@ class S {
   static String get pdfColFuel => _p('Yakıt', 'Fuel', 'Paliwo');
   static String get pdfColVat => _p('VAT (%12)', 'VAT (12%)', 'VAT (12%)');
   static String get pdfColSettlementFee => _p(
-        'Kesim Ücreti (%3)',
-        'Settlement (3%)',
-        'Rozliczenie (3%)',
+        'Kesim Ücreti (%4.31)',
+        'Settlement (4.31%)',
+        'Rozliczenie (4.31%)',
       );
   static String get pdfColNetProfit =>
       _p('Net Kâr', 'Net Profit', 'Zysk netto');
@@ -651,6 +665,10 @@ class S {
         'Fuel added: $amount PLN ($count. purchase this week)',
         'Dodano paliwo: $amount PLN ($count. zakup w tym tygodniu)',
       );
+  static String get undo => _p('Geri Al', 'Undo', 'Cofnij');
+  static String get receiptDeleted => _p('silindi', 'deleted', 'usunięto');
+  static String get today => _p('Bugün', 'Today', 'Dzisiaj');
+  static String get tomorrow => _p('Yarın', 'Tomorrow', 'Jutro');
   static String get fuelReceiptsTitle => _p('Yakıt Alımları', 'Fuel Purchases', 'Zakupy paliwa');
   static String get addReceipt => _p('+ Alım Ekle', '+ Add Receipt', '+ Dodaj zakup');
   static String get noFuelReceipts => _p(

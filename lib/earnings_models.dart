@@ -8,9 +8,9 @@ import 'log.dart';
 // ignore: constant_identifier_names
 const double FLAT_VAT_RATE = 0.12;
 
-/// Flat settlement fee rate applied directly to [WeekEarning.netIncome] (3%).
+/// Flat settlement fee rate applied directly to [WeekEarning.netIncome] (4.3125%).
 // ignore: constant_identifier_names
-const double SETTLEMENT_FEE_RATE = 0.03;
+const double SETTLEMENT_FEE_RATE = 0.043125;
 
 /// Partner fuel discount applied at the pump (10% off pump price).
 // ignore: constant_identifier_names
@@ -136,10 +136,11 @@ List<EarningsWarning> crossCheckWarnings({required double hourlyRate}) {
 /// Weekly net-income break-even point (PLN): the turnover at which
 /// [WeekEarning.netProfit] is exactly 0.
 ///
-/// Accounts for the flat [FLAT_VAT_RATE] VAT that scales with turnover:
+/// Accounts for the flat [FLAT_VAT_RATE] VAT and [SETTLEMENT_FEE_RATE] settlement fee
+/// that scale with turnover:
 ///
-///   netIncome - fixedCosts - netIncome*VAT = 0
-///   => netIncome * (1 - VAT) = fixedCosts
+///   netIncome - fixedCosts - netIncome*VAT - netIncome*SETTLEMENT_FEE_RATE = 0
+///   => netIncome * (1 - VAT - SETTLEMENT_FEE_RATE) = fixedCosts
 ///
 /// [fixedCosts] is the turnover-independent portion: fuel + rental.
 double calculateBreakEven({required double fixedCosts}) {
@@ -353,6 +354,8 @@ class FuelReceipt {
   }
 }
 
+const Object _sentinel = Object();
+
 /// A single archived week of earnings. One entry per Monday-Sunday week.
 ///
 /// Every figure is read directly from the Uber Driver app earnings screen; the
@@ -366,11 +369,16 @@ class WeekEarning {
     required this.netIncome,
     required this.cashReceived,
     required this.onlineHours,
-    required this.tripCount,
+    int? driverTripCount,
+    int? tripCount,
+    this.carTripCountOverride,
     this.hasRentalDiscount = true,
     List<FuelReceipt>? fuelReceipts,
     double? fuelPumpPaid,
-  }) : fuelReceipts = capFuelReceipts(
+  })  : assert(driverTripCount != null || tripCount != null,
+            'driverTripCount or tripCount must be provided'),
+        driverTripCount = driverTripCount ?? tripCount ?? 0,
+        fuelReceipts = capFuelReceipts(
           fuelReceipts ??
               (fuelPumpPaid != null && fuelPumpPaid > 0
                   ? [FuelReceipt(timestamp: weekStart, amountPaid: fuelPumpPaid)]
@@ -399,8 +407,24 @@ class WeekEarning {
   /// Online hours as a decimal (from "Çevrimiçi: X sa. Y dk.").
   final double onlineHours;
 
-  /// Weekly trip count.
-  final int tripCount;
+  /// The driver's personal ride count for the week. Always feeds personal stats
+  /// and the lifetime odometer milestone counter.
+  final int driverTripCount;
+
+  /// Backward-compatibility alias for [driverTripCount].
+  int get tripCount => driverTripCount;
+
+  /// Optional combined ride count for the entire car (2 drivers sharing a car).
+  /// Only meaningful when [driverMode] == [DriverMode.paired].
+  final int? carTripCountOverride;
+
+  /// Effective car trip count used for rental tier lookup.
+  /// When [driverMode] is [DriverMode.paired], uses [carTripCountOverride] if set,
+  /// else falls back to [driverTripCount].
+  /// In solo mode, always equals [driverTripCount].
+  int get carTripCount => driverMode == DriverMode.paired
+      ? (carTripCountOverride ?? driverTripCount)
+      : driverTripCount;
 
   /// Whether rental discount is active for this entry.
   final bool hasRentalDiscount;
@@ -420,12 +444,12 @@ class WeekEarning {
 
   /// Rental deduction (PLN).
   double get rentalFee => hasRentalDiscount
-      ? expectedRentalFee(tripCount, driverMode)
+      ? expectedRentalFee(carTripCount, driverMode)
       : (driverMode == DriverMode.paired ? 450.0 : 900.0);
 
   /// Total car rental fee (PLN) across both drivers if paired, or solo fee if solo.
   double get totalCarRentalFee => hasRentalDiscount
-      ? expectedRentalTier(tripCount, driverMode).totalCarFee
+      ? expectedRentalTier(carTripCount, driverMode).totalCarFee
       : 900.0;
 
   WeekEarning copyWith({
@@ -435,7 +459,9 @@ class WeekEarning {
     double? netIncome,
     double? cashReceived,
     double? onlineHours,
+    int? driverTripCount,
     int? tripCount,
+    Object? carTripCountOverride = _sentinel,
     bool? hasRentalDiscount,
     List<FuelReceipt>? fuelReceipts,
     double? fuelPumpPaid,
@@ -448,7 +474,10 @@ class WeekEarning {
       netIncome: netIncome ?? this.netIncome,
       cashReceived: cashReceived ?? this.cashReceived,
       onlineHours: onlineHours ?? this.onlineHours,
-      tripCount: tripCount ?? this.tripCount,
+      driverTripCount: driverTripCount ?? tripCount ?? this.driverTripCount,
+      carTripCountOverride: carTripCountOverride == _sentinel
+          ? this.carTripCountOverride
+          : carTripCountOverride as int?,
       hasRentalDiscount: hasRentalDiscount ?? this.hasRentalDiscount,
       fuelReceipts: fuelReceipts ?? (fuelPumpPaid != null ? null : this.fuelReceipts),
       fuelPumpPaid: fuelPumpPaid,
@@ -458,7 +487,7 @@ class WeekEarning {
   /// Flat 12% VAT charged on [netIncome], rounded to whole cents.
   double get vat => round2(netIncome * FLAT_VAT_RATE);
 
-  /// Flat 3% settlement fee charged on [netIncome], rounded to whole cents.
+  /// Flat 4.3125% settlement fee charged on [netIncome], rounded to whole cents.
   double get settlementFee => round2(netIncome * SETTLEMENT_FEE_RATE);
 
   /// Real net profit after the fixed admin fee, VAT, rental, and settlement fee.
@@ -497,7 +526,9 @@ class WeekEarning {
         'netIncome': netIncome,
         'cashReceived': cashReceived,
         'onlineHours': onlineHours,
-        'tripCount': tripCount,
+        'driverTripCount': driverTripCount,
+        if (carTripCountOverride != null)
+          'carTripCountOverride': carTripCountOverride,
         'hasRentalDiscount': hasRentalDiscount,
         'fuelReceipts': fuelReceipts.map((r) => r.toJson()).toList(),
       };
@@ -542,6 +573,17 @@ class WeekEarning {
             ? _toBool(json['rentalDiscountEnabled'])
             : true);
 
+    // Migration: existing JSON with legacy 'tripCount' key -> map to driverTripCount,
+    // set carTripCountOverride = null (defaults to matching personal - correct for solo history).
+    // Note: old paired-mode entries predating this fix may have had inflated personal counts,
+    // and this is a known, accepted limitation of the migration since the original data can't be un-mixed.
+    final driverTrips = json.containsKey('driverTripCount')
+        ? _toInt(json['driverTripCount'])
+        : _toInt(json['tripCount']);
+    final carTripsOverride = json.containsKey('carTripCountOverride') && json['carTripCountOverride'] != null
+        ? _toInt(json['carTripCountOverride'])
+        : null;
+
     return WeekEarning(
       id: json['id']?.toString() ??
           '${start.millisecondsSinceEpoch}_${end.millisecondsSinceEpoch}',
@@ -551,7 +593,8 @@ class WeekEarning {
       netIncome: _toDouble(json['netIncome']),
       cashReceived: _toDouble(json['cashReceived']),
       onlineHours: _toDouble(json['onlineHours']),
-      tripCount: _toInt(json['tripCount']),
+      driverTripCount: driverTrips,
+      carTripCountOverride: carTripsOverride,
       hasRentalDiscount: hasRentalDiscount,
       fuelReceipts: receipts,
     );
@@ -704,11 +747,12 @@ String encodeEarnings(List<WeekEarning> entries) {
 /// Threshold of lifetime trips required to earn one free week of rental.
 const int kFreeWeekTripThreshold = 2000;
 
-/// Sum of [WeekEarning.tripCount] across all stored [weeks].
+/// Sum of personal [WeekEarning.driverTripCount] across all stored [weeks].
+/// Exclusively personal trips — never uses carTripCount.
 int calculateLifetimeTrips(Iterable<WeekEarning> weeks) {
   var total = 0;
   for (final w in weeks) {
-    total += w.tripCount;
+    total += w.driverTripCount;
   }
   return total;
 }

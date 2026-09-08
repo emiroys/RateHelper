@@ -4,11 +4,12 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:rate_helper/fonts.dart';
 
 import 'app_colors.dart';
+import 'app_spacing.dart';
 import 'app_widgets.dart';
 import 'l10n.dart';
 import 'log.dart';
 
-const _kCardColor = AppColors.card;
+const _kCardColor = AppColors.surface;
 const _kEmerald = AppColors.emerald;
 const _kAmber = AppColors.amber;
 const _kSysChannel = MethodChannel('com.ratehelper.app/system');
@@ -226,11 +227,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 onOpenSettings: _openBattery,
               ),
               const SizedBox(height: 32),
-              _BigCta(
+              AppPrimaryButton(
                 label: S.finish,
                 enabled: _canFinish,
                 color: _kEmerald,
-                onTap: _canFinish ? widget.onDone : null,
+                textColor: Colors.black,
+                onTap: _canFinish ? widget.onDone : () {},
               ),
             ],
           ),
@@ -258,10 +260,10 @@ class _StepCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: AppSpacing.cardPadding,
       decoration: BoxDecoration(
         color: _kCardColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppRadius.mdBorder,
         border: Border.all(color: AppColors.cardBorderColor),
       ),
       child: Column(
@@ -272,7 +274,8 @@ class _StepCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(fontFamily: AppFonts.dmSans, 
+                  style: const TextStyle(
+                    fontFamily: AppFonts.dmSans,
                     color: Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
@@ -286,18 +289,20 @@ class _StepCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             body,
-            style: const TextStyle(fontFamily: AppFonts.dmSans, 
+            style: const TextStyle(
+              fontFamily: AppFonts.dmSans,
               color: AppColors.mutedText,
               fontSize: 13,
               height: 1.45,
             ),
           ),
           const SizedBox(height: 14),
-          _BigCta(
+          AppPrimaryButton(
             label: cta,
             enabled: onTap != null,
             color: done ? _kEmerald : _kAmber,
-            onTap: onTap,
+            textColor: Colors.black,
+            onTap: onTap ?? () {},
           ),
         ],
       ),
@@ -321,10 +326,10 @@ class _BatteryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: AppSpacing.cardPadding,
       decoration: BoxDecoration(
         color: _kCardColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppRadius.mdBorder,
         border: Border.all(color: AppColors.cardBorderColor),
       ),
       child: Column(
@@ -335,7 +340,8 @@ class _BatteryCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   S.stepBatteryTitle,
-                  style: const TextStyle(fontFamily: AppFonts.dmSans, 
+                  style: const TextStyle(
+                    fontFamily: AppFonts.dmSans,
                     color: Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
@@ -349,7 +355,8 @@ class _BatteryCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             S.stepBatteryBody,
-            style: const TextStyle(fontFamily: AppFonts.dmSans, 
+            style: const TextStyle(
+              fontFamily: AppFonts.dmSans,
               color: AppColors.mutedText,
               fontSize: 13,
               height: 1.45,
@@ -371,13 +378,14 @@ class _BatteryCard extends StatelessWidget {
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: AppColors.inset,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadius.smBorder,
             ),
             child: Text(
               brand.steps,
-              style: const TextStyle(fontFamily: AppFonts.dmSans, 
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
                 color: Colors.white,
                 fontSize: 13,
                 height: 1.5,
@@ -386,10 +394,11 @@ class _BatteryCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          _BigCta(
+          AppPrimaryButton(
             label: S.stepBatteryCta,
             enabled: true,
             color: done ? _kEmerald : _kAmber,
+            textColor: Colors.black,
             onTap: onOpenSettings,
           ),
         ],
@@ -413,10 +422,10 @@ class _BrandChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: selected ? Colors.white12 : AppColors.inset,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: AppRadius.pillBorder,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: AppRadius.pillBorder,
         child: Container(
           constraints: const BoxConstraints(minHeight: kMinTouchTarget),
           alignment: Alignment.center,
@@ -438,58 +447,6 @@ class _BrandChip extends StatelessWidget {
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BigCta extends StatelessWidget {
-  const _BigCta({
-    required this.label,
-    required this.enabled,
-    required this.color,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool enabled;
-  final Color color;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: 60,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: enabled ? color.withValues(alpha: 0.18) : Colors.white12,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: enabled ? color.withValues(alpha: 0.55) : AppColors.disabledText,
-            width: 1.4,
-          ),
-        ),
-        // Polish CTAs ("NADAJ UPRAWNIENIE", "OTWÓRZ USTAWIENIA") are far wider
-        // than their Turkish equivalents at this letter spacing.
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            label,
-            maxLines: 1,
-            softWrap: false,
-            style: TextStyle(
-              fontFamily: AppFonts.dmSans,
-              color: enabled ? color : AppColors.disabledText,
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 2,
-            ),
           ),
         ),
       ),

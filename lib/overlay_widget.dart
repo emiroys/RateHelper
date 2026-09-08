@@ -85,9 +85,6 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   void initState() {
     super.initState();
     unawaited(_loadCountsOnStartup());
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_syncNativeWindowSize());
-    });
     try {
       _syncSub = FlutterOverlayWindow.overlayListener.listen((event) {
         if (OverlaySync.shouldReloadCounters(event)) {
@@ -110,18 +107,6 @@ class _OverlayWidgetState extends State<OverlayWidget> {
         error: e,
         stack: s,
       );
-    }
-  }
-
-  Future<void> _syncNativeWindowSize() async {
-    try {
-      await FlutterOverlayWindow.resizeOverlay(
-        OverlayWidget.nativeWindowWidthDp,
-        OverlayWidget.nativeWindowHeightDp,
-        true,
-      );
-    } catch (e, s) {
-      loge('overlay resize failed', name: 'overlay', error: e, stack: s);
     }
   }
 

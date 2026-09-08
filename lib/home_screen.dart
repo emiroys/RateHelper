@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'app_colors.dart';
+import 'app_spacing.dart';
 import 'app_text_styles.dart';
 import 'app_widgets.dart';
 import 'crash_logger.dart';
@@ -150,7 +151,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     color: AppColors.cardBorderColor,
     width: 1,
   );
-  static final _cardRadius = BorderRadius.circular(16);
+  static final _cardRadius = AppRadius.mdBorder;
 
   SharedPreferences? _prefs;
   AppLang _currentLang = AppLang.tr;
@@ -1235,7 +1236,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               if (isEmpty)
                 AppEmptyState(
                   compact: true,
-                  icon: Icons.verified_outlined,
+                  icon: Icons.verified_rounded,
                   title: S.crashLogEmptyTitle,
                   description: S.crashLogEmpty,
                 )
@@ -1473,6 +1474,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       if (mounted) setState(() {});
                     });
                   });
+                } else if (v == 'lang') {
+                  _showLanguageSelector();
                 }
               },
               itemBuilder: (_) => [
@@ -1506,6 +1509,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       fontFamily: AppFonts.dmSans,
                       color: Colors.white,
                     ),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'lang',
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.language_rounded,
+                        size: 20,
+                        color: Colors.white70,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        S.navLang,
+                        style: const TextStyle(
+                          fontFamily: AppFonts.dmSans,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -1553,6 +1576,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                         acceptanceRate.toStringAsFixed(2),
                                       ),
                                       color: _acceptRateColor,
+                                      hasGlow: true,
                                     ),
                                   ),
                                   const SizedBox(width: 12),
@@ -1571,40 +1595,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             ),
                             if (recovery != null) ...[
                               const SizedBox(height: 12),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _cardColor,
-                                  border: _cardBorder,
-                                  borderRadius: _cardRadius,
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.trending_up_rounded,
-                                      color: _amber,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        S.recovery(
-                                          recovery,
-                                          _selectedGoal.requiredAcceptRate!,
-                                        ),
-                                        style: const TextStyle(
-                                          fontFamily: AppFonts.dmSans,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: _amber,
-                                          height: 1.4,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                              _buildWarningCard(
+                                icon: Icons.trending_up_rounded,
+                                color: _amber,
+                                text: S.recovery(
+                                  recovery,
+                                  _selectedGoal.requiredAcceptRate!,
                                 ),
                               ),
                             ] else if (_selectedGoal.requiredAcceptRate !=
@@ -1614,39 +1610,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 acceptanceRate <
                                     _selectedGoal.requiredAcceptRate! +
                                         AMBER_BUFFER) ...[
-                              const SizedBox(height: 12),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _cardColor,
-                                  border: _cardBorder,
-                                  borderRadius: _cardRadius,
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.shield_outlined,
-                                      color: _amber,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        S.safeButClose,
-                                        style: const TextStyle(
-                                          fontFamily: AppFonts.dmSans,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: _amber,
-                                          height: 1.4,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                              const SizedBox(height: AppSpacing.sm + 4),
+                              _buildWarningCard(
+                                icon: Icons.shield_rounded,
+                                color: _amber,
+                                text: S.safeButClose,
                               ),
                             ],
                             if (_selectedGoal != TripGoal.tier0)
@@ -1667,7 +1635,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   final icon = isOverLimit
                                       ? Icons.warning_amber_rounded
                                       : (isZeroBudget
-                                            ? Icons.shield_outlined
+                                            ? Icons.shield_rounded
                                             : Icons.info_outline_rounded);
 
                                   final text = isOverLimit
@@ -1677,38 +1645,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   return Column(
                                     children: [
                                       const SizedBox(height: 12),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                          vertical: 14,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _cardColor,
-                                          border: _cardBorder,
-                                          borderRadius: _cardRadius,
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              icon,
-                                              color: textColor,
-                                              size: 20,
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Text(
-                                                text,
-                                                style: TextStyle(
-                                                  fontFamily: AppFonts.dmSans,
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: textColor,
-                                                  height: 1.4,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                      _buildWarningCard(
+                                        icon: icon,
+                                        color: textColor,
+                                        text: text,
                                       ),
                                     ],
                                   );
@@ -1749,12 +1689,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                     _sectionHeader(S.trips),
                     const SizedBox(height: 12),
-                    _buildAutoCompleteSwitch(),
-                    const SizedBox(height: 10),
-                    _buildSteeringWheelSwitch(),
-                    const SizedBox(height: 10),
-                    _buildKeepScreenOnSwitch(),
-                    const SizedBox(height: 10),
                     _CounterRow(
                       label: S.completed,
                       valueListenable: _completed,
@@ -1777,28 +1711,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     ),
 
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 28),
 
-                    GestureDetector(
-                      onTap: _showManualResetDialog,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        decoration: BoxDecoration(
-                          color: _cardColor,
-                          border: _cardBorder,
-                          borderRadius: _cardRadius,
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          S.resetWeek,
-                          style: const TextStyle(
-                            fontFamily: AppFonts.dmSans,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 2,
-                            color: _crimson,
-                          ),
-                        ),
+                    _sectionHeader(S.settings),
+                    const SizedBox(height: 12),
+                    _buildAutoCompleteSwitch(),
+                    const SizedBox(height: 10),
+                    _buildSteeringWheelSwitch(),
+                    const SizedBox(height: 10),
+                    _buildKeepScreenOnSwitch(),
+
+                    const SizedBox(height: AppSpacing.xl),
+                    SizedBox(
+                      width: double.infinity,
+                      child: AppDangerButton(
+                        label: S.resetWeek,
+                        icon: Icons.refresh_rounded,
+                        onTap: _showManualResetDialog,
                       ),
                     ),
 
@@ -1850,14 +1779,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           borderRadius: BorderRadius.circular(32),
           border: Border.all(color: AppColors.hairline),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
         child: Row(
           children: [
             Expanded(
               child: _BottomBarAction(
-                emoji: '🌐',
-                label: S.navLang,
-                onTap: _showLanguageSelector,
+                icon: Icons.local_gas_station_rounded,
+                label: S.quickFuelNavLabel,
+                onTap: _quickAddFuelReceipt,
               ),
             ),
             Expanded(
@@ -1869,21 +1798,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             Expanded(
               child: _BottomBarAction(
-                emoji: '📋',
+                icon: Icons.receipt_long_rounded,
                 label: S.navLogs,
                 onTap: _showHistory,
               ),
             ),
             Expanded(
               child: _BottomBarAction(
-                emoji: '📡',
+                icon: Icons.radar_rounded,
                 label: 'Radar',
                 onTap: _openRadar,
               ),
             ),
             Expanded(
               child: _BottomBarAction(
-                emoji: '💰',
+                icon: Icons.account_balance_wallet_rounded,
                 label: S.navEarnings,
                 onTap: _openEarnings,
               ),
@@ -1913,6 +1842,183 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _openEarnings() async {
     await _pushGuarded(() => const EarningsScreen());
     if (mounted) setState(() {});
+  }
+
+  Future<void> _quickAddFuelReceipt() async {
+    final prefs = await _getPrefs();
+    await prefs.reload();
+    if (!mounted) return;
+    final ctrl = TextEditingController();
+    double? added;
+    try {
+      added = await showDialog<double>(
+        context: context,
+        builder: (ctx) {
+          return AlertDialog(
+            backgroundColor: AppColors.card,
+            shape: const RoundedRectangleBorder(
+              borderRadius: AppRadius.mdBorder,
+              side: BorderSide(color: AppColors.hairline),
+            ),
+            title: Text(
+              S.quickAddFuelTitle,
+              style: AppTextStyles.headlineStyle,
+            ),
+            content: TextField(
+              controller: ctrl,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              style: AppTextStyles.tabularNumbers(
+                fontSize: 18,
+                color: Colors.white,
+              ),
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: S.amountPaidLabel,
+                labelStyle: const TextStyle(
+                  fontFamily: AppFonts.dmSans,
+                  color: AppColors.mutedText,
+                  fontSize: AppTextStyles.body,
+                ),
+                suffixText: 'PLN',
+                suffixStyle: const TextStyle(
+                  fontFamily: AppFonts.dmSans,
+                  color: AppColors.actionAccent,
+                  fontWeight: FontWeight.w700,
+                  fontSize: AppTextStyles.body,
+                ),
+                enabledBorder: const UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white24),
+                ),
+                focusedBorder: const UnderlineInputBorder(
+                  borderSide: BorderSide(color: AppColors.actionAccent),
+                ),
+              ),
+              onSubmitted: (_) {
+                final val = double.tryParse(
+                  ctrl.text.replaceAll(' ', '').replaceAll(',', '.').trim(),
+                );
+                if (val != null && val > 0) {
+                  Navigator.of(ctx).pop(val);
+                }
+              },
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text(
+                  S.cancel,
+                  style: const TextStyle(
+                    fontFamily: AppFonts.dmSans,
+                    color: AppColors.mutedText,
+                    fontSize: AppTextStyles.body,
+                  ),
+                ),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.actionAccent,
+                  foregroundColor: Colors.black,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: AppRadius.smBorder,
+                  ),
+                ),
+                onPressed: () {
+                  final val = double.tryParse(
+                    ctrl.text.replaceAll(' ', '').replaceAll(',', '.').trim(),
+                  );
+                  if (val != null && val > 0) {
+                    Navigator.of(ctx).pop(val);
+                  }
+                },
+                child: Text(
+                  S.add,
+                  style: const TextStyle(
+                    fontFamily: AppFonts.dmSans,
+                    fontWeight: FontWeight.w800,
+                    fontSize: AppTextStyles.body,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      ctrl.dispose();
+    }
+
+    if (added == null || added <= 0 || !mounted) return;
+
+    final entries = decodeEarnings(
+      prefs.getString(kEarningsHistoryKey),
+      onCorrupt: (raw) => prefs.setString(kEarningsCorruptBackupKey, raw),
+    )..sort((a, b) => b.weekStart.compareTo(a.weekStart));
+
+    final currentMonday = weekStartForOffset(0);
+    final currentSunday = weekEndForStart(currentMonday);
+
+    WeekEarning? currentEntry;
+    int entryIndex = -1;
+    for (int i = 0; i < entries.length; i++) {
+      if (isSameDate(entries[i].weekStart, currentMonday)) {
+        currentEntry = entries[i];
+        entryIndex = i;
+        break;
+      }
+    }
+
+    final newReceipt = FuelReceipt(
+      timestamp: DateTime.now(),
+      amountPaid: added,
+    );
+
+    final List<WeekEarning> nextEntries = List.of(entries);
+    final int newCount;
+    if (currentEntry != null) {
+      final updatedReceipts = capFuelReceipts([
+        ...currentEntry.fuelReceipts,
+        newReceipt,
+      ]);
+      newCount = updatedReceipts.length;
+      nextEntries[entryIndex] = currentEntry.copyWith(
+        fuelReceipts: updatedReceipts,
+      );
+    } else {
+      newCount = 1;
+      final modeStr = prefs.getString(DriverMode.key);
+      final driverMode =
+          modeStr == 'paired' ? DriverMode.paired : DriverMode.solo;
+      nextEntries.insert(
+        0,
+        WeekEarning(
+          id:
+              '${currentMonday.millisecondsSinceEpoch}_${currentSunday.millisecondsSinceEpoch}',
+          weekStart: currentMonday,
+          weekEnd: currentSunday,
+          driverMode: driverMode,
+          netIncome: 0,
+          cashReceived: 0,
+          onlineHours: 0,
+          driverTripCount: 0,
+          hasRentalDiscount: true,
+          fuelReceipts: [newReceipt],
+        ),
+      );
+    }
+
+    await prefs.setString(kEarningsHistoryKey, encodeEarnings(nextEntries));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          S.fuelAddedConfirmation(added.toStringAsFixed(2), newCount),
+          style: const TextStyle(fontFamily: AppFonts.dmSans),
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   Widget _buildDesignerSignature() {
@@ -2147,15 +2253,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     required String label,
     required String value,
     required Color color,
+    bool hasGlow = false,
   }) {
     return Container(
       width: double.infinity,
       height: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 18),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: _cardColor,
-        border: _cardBorder,
+        border: hasGlow
+            ? Border.all(color: color.withValues(alpha: 0.4), width: 1.2)
+            : _cardBorder,
         borderRadius: _cardRadius,
+        boxShadow: hasGlow
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.2),
+                  blurRadius: 20,
+                  spreadRadius: 1,
+                ),
+              ]
+            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2164,15 +2282,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             label,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 2,
-              color: AppColors.labelText,
-            ),
+            style: AppTextStyles.eyebrowStyle(AppColors.labelText),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpacing.sm),
           Expanded(
             child: Align(
               alignment: Alignment.centerLeft,
@@ -2191,18 +2303,64 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildWarningCard({
+    required IconData icon,
+    required Color color,
+    required String text,
+  }) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 1),
+        borderRadius: _cardRadius,
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: 5,
+              color: color,
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+                child: Row(
+                  children: [
+                    Icon(icon, color: color, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        text,
+                        style: TextStyle(
+                          fontFamily: AppFonts.dmSans,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: color,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _sectionHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4),
+      padding: const EdgeInsets.only(left: AppSpacing.xs),
       child: Text(
         title,
-        style: const TextStyle(
-          fontFamily: AppFonts.dmSans,
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 1.5,
-          color: AppColors.labelText,
-        ),
+        style: AppTextStyles.eyebrowStyle(AppColors.labelText),
       ),
     );
   }
@@ -2214,7 +2372,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         border: _cardBorder,
         borderRadius: _cardRadius,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
       child: Row(
         children: [
           Expanded(
@@ -2404,19 +2565,11 @@ class _CounterRow extends StatelessWidget {
   final void Function(int delta) onDelta;
   final VoidCallback? onEdit;
 
-  static const _valueStyle = TextStyle(
-    fontFamily: AppFonts.dmSans,
-    fontSize: 48,
-    fontWeight: FontWeight.w900,
-    color: Colors.white,
-    height: 1,
-    decoration: TextDecoration.underline,
-    decorationColor: AppColors.labelText,
-  );
+  static const _valueStyle = AppTextStyles.hero;
 
   static const _labelStyle = TextStyle(
     fontFamily: AppFonts.dmSans,
-    fontSize: 13,
+    fontSize: AppTextStyles.caption,
     fontWeight: FontWeight.w600,
     color: AppColors.mutedText,
   );
@@ -2428,9 +2581,14 @@ class _CounterRow extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.card,
           border: Border.all(color: AppColors.cardBorderColor, width: 1),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppRadius.mdBorder,
         ),
-        padding: const EdgeInsets.only(left: 20, top: 16, bottom: 16, right: 8),
+        padding: const EdgeInsets.only(
+          left: AppSpacing.lg,
+          top: AppSpacing.md,
+          bottom: AppSpacing.md,
+          right: AppSpacing.sm,
+        ),
         child: ValueListenableBuilder<int>(
           valueListenable: valueListenable,
           builder: (context, value, _) {
@@ -2441,7 +2599,7 @@ class _CounterRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(label, style: _labelStyle),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: AppSpacing.xs),
                       GestureDetector(
                         onTap: onEdit == null
                             ? null
@@ -2465,10 +2623,10 @@ class _CounterRow extends StatelessWidget {
                               child: Text('$value', style: _valueStyle),
                             ),
                             if (onEdit != null) ...[
-                              const SizedBox(width: 8),
+                              const SizedBox(width: AppSpacing.sm),
                               const Icon(
                                 Icons.edit_rounded,
-                                size: 22,
+                                size: 20,
                                 color: AppColors.labelText,
                               ),
                             ],
@@ -2478,16 +2636,18 @@ class _CounterRow extends StatelessWidget {
                     ],
                   ),
                 ),
-                _CounterIconButton(
+                AppIconActionButton(
                   icon: Icons.remove_rounded,
+                  tintColor: AppColors.crimson,
                   onTap: () {
                     HapticFeedback.mediumImpact();
                     onDelta(-1);
                   },
                 ),
-                const SizedBox(width: 6),
-                _CounterIconButton(
+                const SizedBox(width: AppSpacing.sm),
+                AppIconActionButton(
                   icon: Icons.add_rounded,
+                  tintColor: AppColors.emerald,
                   onTap: () {
                     HapticFeedback.lightImpact();
                     onDelta(1);
@@ -2502,37 +2662,14 @@ class _CounterRow extends StatelessWidget {
   }
 }
 
-class _CounterIconButton extends StatelessWidget {
-  const _CounterIconButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 64,
-        height: 64,
-        decoration: BoxDecoration(
-          color: const Color(0x0AFFFFFF),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Icon(icon, color: Colors.white, size: 28),
-      ),
-    );
-  }
-}
-
 class _BottomBarAction extends StatelessWidget {
   const _BottomBarAction({
-    required this.emoji,
+    required this.icon,
     required this.label,
     required this.onTap,
   });
 
-  final String emoji;
+  final IconData icon;
   final String label;
   final VoidCallback onTap;
 
@@ -2542,14 +2679,23 @@ class _BottomBarAction extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: AppRadius.mdBorder,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(emoji, style: const TextStyle(fontSize: 22, height: 1.1)),
-              const SizedBox(height: 4),
+              Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: Color(0x0AFFFFFF),
+                  borderRadius: AppRadius.smBorder,
+                ),
+                child: Icon(icon, color: Colors.white, size: 22),
+              ),
+              const SizedBox(height: AppSpacing.xs),
               Text(
                 label,
                 textAlign: TextAlign.center,
@@ -2557,7 +2703,7 @@ class _BottomBarAction extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontFamily: AppFonts.dmSans,
-                  fontSize: 11,
+                  fontSize: AppTextStyles.eyebrow,
                   fontWeight: FontWeight.w700,
                   color: AppColors.mutedText,
                   letterSpacing: 0.2,
@@ -2590,42 +2736,42 @@ class _BottomBarWidgetToggle extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: busy ? null : onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: AppRadius.mdBorder,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                width: 52,
-                height: 52,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: active ? _emerald : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: AppRadius.smBorder,
                   border: Border.all(
                     color: active ? _emerald : _emerald.withValues(alpha: 0.55),
                     width: 1.5,
                   ),
                 ),
                 child: busy
-                    ? Center(
+                    ? const Center(
                         child: SizedBox(
-                          width: 24,
-                          height: 24,
+                          width: 20,
+                          height: 20,
                           child: CircularProgressIndicator(
-                            strokeWidth: 2.6,
-                            color: active ? Colors.white : _emerald,
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         ),
                       )
                     : Icon(
                         active ? Icons.stop_rounded : Icons.play_arrow_rounded,
                         color: active ? Colors.white : _emerald,
-                        size: 28,
+                        size: 26,
                       ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpacing.xs),
               Text(
                 active ? S.widgetStop : S.widgetStart,
                 textAlign: TextAlign.center,
@@ -2634,14 +2780,14 @@ class _BottomBarWidgetToggle extends StatelessWidget {
                 style: active
                     ? const TextStyle(
                         fontFamily: AppFonts.dmSans,
-                        fontSize: 11,
+                        fontSize: AppTextStyles.eyebrow,
                         fontWeight: FontWeight.w800,
                         color: AppColors.emerald,
                         letterSpacing: 0.2,
                       )
                     : const TextStyle(
                         fontFamily: AppFonts.dmSans,
-                        fontSize: 11,
+                        fontSize: AppTextStyles.eyebrow,
                         fontWeight: FontWeight.w800,
                         color: AppColors.mutedText,
                         letterSpacing: 0.2,
@@ -3002,12 +3148,12 @@ class _HistorySheetState extends State<_HistorySheet>
                     final accepted = entry.raw['type'] == 'accepted';
                     return Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
+                        horizontal: AppSpacing.md,
+                        vertical: AppSpacing.sm + 4,
                       ),
                       decoration: BoxDecoration(
                         color: AppColors.card,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: AppRadius.mdBorder,
                         border: Border.all(
                           color: AppColors.cardBorderColor,
                           width: 1,
@@ -3015,11 +3161,14 @@ class _HistorySheetState extends State<_HistorySheet>
                       ),
                       child: Row(
                         children: [
-                          Text(
-                            accepted ? '🟢' : '🔴',
-                            style: const TextStyle(fontSize: 16),
+                          Icon(
+                            accepted
+                                ? Icons.check_circle_rounded
+                                : Icons.cancel_rounded,
+                            color: accepted ? _emerald : _crimson,
+                            size: 18,
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: AppSpacing.sm),
                           Expanded(
                             child: Text(
                               accepted ? S.tapAcceptShort : S.tapRejectShort,
@@ -3028,12 +3177,12 @@ class _HistorySheetState extends State<_HistorySheet>
                               style: TextStyle(
                                 fontFamily: AppFonts.dmSans,
                                 color: accepted ? _emerald : _crimson,
-                                fontSize: 15,
+                                fontSize: AppTextStyles.body,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: AppSpacing.sm),
                           Flexible(
                             child: Text(
                               _tapTimeLabel(entry),
@@ -3041,9 +3190,9 @@ class _HistorySheetState extends State<_HistorySheet>
                               softWrap: false,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontFamily: AppFonts.jetBrainsMono,
+                                fontFamily: AppFonts.dmSans,
                                 color: AppColors.mutedText,
-                                fontSize: 13,
+                                fontSize: AppTextStyles.caption,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -3062,7 +3211,7 @@ class _HistorySheetState extends State<_HistorySheet>
     if (_archive.isEmpty) {
       return AppEmptyState(
         compact: true,
-        icon: Icons.inventory_2_outlined,
+        icon: Icons.inventory_2_rounded,
         title: S.noHistoryTitle,
         description: S.noHistoryDesc,
       );

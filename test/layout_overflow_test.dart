@@ -167,17 +167,19 @@ void main() {
       expect(AppColors.emerald, const Color(0xFF10B981));
       expect(AppColors.crimson, const Color(0xFFEF4444));
       expect(AppColors.amber, const Color(0xFFF59E0B));
+      expect(AppColors.recordGold, const Color(0xFFFFD54A));
       expect(AppColors.gold, const Color(0xFFFFD54A));
+      expect(AppColors.actionAccent, const Color(0xFF38BDF8));
     });
 
-    test('surface tokens match the consolidated hex values', () {
-      expect(AppColors.card, const Color(0xFF1A1A1A));
-      expect(AppColors.sheet, const Color(0xFF121212));
-      expect(AppColors.dialog, const Color(0xFF161616));
-      expect(AppColors.elevated, const Color(0xFF1E1E1E));
-      expect(AppColors.selected, const Color(0xFF242424));
-      expect(AppColors.inset, const Color(0xFF0F0F0F));
-      expect(AppColors.track, const Color(0xFF2A2A2A));
+    test('surface tokens match the consolidated 3-tone system', () {
+      expect(AppColors.background, const Color(0xFF0D0D0D));
+      expect(AppColors.surface, const Color(0xFF161616));
+      expect(AppColors.surfaceElevated, const Color(0xFF1E1E1E));
+      expect(AppColors.card, AppColors.surface);
+      expect(AppColors.sheet, AppColors.surface);
+      expect(AppColors.dialog, AppColors.surface);
+      expect(AppColors.elevated, AppColors.surfaceElevated);
     });
 
     test('label colors clear the dim-text threshold used before', () {

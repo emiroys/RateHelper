@@ -9,7 +9,9 @@ WeekEarning buildWeek({
   bool hasRentalDiscount = true,
   double fuelPumpPaid = 298.9555555556,
   double onlineHours = 40,
-  int tripCount = 130,
+  int? driverTripCount,
+  int? tripCount,
+  int? carTripCountOverride,
   DriverMode? driverMode,
 }) {
   return WeekEarning(
@@ -20,7 +22,8 @@ WeekEarning buildWeek({
     netIncome: netIncome,
     cashReceived: cashReceived,
     onlineHours: onlineHours,
-    tripCount: tripCount,
+    driverTripCount: driverTripCount ?? tripCount ?? 130,
+    carTripCountOverride: carTripCountOverride,
     hasRentalDiscount: hasRentalDiscount,
     fuelPumpPaid: fuelPumpPaid,
   );
@@ -49,32 +52,32 @@ void main() {
     });
   });
 
-  group('flat 3% settlement fee on net income', () {
-    test('SETTLEMENT_FEE_RATE constant is 3%', () {
-      expect(SETTLEMENT_FEE_RATE, 0.03);
+  group('flat 4.3125% settlement fee on net income', () {
+    test('SETTLEMENT_FEE_RATE constant is 4.3125%', () {
+      expect(SETTLEMENT_FEE_RATE, 0.043125);
     });
 
-    test('settlementFee = netIncome * 0.03 = 150.00', () {
-      expect(buildWeek().settlementFee, closeTo(150.00, 0.001));
+    test('settlementFee = netIncome * 0.043125 = 215.62', () {
+      expect(buildWeek().settlementFee, closeTo(215.62, 0.001));
     });
   });
 
   group('net profit', () {
-    test('netIncome - fuel - vat - rental - settlementFee = 3280.94', () {
-      // 5000 - 269.06(fuel) - 600(vat) - 700(rental) - 150(settlement) = 3280.94
-      expect(buildWeek().netProfit, closeTo(3280.94, 0.001));
+    test('netIncome - fuel - vat - rental - settlementFee = 3215.32', () {
+      // 5000 - 269.06(fuel) - 600(vat) - 700(rental) - 215.62(settlement) = 3215.32
+      expect(buildWeek().netProfit, closeTo(3215.32, 0.001));
     });
 
     test('rental fallback when hasRentalDiscount is false', () {
       final w = buildWeek(hasRentalDiscount: false);
       expect(w.rentalFee, 900);
-      expect(w.netProfit, closeTo(3080.94, 0.001));
+      expect(w.netProfit, closeTo(3015.32, 0.001));
     });
   });
 
   group('bank deposit vs cash in hand', () {
-    test('bankDeposit = netProfit - cashReceived = 2882.94', () {
-      expect(buildWeek().bankDeposit, closeTo(2882.94, 0.001));
+    test('bankDeposit = netProfit - cashReceived = 2817.32', () {
+      expect(buildWeek().bankDeposit, closeTo(2817.32, 0.001));
     });
 
     test('cashInHand equals the cash received', () {
@@ -91,7 +94,7 @@ void main() {
     test('netProfit / online hours', () {
       final w = buildWeek(onlineHours: 40);
       expect(w.hourlyRate, closeTo(w.netProfit / 40, 0.001));
-      expect(w.hourlyRate, closeTo(82.0235, 0.01));
+      expect(w.hourlyRate, closeTo(80.383, 0.01));
     });
 
     test('25 sa 59 dk online -> decimal 25.9833', () {
@@ -463,6 +466,109 @@ void main() {
     });
   });
 
+  group('split trip count: driverTripCount vs carTripCountOverride', () {
+    test('solo mode: carTripCount == driverTripCount always (override ignored)', () {
+      final w = WeekEarning(
+        id: 'solo1',
+        weekStart: DateTime(2026, 6, 22),
+        weekEnd: DateTime(2026, 6, 28),
+        driverMode: DriverMode.solo,
+        netIncome: 5000,
+        cashReceived: 0,
+        onlineHours: 40,
+        driverTripCount: 130,
+        carTripCountOverride: 300,
+      );
+      expect(w.driverTripCount, 130);
+      expect(w.carTripCount, 130);
+      expect(w.tripCount, 130);
+      // Solo rental bracket 100-149 is 700 PLN
+      expect(w.rentalFee, 700);
+      expect(calculateLifetimeTrips([w]), 130);
+    });
+
+    test('paired mode with override set: rental uses override, lifetime uses driverTripCount only', () {
+      final w = WeekEarning(
+        id: 'paired_override',
+        weekStart: DateTime(2026, 6, 22),
+        weekEnd: DateTime(2026, 6, 28),
+        driverMode: DriverMode.paired,
+        netIncome: 5000,
+        cashReceived: 0,
+        onlineHours: 40,
+        driverTripCount: 80, // personal
+        carTripCountOverride: 200, // combined car total
+      );
+      expect(w.driverTripCount, 80);
+      expect(w.carTripCount, 200);
+      // Paired rental tiers: bracket 170-219 feePerDriver is 250 PLN
+      // (If it used personal 80, feePerDriver would be 450)
+      expect(w.rentalFee, 250);
+      expect(w.totalCarRentalFee, 500);
+      // Lifetime odometer MUST use personal driverTripCount exclusively:
+      expect(calculateLifetimeTrips([w]), 80);
+    });
+
+    test('paired mode with override null: falls back to driverTripCount', () {
+      final w = WeekEarning(
+        id: 'paired_null_override',
+        weekStart: DateTime(2026, 6, 22),
+        weekEnd: DateTime(2026, 6, 28),
+        driverMode: DriverMode.paired,
+        netIncome: 5000,
+        cashReceived: 0,
+        onlineHours: 40,
+        driverTripCount: 170,
+        carTripCountOverride: null,
+      );
+      expect(w.driverTripCount, 170);
+      expect(w.carTripCount, 170);
+      expect(w.rentalFee, 250);
+      expect(w.totalCarRentalFee, 500);
+      expect(calculateLifetimeTrips([w]), 170);
+    });
+
+    test('legacy JSON migration: existing JSON with legacy tripCount maps to driverTripCount', () {
+      final legacyJson = {
+        'version': 1,
+        'id': 'legacy_trips',
+        'weekStart': '2026-06-22T00:00:00.000',
+        'weekEnd': '2026-06-28T00:00:00.000',
+        'driverMode': 'paired',
+        'netIncome': 5000.0,
+        'cashReceived': 0.0,
+        'onlineHours': 40.0,
+        'tripCount': 150,
+      };
+      final decoded = WeekEarning.fromJson(legacyJson)!;
+      expect(decoded.driverTripCount, 150);
+      expect(decoded.carTripCountOverride, isNull);
+      expect(decoded.carTripCount, 150);
+      expect(decoded.tripCount, 150);
+    });
+
+    test('JSON serialization includes carTripCountOverride when present and round-trips', () {
+      final w = WeekEarning(
+        id: 'ser',
+        weekStart: DateTime(2026, 6, 22),
+        weekEnd: DateTime(2026, 6, 28),
+        driverMode: DriverMode.paired,
+        netIncome: 5000,
+        cashReceived: 0,
+        onlineHours: 40,
+        driverTripCount: 90,
+        carTripCountOverride: 230,
+      );
+      final json = w.toJson();
+      expect(json['driverTripCount'], 90);
+      expect(json['carTripCountOverride'], 230);
+      final reDecoded = WeekEarning.fromJson(json)!;
+      expect(reDecoded.driverTripCount, 90);
+      expect(reDecoded.carTripCountOverride, 230);
+      expect(reDecoded.carTripCount, 230);
+    });
+  });
+
   group('cross-check: unusual hourly rate', () {
     test('zero rate (no online hours) never warns', () {
       expect(hasUnusualHourlyRate(0), isFalse);
@@ -648,12 +754,12 @@ void main() {
 
     test('netProfit can be negative (not clamped or abs-ed)', () {
       expect(bad.netProfit, lessThan(0));
-      expect(bad.netProfit, closeTo(-795.0, 0.001));
+      expect(bad.netProfit, closeTo(-796.31, 0.001));
     });
 
     test('formatPln keeps the minus sign for a negative profit', () {
       expect(formatPln(bad.netProfit), startsWith('-'));
-      expect(formatPln(bad.netProfit), '-795,00');
+      expect(formatPln(bad.netProfit), '-796,31');
     });
 
     test('a negative hourlyRate stays negative (not abs-ed)', () {

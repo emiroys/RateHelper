@@ -6,25 +6,44 @@ import 'package:flutter/material.dart';
 /// red/amber/green threshold signalling (acceptance rate, cancellation budget,
 /// hourly rate, earnings breakdown) is pixel-identical wherever it appears.
 abstract final class AppColors {
-  // Semantic threshold triad.
+  // Semantic threshold triad (preserved as-is).
   static const emerald = Color(0xFF10B981);
   static const crimson = Color(0xFFEF4444);
   static const amber = Color(0xFFF59E0B);
 
   // Accents.
-  static const gold = Color(0xFFFFD54A);
+  /// Milestone/record achievement gold (🏆 context only).
+  static const recordGold = Color(0xFFFFD54A);
+
+  /// Utility/action accent (quick fuel-add, interactive tools) — distinct from record gold.
+  static const actionAccent = Color(0xFF38BDF8);
+
+  /// Backwards-compatible alias for recordGold.
+  static const gold = recordGold;
+
+  /// Signature gold for KK4181R badge.
   static const designerGold = Color(0xFFD4AF37);
 
-  // Surfaces.
-  static const card = Color(0xFF1A1A1A);
-  static const sheet = Color(0xFF121212);
-  static const dialog = Color(0xFF161616);
-  static const elevated = Color(0xFF1E1E1E);
-  static const selected = Color(0xFF242424);
-  static const inset = Color(0xFF0F0F0F);
-  static const track = Color(0xFF2A2A2A);
-  static const dialogAlt = Color(0xFF1E2430);
-  static const radarHeader = Color(0xFF1A2E26);
+  // Consolidated 3-Tone Dark Surface Architecture:
+  /// Tone 1: Deep screen canvas background (darkest).
+  static const background = Color(0xFF0D0D0D);
+
+  /// Tone 2: Standard card, sheet, and dialog surface.
+  static const surface = Color(0xFF161616);
+
+  /// Tone 3: Nested cards, progress tracks, active/elevated components.
+  static const surfaceElevated = Color(0xFF1E1E1E);
+
+  // Backwards-compatible aliases mapped to the 3-tone system:
+  static const card = surface;
+  static const sheet = surface;
+  static const dialog = surface;
+  static const elevated = surfaceElevated;
+  static const selected = surfaceElevated;
+  static const inset = background;
+  static const track = surfaceElevated;
+  static const dialogAlt = surfaceElevated;
+  static const radarHeader = surface;
   static const overlayPill = Color(0xE6161616);
 
   // Hairlines / borders.
