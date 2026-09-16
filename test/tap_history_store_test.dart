@@ -90,4 +90,19 @@ void main() {
     expect(await store.readAll(), isEmpty);
     expect((await file.readAsString()).trim(), isEmpty);
   });
+
+  test('a failed append does not kill subsequent queued appends', () async {
+    await store.append('accepted', at: DateTime(2026, 9, 16, 12, 0, 0));
+
+    await file.delete();
+    await Directory(file.path).create();
+    try {
+      await store.append('rejected', at: DateTime(2026, 9, 16, 12, 0, 1));
+    } catch (_) {}
+    await Directory(file.path).delete(recursive: true);
+
+    await store.append('accepted', at: DateTime(2026, 9, 16, 12, 0, 2));
+    final all = await store.readAll();
+    expect(all.last['type'], 'accepted');
+  });
 }

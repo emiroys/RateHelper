@@ -75,6 +75,12 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private float lastX, lastY;
     private int lastYPosition;
     private boolean dragging;
+    /// 20dp — must stay at or above Flutter's kTouchSlop (18dp). The old
+    /// 20 *physical* pixel threshold (~7dp on S24 Ultra) stole taps and
+    /// left GestureBinding waiting for an UP that native then consumed.
+    private static final float DRAG_SLOP_DP = 20f;
+    private float cachedDragSlopPx = -1f;
+    private boolean flutterPointerCancelled;
     private static final float MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER = 0.8f;
     private Point szWindow = new Point();
     private Timer mTrayAnimationTimer;
@@ -102,13 +108,24 @@ public class OverlayService extends Service implements View.OnTouchListener {
         instance = null;
         cancelTrayAnimation();
         
-        // Mirror of appIsResumed() in onStartCommand: tell the overlay
-        // isolate it is backgrounded so the VM applies idle/background
-        // behavior instead of believing it is a foreground app forever.
+        // Destroy the cached overlay engine so a close/reopen is a true
+        // isolate restart. A hung Future queue or a stuck GestureBinding
+        // pointer survives a FlutterView detach if the engine is reused.
         FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
         if (engine != null) {
-            engine.getLifecycleChannel().appIsPaused();
+            try {
+                engine.getLifecycleChannel().appIsPaused();
+            } catch (Exception ignored) {
+            }
+            FlutterEngineCache.getInstance().remove(OverlayConstants.CACHED_TAG);
+            try {
+                engine.destroy();
+            } catch (Exception e) {
+                Log.e("OverLay", "failed to destroy overlay engine", e);
+            }
         }
+        flutterChannel = null;
+        overlayMessageChannel = null;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
@@ -452,6 +469,34 @@ public class OverlayService extends Service implements View.OnTouchListener {
         return mResources.getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
     }
 
+    private float dragSlopPx() {
+        if (cachedDragSlopPx < 0f) {
+            cachedDragSlopPx = TypedValue.applyDimension(
+                    TypedValue.COMPLEX_UNIT_DIP,
+                    DRAG_SLOP_DP,
+                    mResources.getDisplayMetrics());
+        }
+        return cachedDragSlopPx;
+    }
+
+    /// Deliver ACTION_CANCEL through View.onTouchEvent so the OnTouchListener
+    /// is not re-entered. Flutter's GestureBinding then releases the pointer
+    /// instead of waiting forever for an UP native is about to consume.
+    private void cancelFlutterPointer(View view, MotionEvent event) {
+        if (flutterPointerCancelled) return;
+        flutterPointerCancelled = true;
+        debugLog(this, "OverLay", "touch CANCEL -> Flutter (drag take-over)");
+        MotionEvent cancel = MotionEvent.obtain(event);
+        cancel.setAction(MotionEvent.ACTION_CANCEL);
+        try {
+            view.onTouchEvent(cancel);
+        } catch (Exception e) {
+            Log.e("OverLay", "failed to cancel Flutter pointer", e);
+        } finally {
+            cancel.recycle();
+        }
+    }
+
     @Override
     public boolean onTouch(View view, MotionEvent event) {
         if (windowManager != null && WindowSetup.enableDrag) {
@@ -459,19 +504,26 @@ public class OverlayService extends Service implements View.OnTouchListener {
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
                     dragging = false;
+                    flutterPointerCancelled = false;
                     lastX = event.getRawX();
                     lastY = event.getRawY();
+                    debugLog(this, "OverLay", "touch DOWN");
                     // Let Flutter see DOWN so a stationary press can still
                     // register as a button tap.
                     return false;
                 case MotionEvent.ACTION_MOVE:
                     float dx = event.getRawX() - lastX;
                     float dy = event.getRawY() - lastY;
-                    // Native slop is 20px; Flutter's is 18px. Returning false
-                    // under slop keeps taps working. Once we exceed it we
-                    // consume so a slow drag cannot become a Flutter tap.
-                    if (!dragging && dx * dx + dy * dy < 400) {
+                    float slop = dragSlopPx();
+                    // Under slop: Flutter keeps the stream (tap / long-hold).
+                    // Past slop: cancel Flutter first, then native-drag the
+                    // window so the pointer cannot get stuck in GestureBinding.
+                    if (!dragging && dx * dx + dy * dy < slop * slop) {
                         return false;
+                    }
+                    if (!dragging) {
+                        debugLog(this, "OverLay", "touch MOVE drag-start slopPx=" + slop);
+                        cancelFlutterPointer(view, event);
                     }
                     lastX = event.getRawX();
                     lastY = event.getRawY();
@@ -491,23 +543,41 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     dragging = true;
                     return true;
                 case MotionEvent.ACTION_UP:
+                    debugLog(this, "OverLay", "touch UP dragging=" + dragging);
+                    return finishTouch(params, true);
                 case MotionEvent.ACTION_CANCEL:
-                    lastYPosition = params.y;
-                    if (!WindowSetup.positionGravity.equals("none")) {
-                        if (windowManager == null) return dragging;
-                        windowManager.updateViewLayout(flutterView, params);
-                        cancelTrayAnimation();
-                        mTrayTimerTask = new TrayAnimationTimerTask();
-                        mTrayAnimationTimer = new Timer();
-                        mTrayAnimationTimer.schedule(mTrayTimerTask, 0, 25);
+                    debugLog(this, "OverLay", "touch CANCEL dragging=" + dragging);
+                    if (!flutterPointerCancelled) {
+                        // System interrupted the gesture (incoming call, etc.)
+                        // before native drag took over — let Flutter see it.
+                        dragging = false;
+                        flutterPointerCancelled = false;
+                        return false;
                     }
-                    // Consume UP after a drag so Flutter does not fire a tap.
-                    return dragging;
+                    return finishTouch(params, false);
                 default:
                     return false;
             }
         }
         return false;
+    }
+
+    private boolean finishTouch(WindowManager.LayoutParams params, boolean snapToGravity) {
+        lastYPosition = params.y;
+        boolean wasDragging = dragging;
+        dragging = false;
+        flutterPointerCancelled = false;
+        if (snapToGravity && !WindowSetup.positionGravity.equals("none")) {
+            if (windowManager == null) return wasDragging;
+            windowManager.updateViewLayout(flutterView, params);
+            cancelTrayAnimation();
+            mTrayTimerTask = new TrayAnimationTimerTask();
+            mTrayAnimationTimer = new Timer();
+            mTrayAnimationTimer.schedule(mTrayTimerTask, 0, 25);
+        }
+        // Consume UP after a drag so Flutter does not fire a tap (it already
+        // received ACTION_CANCEL at drag-start).
+        return wasDragging;
     }
 
     private void cancelTrayAnimation() {

@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'log.dart';
+
 /// In-memory snapshot of the shift counters.
 class ShiftCounters {
   const ShiftCounters({
@@ -100,6 +102,21 @@ class ShiftCounterStore {
   Future<void> _queue = Future<void>.value();
   ShiftCounters _last = const ShiftCounters();
 
+  /// Chains [job] onto the store queue. A thrown job never poisons later
+  /// writes: [_queue] recovers via [Future.catchError] at every link.
+  Future<void> _enqueue(Future<void> Function() job) {
+    final run = _queue.then((_) => job());
+    _queue = run.catchError((Object e, StackTrace s) {
+      loge(
+        'shift counter queue failed',
+        name: 'shift_store',
+        error: e,
+        stack: s,
+      );
+    });
+    return run;
+  }
+
   @visibleForTesting
   static void resetInstanceForTest({File? file}) {
     instance = ShiftCounterStore(file: file);
@@ -115,8 +132,7 @@ class ShiftCounterStore {
   }
 
   Future<ShiftCounters> read() {
-    _queue = _queue.then((_) => _readNow());
-    return _queue.then((_) => _last);
+    return _enqueue(_readNow).then((_) => _last);
   }
 
   Future<void> _readNow() async {
@@ -124,8 +140,7 @@ class ShiftCounterStore {
   }
 
   Future<void> write(ShiftCounters counters) {
-    _queue = _queue.then((_) => _writeNow(counters));
-    return _queue;
+    return _enqueue(() => _writeNow(counters));
   }
 
   /// Overlay writes accepted/rejected/completed without clobbering canceled.
@@ -135,7 +150,7 @@ class ShiftCounterStore {
     int? completed,
     int? canceled,
   }) {
-    _queue = _queue.then((_) async {
+    return _enqueue(() async {
       final current = await _readFile(await _resolve()) ?? const ShiftCounters();
       final next = current.copyWith(
         accepted: accepted,
@@ -144,8 +159,7 @@ class ShiftCounterStore {
         canceled: canceled,
       );
       await _writeNow(next);
-    });
-    return _queue.then((_) => _last);
+    }).then((_) => _last);
   }
 
   Future<void> _writeNow(ShiftCounters counters) async {
@@ -182,8 +196,7 @@ class ShiftCounterStore {
 
   /// One-time move of the four prefs ints onto the dedicated file.
   Future<void> migrateFromPrefs(SharedPreferences prefs) {
-    _queue = _queue.then((_) => _migrateNow(prefs));
-    return _queue;
+    return _enqueue(() => _migrateNow(prefs));
   }
 
   Future<void> _migrateNow(SharedPreferences prefs) async {

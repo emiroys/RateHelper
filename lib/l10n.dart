@@ -42,6 +42,21 @@ class S {
         'Keep screen on',
         'Nie wygaszaj ekranu',
       );
+  static String get overlayPillOrientation => _p(
+        'Baloncuk Yönü',
+        'Bubble direction',
+        'Kierunek dymka',
+      );
+  static String get overlayPillHorizontal => _p(
+        'Yatay',
+        'Horizontal',
+        'Poziomy',
+      );
+  static String get overlayPillVertical => _p(
+        'Dikey',
+        'Vertical',
+        'Pionowy',
+      );
   static String get steeringWheelCounter => _p(
         'Direksiyon Tuşu ile Sayma (Beta)',
         'Steering Wheel Counter (Beta)',

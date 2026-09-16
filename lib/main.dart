@@ -46,6 +46,13 @@ Future<void> main() async {
         break;
       }
     }
+  } else {
+    final deviceLocale = PlatformDispatcher.instance.locale;
+    final initialLang = S.langFromLocale(deviceLocale);
+    S.setLang(initialLang);
+    try {
+      await prefs?.setString('appLanguage', initialLang.name);
+    } catch (_) {}
   }
 
   runApp(RateHelperApp(

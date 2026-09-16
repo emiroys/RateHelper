@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rate_helper/overlay_sync.dart';
+import 'package:rate_helper/overlay_widget.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   test('parses counter payload without requiring a full prefs reload', () {
@@ -24,5 +26,23 @@ void main() {
       ),
       isNull,
     );
+  });
+
+  test('PillOrientation.fromPrefs prefers the named key over the legacy bool',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      PillOrientation.prefsKey: 'horizontal',
+      PillOrientation.legacyBoolKey: true,
+    });
+    final prefs = await SharedPreferences.getInstance();
+    expect(PillOrientation.fromPrefs(prefs), PillOrientation.horizontal);
+  });
+
+  test('PillOrientation.fromPrefs falls back to the legacy bool', () async {
+    SharedPreferences.setMockInitialValues({
+      PillOrientation.legacyBoolKey: true,
+    });
+    final prefs = await SharedPreferences.getInstance();
+    expect(PillOrientation.fromPrefs(prefs), PillOrientation.vertical);
   });
 }

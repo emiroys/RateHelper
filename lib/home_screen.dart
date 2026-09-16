@@ -182,6 +182,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _autoCompleteTrips = false;
   bool _steeringWheelEnabled = false;
   bool _keepScreenOn = false;
+  PillOrientation _pillOrientation = PillOrientation.horizontal;
   TripGoal _selectedGoal = TripGoal.tier1;
 
   int? _prevAccepted;
@@ -730,6 +731,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           setState(() {
             _selectedGoal = loadedGoal;
             _keepScreenOn = prefs.getBool(_keyKeepScreenOn) ?? false;
+            _pillOrientation = PillOrientation.fromPrefs(prefs);
           });
         }
       } else {
@@ -743,6 +745,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _autoCompleteTrips = prefs.getBool(_keyAutoComplete) ?? false;
           _steeringWheelEnabled = prefs.getBool(_keySteeringWheel) ?? false;
           _keepScreenOn = prefs.getBool(_keyKeepScreenOn) ?? false;
+          _pillOrientation = PillOrientation.fromPrefs(prefs);
           _syncBaseline();
         });
         unawaited(
@@ -963,6 +966,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _applyWakelockPolicy();
   }
 
+  Future<void> _setPillOrientation(PillOrientation orientation) async {
+    if (_pillOrientation == orientation) return;
+    setState(() => _pillOrientation = orientation);
+    final prefs = await _getPrefs();
+    await prefs.setString(PillOrientation.prefsKey, orientation.name);
+    if (prefs.containsKey(PillOrientation.legacyBoolKey)) {
+      await prefs.remove(PillOrientation.legacyBoolKey);
+    }
+    if (!_overlayActive || _overlayToggleBusy) return;
+    await _reopenOverlayPreservingPosition();
+  }
+
   Future<void> _showEditCounterDialog({
     required String title,
     required int currentValue,
@@ -1102,6 +1117,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  static const _defaultOverlayStart = OverlayPosition(0, 60);
+
   Future<void> _toggleOverlay() async {
     // Showing/closing the native overlay round-trips through the platform
     // channel and the permission screen; without this guard the button just
@@ -1118,35 +1135,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return;
       }
 
-      final granted = await FlutterOverlayWindow.isPermissionGranted();
-      if (!granted) {
-        await FlutterOverlayWindow.requestPermission();
-        final check = await FlutterOverlayWindow.isPermissionGranted();
-        if (!check) return;
-      }
-      if (!mounted) return;
-
-      // Native window sized to the pill (dp) so touches pass through elsewhere.
-      await FlutterOverlayWindow.showOverlay(
-        width: OverlayWidget.nativeWindowWidthDp,
-        height: OverlayWidget.nativeWindowHeightDp,
-        alignment: OverlayAlignment.topLeft,
-        visibility: NotificationVisibility.visibilitySecret,
-        flag: OverlayFlag.defaultFlag,
-        enableDrag: true,
-        positionGravity: PositionGravity.none,
-        startPosition: const OverlayPosition(0, 60),
-        overlayTitle: 'RateHelper',
-      );
-
-      await OverlaySync.notifyCountersChanged();
-
-      if (!mounted) return;
-      setState(() => _overlayActive = true);
+      await _showOverlayWindow();
     } on PlatformException catch (e, s) {
       loge('overlay toggle failed', name: 'home', error: e, stack: s);
       if (!mounted) return;
-      // Re-derive truth from the plugin instead of guessing:
       unawaited(_refreshOverlayState());
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1154,6 +1146,64 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           backgroundColor: AppColors.card,
         ),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _overlayToggleBusy = false);
+      } else {
+        _overlayToggleBusy = false;
+      }
+    }
+  }
+
+  Future<void> _showOverlayWindow({OverlayPosition? startPosition}) async {
+    final granted = await FlutterOverlayWindow.isPermissionGranted();
+    if (!granted) {
+      await FlutterOverlayWindow.requestPermission();
+      final check = await FlutterOverlayWindow.isPermissionGranted();
+      if (!check) return;
+    }
+    if (!mounted) return;
+
+    // Native window sized to the pill (dp) so touches pass through elsewhere.
+    // resizeOverlay from the main isolate is unreliable — orientation changes
+    // close+reopen with these dimensions instead.
+    await FlutterOverlayWindow.showOverlay(
+      width: OverlayWidget.windowWidthDp(_pillOrientation),
+      height: OverlayWidget.windowHeightDp(_pillOrientation),
+      alignment: OverlayAlignment.topLeft,
+      visibility: NotificationVisibility.visibilitySecret,
+      flag: OverlayFlag.defaultFlag,
+      enableDrag: true,
+      positionGravity: PositionGravity.none,
+      startPosition: startPosition ?? _defaultOverlayStart,
+      overlayTitle: 'RateHelper',
+    );
+
+    await OverlaySync.notifyCountersChanged();
+
+    if (!mounted) return;
+    setState(() => _overlayActive = true);
+  }
+
+  Future<void> _reopenOverlayPreservingPosition() async {
+    if (_overlayToggleBusy) return;
+    setState(() => _overlayToggleBusy = true);
+    OverlayPosition start = _defaultOverlayStart;
+    try {
+      if (await FlutterOverlayWindow.isActive()) {
+        try {
+          start = await FlutterOverlayWindow.getOverlayPosition();
+        } catch (_) {
+          start = _defaultOverlayStart;
+        }
+        await FlutterOverlayWindow.closeOverlay();
+      }
+      if (!mounted) return;
+      await _showOverlayWindow(startPosition: start);
+    } on PlatformException catch (e, s) {
+      loge('overlay reopen failed', name: 'home', error: e, stack: s);
+      if (!mounted) return;
+      unawaited(_refreshOverlayState());
     } finally {
       if (mounted) {
         setState(() => _overlayToggleBusy = false);
@@ -1720,6 +1770,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _buildSteeringWheelSwitch(),
                     const SizedBox(height: 10),
                     _buildKeepScreenOnSwitch(),
+                    const SizedBox(height: 10),
+                    _buildPillOrientationRow(),
 
                     const SizedBox(height: AppSpacing.xl),
                     SizedBox(
@@ -2460,6 +2512,88 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             activeTrackColor: _emerald.withValues(alpha: 0.45),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPillOrientationRow() {
+    return Container(
+      decoration: BoxDecoration(
+        color: _cardColor,
+        border: _cardBorder,
+        borderRadius: _cardRadius,
+      ),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.sm,
+        AppSpacing.sm,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(
+              left: AppSpacing.xs,
+              top: AppSpacing.xs,
+              bottom: AppSpacing.sm,
+            ),
+            child: Text(
+              S.overlayPillOrientation,
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
+                fontSize: AppTextStyles.body,
+                fontWeight: FontWeight.w600,
+                color: AppColors.mutedText,
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: _pillOrientationChip(
+                  PillOrientation.horizontal,
+                  S.overlayPillHorizontal,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: _pillOrientationChip(
+                  PillOrientation.vertical,
+                  S.overlayPillVertical,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pillOrientationChip(PillOrientation value, String label) {
+    final selected = _pillOrientation == value;
+    return Material(
+      color: selected ? _emerald.withValues(alpha: 0.22) : AppColors.inset,
+      borderRadius: AppRadius.smBorder,
+      child: InkWell(
+        onTap: () => unawaited(_setPillOrientation(value)),
+        borderRadius: AppRadius.smBorder,
+        child: SizedBox(
+          height: kMinTouchTarget + 8,
+          child: Center(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: AppFonts.dmSans,
+                fontSize: AppTextStyles.body,
+                fontWeight: FontWeight.w800,
+                color: selected ? _emerald : AppColors.mutedText,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

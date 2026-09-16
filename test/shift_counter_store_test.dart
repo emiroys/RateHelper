@@ -97,4 +97,29 @@ void main() {
     expect(prefs.containsKey(ShiftCounterStore.prefsKeyAccepted), isFalse);
     expect((await store.read()).accepted, 9);
   });
+
+  test('a failed write does not kill subsequent queued writes', () async {
+    await store.write(
+      const ShiftCounters(accepted: 1, rejected: 0, completed: 0, canceled: 0),
+    );
+
+    await file.delete();
+    await Directory(file.path).create();
+    try {
+      await store.write(
+        const ShiftCounters(
+          accepted: 2,
+          rejected: 0,
+          completed: 0,
+          canceled: 0,
+        ),
+      );
+    } catch (_) {}
+    await Directory(file.path).delete(recursive: true);
+
+    await store.write(
+      const ShiftCounters(accepted: 3, rejected: 0, completed: 0, canceled: 0),
+    );
+    expect((await store.read()).accepted, 3);
+  });
 }

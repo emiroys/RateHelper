@@ -141,6 +141,43 @@ void main() {
           expect(find.text(S.keepScreenOn), findsOneWidget);
           expect(tester.takeException(), isNull);
         });
+
+        testWidgets('pill orientation row renders clean — $label',
+            (tester) async {
+          S.setLang(lang);
+          await _pumpAt(
+            tester,
+            size,
+            Scaffold(
+              backgroundColor: Colors.black,
+              body: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  children: [
+                    Text(
+                      S.overlayPillOrientation,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white70,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Expanded(child: Text(S.overlayPillHorizontal)),
+                        Expanded(child: Text(S.overlayPillVertical)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+          expect(find.text(S.overlayPillOrientation), findsOneWidget);
+          expect(find.text(S.overlayPillHorizontal), findsOneWidget);
+          expect(find.text(S.overlayPillVertical), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        });
       }
     }
   });

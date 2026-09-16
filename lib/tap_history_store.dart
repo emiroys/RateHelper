@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'log.dart';
+
 /// Append-only NDJSON log of overlay taps.
 ///
 /// Kept out of SharedPreferences so each tap does not rewrite the ~47 KB
@@ -43,9 +45,21 @@ class TapHistoryStore {
     return '${two(dt.hour)}:${two(dt.minute)}:${two(dt.second)}';
   }
 
+  Future<void> _enqueue(Future<void> Function() job) {
+    final run = _queue.then((_) => job());
+    _queue = run.catchError((Object e, StackTrace s) {
+      loge(
+        'tap history queue failed',
+        name: 'tap_store',
+        error: e,
+        stack: s,
+      );
+    });
+    return run;
+  }
+
   Future<void> append(String type, {DateTime? at}) {
-    _queue = _queue.then((_) => _appendNow(type, at ?? DateTime.now()));
-    return _queue;
+    return _enqueue(() => _appendNow(type, at ?? DateTime.now()));
   }
 
   Future<void> _appendNow(String type, DateTime now) async {
@@ -65,8 +79,7 @@ class TapHistoryStore {
   }
 
   Future<List<Map<String, dynamic>>> readAll() {
-    _queue = _queue.then((_) => _readAllNow());
-    return _queue.then((_) => _lastRead);
+    return _enqueue(_readAllNow).then((_) => _lastRead);
   }
 
   List<Map<String, dynamic>> _lastRead = const [];
@@ -83,8 +96,7 @@ class TapHistoryStore {
   }
 
   Future<void> clear() {
-    _queue = _queue.then((_) => _clearNow());
-    return _queue;
+    return _enqueue(_clearNow);
   }
 
   Future<void> _clearNow() async {
@@ -97,8 +109,7 @@ class TapHistoryStore {
 
   /// One-time move of the old JSON-array prefs blob onto the NDJSON file.
   Future<void> migrateFromPrefs(SharedPreferences prefs) {
-    _queue = _queue.then((_) => _migrateNow(prefs));
-    return _queue;
+    return _enqueue(() => _migrateNow(prefs));
   }
 
   Future<void> _migrateNow(SharedPreferences prefs) async {
