@@ -197,6 +197,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Timer? _saveDebounce;
   Timer? _wakelockIdleTimer;
+
+  /// Set when the user was sent to Settings to switch the accessibility
+  /// service on. The toggle stays off until the service reports active.
+  bool _pendingSteeringWheelEnable = false;
+
   bool _isLoadingOrResetting = false;
   bool _overlayActive = false;
 
@@ -775,7 +780,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     tz.TZDateTime? boundary,
     ShiftCounters? snapshot,
   ]) async {
-    final counts = snapshot ?? await ShiftCounterStore.instance.read();
+    // Settle debounced in-app taps first. Both the archive snapshot and the
+    // zeroing below read from disk, so taps still inside the 300 ms window
+    // would be archived as missing and then wiped with everything else.
+    var counts = snapshot;
+    if (_saveDebounce?.isActive ?? false) {
+      _saveDebounce!.cancel();
+      await _saveDataNow();
+      counts = null; // the caller's snapshot predates the flush
+    }
+    counts ??= await ShiftCounterStore.instance.read();
     final snap = _buildArchiveEntry(counts, boundary);
     if (snap != null) {
       var archive = prefs.getStringList(_keyArchive) ?? [];
@@ -846,38 +860,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _saveDataNow() async {
-    final disk = await ShiftCounterStore.instance.read();
+    // Claim the deltas before awaiting: taps that land while the write is in
+    // flight then accumulate against the fresh baseline instead of being
+    // replayed on the next save.
+    final acceptedDelta = acceptedRequests - _baselineAccepted;
+    final rejectedDelta = rejectedRequests - _baselineRejected;
+    final completedDelta = completedTrips - _baselineCompleted;
+    final canceledDelta = canceledTrips - _baselineCanceled;
+    _syncBaseline();
 
-    final newAccepted = (disk.accepted + (acceptedRequests - _baselineAccepted))
-        .clamp(0, 99999);
-    final newRejected = (disk.rejected + (rejectedRequests - _baselineRejected))
-        .clamp(0, 99999);
-    final newCompleted = (disk.completed + (completedTrips - _baselineCompleted))
-        .clamp(0, 99999);
-    final newCanceled = (disk.canceled + (canceledTrips - _baselineCanceled))
-        .clamp(0, 99999);
+    final saved = await ShiftCounterStore.instance.applyDelta(
+      acceptedDelta: acceptedDelta,
+      rejectedDelta: rejectedDelta,
+      completedDelta: completedDelta,
+      canceledDelta: canceledDelta,
+    );
 
     if (mounted) {
-      acceptedRequests = newAccepted;
-      rejectedRequests = newRejected;
-      completedTrips = newCompleted;
-      canceledTrips = newCanceled;
+      // Fold in anything tapped while the write was running.
+      acceptedRequests =
+          (saved.accepted + (acceptedRequests - _baselineAccepted))
+              .clamp(0, 99999);
+      rejectedRequests =
+          (saved.rejected + (rejectedRequests - _baselineRejected))
+              .clamp(0, 99999);
+      completedTrips =
+          (saved.completed + (completedTrips - _baselineCompleted))
+              .clamp(0, 99999);
+      canceledTrips = (saved.canceled + (canceledTrips - _baselineCanceled))
+          .clamp(0, 99999);
       _syncBaseline();
     }
 
-    await ShiftCounterStore.instance.write(
-      ShiftCounters(
-        accepted: newAccepted.toInt(),
-        rejected: newRejected.toInt(),
-        completed: newCompleted.toInt(),
-        canceled: newCanceled.toInt(),
-      ),
-    );
     unawaited(
       OverlaySync.notifyCountersChanged(
-        accepted: newAccepted,
-        rejected: newRejected,
-        completed: newCompleted,
+        accepted: saved.accepted,
+        rejected: saved.rejected,
+        completed: saved.completed,
       ),
     );
   }
@@ -2548,19 +2567,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// re-runs the permission flow. Left untouched when the check itself fails,
   /// so a channel error never disables a working counter.
   Future<void> _syncSteeringWheelState() async {
-    if (!_steeringWheelEnabled) return;
-    final bool active;
+    if (!_steeringWheelEnabled && !_pendingSteeringWheelEnable) return;
+    final bool? active;
     try {
-      active =
-          await _kSysChannel.invokeMethod<bool>(
-            'isAccessibilityServiceEnabled',
-          ) ??
-          true;
+      active = await _kSysChannel.invokeMethod<bool>(
+        'isAccessibilityServiceEnabled',
+      );
     } on PlatformException catch (e, s) {
       loge('Steering wheel sync failed', name: 'home', error: e, stack: s);
       return;
     }
-    if (active || !mounted) return;
+
+    // The user was sent to Settings to switch the service on. Finish the
+    // toggle for them once it actually reports active; anything less than a
+    // definite `true` means keep waiting.
+    if (_pendingSteeringWheelEnable) {
+      if (active != true || !mounted) return;
+      _pendingSteeringWheelEnable = false;
+      setState(() => _steeringWheelEnabled = true);
+      final prefs = await _getPrefs();
+      await prefs.setBool(_keySteeringWheel, true);
+      return;
+    }
+
+    // Only a definite `false` turns the toggle back off — an unknown result
+    // must not disable a working counter.
+    if (active != false || !mounted) return;
     setState(() => _steeringWheelEnabled = false);
     final prefs = await _getPrefs();
     await prefs.setBool(_keySteeringWheel, false);
@@ -2640,6 +2672,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (open == true) {
             await _kSysChannel.invokeMethod('openAccessibilitySettings');
           }
+          // The service is still off at this point either way: on cancel the
+          // user declined, and on "open settings" the switch is flipped in
+          // another app. Turning the toggle on here would claim the media
+          // keys work when nothing is listening. _pendingSteeringWheelEnable
+          // finishes the job on resume once the service reports active.
+          _pendingSteeringWheelEnable = open == true;
+          return;
         }
       } on PlatformException catch (e, s) {
         loge('Steering wheel check failed', name: 'home', error: e, stack: s);
@@ -2647,6 +2686,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return;
       }
     }
+    _pendingSteeringWheelEnable = false;
     setState(() => _steeringWheelEnabled = enabled);
     final prefs = await _getPrefs();
     await prefs.setBool(_keySteeringWheel, enabled);
@@ -2926,7 +2966,10 @@ class _HistorySheetState extends State<_HistorySheet>
 
   late final TabController _tabController;
   late final List<({Map<String, dynamic> raw, DateTime? local})> _parsedTaps;
-  late List<String> _archive;
+  /// Parsed once here rather than in `_ArchiveCard.build`, which re-decoded
+  /// its JSON on every scroll frame and every sheet rebuild.
+  late List<WeeklyArchiveEntry> _archive;
+  int _lastTabIndex = 0;
   bool _todayOnly = true;
 
   @override
@@ -2943,8 +2986,13 @@ class _HistorySheetState extends State<_HistorySheet>
           ),
         )
         .toList();
-    _archive = List<String>.from(widget.archive);
+    _archive = widget.archive.map(WeeklyArchiveEntry.parse).toList();
+    // TabController is an AnimationController: a bare listener fires on every
+    // frame of a swipe, rebuilding the whole sheet ~60x per tab change. Only
+    // the settled index matters here.
     _tabController.addListener(() {
+      if (_tabController.index == _lastTabIndex) return;
+      _lastTabIndex = _tabController.index;
       setState(() {});
     });
   }
@@ -3322,7 +3370,7 @@ class _HistorySheetState extends State<_HistorySheet>
     return ListView.separated(
       itemCount: _archive.length,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemBuilder: (_, i) => _ArchiveCard(rawEntry: _archive[i]),
+      itemBuilder: (_, i) => _ArchiveCard(entry: _archive[i]),
     );
   }
 }
@@ -3346,17 +3394,15 @@ class _OverflowSafeTab extends StatelessWidget {
 }
 
 class _ArchiveCard extends StatelessWidget {
-  const _ArchiveCard({required this.rawEntry});
+  const _ArchiveCard({required this.entry});
 
   static const _emerald = AppColors.emerald;
   static const _crimson = AppColors.crimson;
 
-  final String rawEntry;
+  final WeeklyArchiveEntry entry;
 
   @override
   Widget build(BuildContext context) {
-    final entry = WeeklyArchiveEntry.parse(rawEntry);
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(

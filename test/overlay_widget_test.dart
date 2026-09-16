@@ -44,10 +44,18 @@ void main() {
       OverlayWidget.windowHeightDp(PillOrientation.vertical),
       OverlayWidget.verticalPillHeightDp.round(),
     );
-    expect(OverlayWidget.verticalPillWidthDp, 76);
+    expect(OverlayWidget.verticalPillWidthDp, 74);
     expect(
       OverlayWidget.verticalPillWidthDp,
-      68 + OverlayWidget.verticalHPadDp * 2,
+      OverlayWidget.btnSizeDp + OverlayWidget.verticalInsetDp * 2,
+    );
+    // Portrait pill hugs its content — no dead space at the stadium caps.
+    expect(
+      OverlayWidget.verticalPillHeightDp,
+      OverlayWidget.btnSizeDp * 2 +
+          OverlayWidget.verticalGapDp * 2 +
+          OverlayWidget.verticalRateSlotDp +
+          OverlayWidget.verticalInsetDp * 2,
     );
     expect(PillOrientation.prefsKey, 'overlay_pill_orientation');
     expect(PillOrientation.fromName('vertical'), PillOrientation.vertical);
@@ -71,7 +79,7 @@ void main() {
     );
   });
 
-  testWidgets('vertical pill is 76x276 with a Column', (tester) async {
+  testWidgets('vertical pill is 74x194 with a Column', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: OverlayWidget(initialOrientation: PillOrientation.vertical),

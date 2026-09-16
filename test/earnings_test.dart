@@ -637,6 +637,106 @@ void main() {
     });
   });
 
+  group('blendedHourlyRate helper', () {
+    WeekEarning wk(double hours, double netIncome) => WeekEarning(
+          id: 'x',
+          weekStart: DateTime(2026, 1, 1),
+          weekEnd: DateTime(2026, 1, 7),
+          driverMode: DriverMode.solo,
+          netIncome: netIncome,
+          cashReceived: 0,
+          onlineHours: hours,
+          tripCount: 100,
+          hasRentalDiscount: true,
+          fuelPumpPaid: 0,
+        );
+
+    test('empty list blends to 0', () {
+      expect(blendedHourlyRate(const []), 0);
+    });
+
+    test('is total profit over total hours, not the mean of weekly rates', () {
+      final short = wk(10, 2000);
+      final long = wk(40, 1000);
+      final weeks = [short, long];
+
+      final expected =
+          (short.netProfit + long.netProfit) / (short.onlineHours + long.onlineHours);
+      expect(blendedHourlyRate(weeks), closeTo(expected, 0.0001));
+
+      // The unweighted mean lets the short week dominate; the two must not
+      // agree, otherwise this test is not proving anything.
+      expect(
+        (blendedHourlyRate(weeks) - averageHourlyRate(weeks)).abs(),
+        greaterThan(1.0),
+      );
+    });
+
+    test('matches the monthly summary rate for the same weeks', () {
+      final weeks = [wk(10, 2000), wk(40, 1000)];
+      final month = aggregateByMonth(weeks).single;
+      expect(blendedHourlyRate(weeks), closeTo(month.avgHourlyRate, 0.0001));
+    });
+
+    test('skips weeks with no online hours', () {
+      final worked = wk(10, 1000);
+      expect(
+        blendedHourlyRate([worked, wk(0, 500)]),
+        closeTo(blendedHourlyRate([worked]), 0.0001),
+      );
+    });
+  });
+
+  group('unreported (fuel-only placeholder) weeks', () {
+    WeekEarning fuelOnlyWeek({double fuelPumpPaid = 200}) => WeekEarning(
+          id: 'stub',
+          weekStart: DateTime(2026, 1, 5),
+          weekEnd: DateTime(2026, 1, 11),
+          driverMode: DriverMode.solo,
+          netIncome: 0,
+          cashReceived: 0,
+          onlineHours: 0,
+          driverTripCount: 0,
+          hasRentalDiscount: true,
+          fuelPumpPaid: fuelPumpPaid,
+        );
+
+    test('a week with no income, hours or trips is unreported', () {
+      expect(fuelOnlyWeek().isUnreported, isTrue);
+      expect(buildWeek().isUnreported, isFalse);
+    });
+
+    test('charges no rental until the week has activity', () {
+      expect(fuelOnlyWeek().rentalFee, 0);
+      expect(fuelOnlyWeek().totalCarRentalFee, 0);
+      // 0 trips would otherwise land in the 900 PLN bracket.
+      expect(buildWeek(tripCount: 0).rentalFee, 900);
+    });
+
+    test('net profit is the discounted fuel only, not a ~900 PLN loss', () {
+      final week = fuelOnlyWeek(fuelPumpPaid: 200);
+      expect(week.fuelAfterDiscount, 180);
+      expect(week.netProfit, -180);
+    });
+
+    test('does not drag the monthly total down by a full rental', () {
+      final month = aggregateByMonth([fuelOnlyWeek()]).single;
+      expect(month.totalNetProfit, -180);
+      expect(month.totalOnlineHours, 0);
+      expect(month.avgHourlyRate, 0);
+    });
+
+    test('rental resumes as soon as any figure is entered', () {
+      final completed = fuelOnlyWeek().copyWith(
+        netIncome: 5000,
+        onlineHours: 40,
+        driverTripCount: 130,
+      );
+      expect(completed.isUnreported, isFalse);
+      expect(completed.rentalFee, 700);
+    });
+  });
+
   group('aggregation + records', () {
     // Aggregation asserts compare against the model's own netProfit, so they stay self-consistent.
     WeekEarning aggWeek({

@@ -58,6 +58,43 @@ void main() {
     expect((await store.read()).canceled, 4);
   });
 
+  test('applyDelta adds signed deltas to what is on disk', () async {
+    await store.write(
+      const ShiftCounters(accepted: 10, rejected: 2, completed: 7, canceled: 4),
+    );
+
+    final next = await store.applyDelta(
+      acceptedDelta: 3,
+      rejectedDelta: -1,
+      canceledDelta: 1,
+    );
+
+    expect(next.accepted, 13);
+    expect(next.rejected, 1);
+    expect(next.completed, 7);
+    expect(next.canceled, 5);
+    expect(await store.read(), next);
+  });
+
+  test('applyDelta clamps at zero and at the cap', () async {
+    await store.write(const ShiftCounters(accepted: 2));
+
+    expect((await store.applyDelta(acceptedDelta: -10)).accepted, 0);
+    expect((await store.applyDelta(acceptedDelta: 5, max: 3)).accepted, 3);
+  });
+
+  test('concurrent applyDelta calls do not lose increments', () async {
+    await store.write(const ShiftCounters());
+
+    // Interleaved read-modify-write is exactly the overlay-vs-home race:
+    // each call must see the previous one's result, never a stale snapshot.
+    await Future.wait([
+      for (var i = 0; i < 20; i++) store.applyDelta(acceptedDelta: 1),
+    ]);
+
+    expect((await store.read()).accepted, 20);
+  });
+
   test('migrates legacy prefs ints then removes the keys', () async {
     SharedPreferences.setMockInitialValues({
       ShiftCounterStore.prefsKeyAccepted: 20,

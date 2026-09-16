@@ -150,6 +150,10 @@ double calculateBreakEven({required double fixedCosts}) {
 
 /// Average hourly rate across [weeks], skipping weeks with no online time.
 /// Returns `0` when there is nothing to average.
+///
+/// This is the unweighted mean of each week's rate — every week counts the
+/// same regardless of how long it was. Use [blendedHourlyRate] for "what did
+/// I actually earn per hour worked".
 double averageHourlyRate(Iterable<WeekEarning> weeks) {
   var sum = 0.0;
   var count = 0;
@@ -160,6 +164,25 @@ double averageHourlyRate(Iterable<WeekEarning> weeks) {
     }
   }
   return count > 0 ? sum / count : 0;
+}
+
+/// Real earnings per hour worked across [weeks]: total profit over total
+/// hours. This is the same formula [MonthSummary.avgHourlyRate] and
+/// [YearSummary.avgHourlyRate] use, so every "average PLN/h" in the app
+/// agrees. Returns `0` when no online time is recorded.
+///
+/// Differs from [averageHourlyRate] whenever week lengths vary: a 10 h week
+/// at 50 PLN/h and a 40 h week at 1,25 PLN/h average to 25,63 PLN/h
+/// unweighted, but the driver really made 11,00 PLN/h over those 50 hours.
+double blendedHourlyRate(Iterable<WeekEarning> weeks) {
+  var profit = 0.0;
+  var hours = 0.0;
+  for (final w in weeks) {
+    if (w.onlineHours <= 0) continue;
+    profit += w.netProfit;
+    hours += w.onlineHours;
+  }
+  return hours > 0 ? profit / hours : 0;
 }
 
 /// Aggregated earnings for a single calendar month.
@@ -442,15 +465,34 @@ class WeekEarning {
   /// whole cents.
   double get fuelAfterDiscount => computeFuelAfterDiscount(fuelPumpPaidTotal);
 
-  /// Rental deduction (PLN).
-  double get rentalFee => hasRentalDiscount
-      ? expectedRentalFee(carTripCount, driverMode)
-      : (driverMode == DriverMode.paired ? 450.0 : 900.0);
+  /// True when the week carries no reported activity at all — no income, no
+  /// online time, no trips.
+  ///
+  /// The entry form refuses to save a week like this (zero is never a real
+  /// value for those fields), so the only way one exists is the quick-add
+  /// fuel placeholder: a receipt logged mid-week before Uber's figures are
+  /// known. Charging a full week's rental against it would report a ~900 PLN
+  /// loss for a week the driver has not finished, and drag the monthly and
+  /// yearly totals down with it.
+  bool get isUnreported =>
+      netIncome == 0 && onlineHours == 0 && driverTripCount == 0;
+
+  /// Rental deduction (PLN). Zero until the week has any reported activity —
+  /// see [isUnreported].
+  double get rentalFee {
+    if (isUnreported) return 0;
+    return hasRentalDiscount
+        ? expectedRentalFee(carTripCount, driverMode)
+        : (driverMode == DriverMode.paired ? 450.0 : 900.0);
+  }
 
   /// Total car rental fee (PLN) across both drivers if paired, or solo fee if solo.
-  double get totalCarRentalFee => hasRentalDiscount
-      ? expectedRentalTier(carTripCount, driverMode).totalCarFee
-      : 900.0;
+  double get totalCarRentalFee {
+    if (isUnreported) return 0;
+    return hasRentalDiscount
+        ? expectedRentalTier(carTripCount, driverMode).totalCarFee
+        : 900.0;
+  }
 
   WeekEarning copyWith({
     DateTime? weekStart,

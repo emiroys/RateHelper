@@ -19,12 +19,26 @@ class TapHistoryStore {
   static TapHistoryStore instance = TapHistoryStore();
 
   static const int maxEntries = 500;
+
+  /// How far past [maxEntries] the file is allowed to grow before a rewrite.
+  /// Compaction reads + re-encodes every line, so trimming on the exact
+  /// boundary would pay that cost on every tap once the log is full. The
+  /// slack amortizes it to one rewrite per [_compactSlack] taps; readers
+  /// still never see more than [maxEntries] because [_readAllNow] trims.
+  static const int _compactSlack = 100;
+
   static const String prefsKey = 'tapHistory';
   static const String fileName = 'tap_history.jsonl';
 
   final File? _fileOverride;
   File? _file;
   Future<void> _queue = Future<void>.value();
+
+  /// Cached line count so the tap hot path never parses the whole file.
+  /// `null` means "not known yet" — resolved once, then kept in sync by
+  /// append/compact/clear. Drift is self-correcting: every full parse
+  /// rewrites it, and a stale value only shifts when compaction runs.
+  int? _entryCount;
 
   @visibleForTesting
   static void resetInstanceForTest({File? file}) {
@@ -75,6 +89,9 @@ class TapHistoryStore {
       mode: FileMode.append,
       flush: false,
     );
+
+    final known = _entryCount;
+    _entryCount = known != null ? known + 1 : (await _parseFile(file)).length;
     await _compactIfNeeded(file);
   }
 
@@ -86,7 +103,13 @@ class TapHistoryStore {
 
   Future<void> _readAllNow() async {
     final file = await _resolve();
-    _lastRead = await _parseFile(file);
+    final all = await _parseFile(file);
+    _entryCount = all.length;
+    // The file may carry up to [_compactSlack] extra lines between
+    // compactions; readers always see the capped window.
+    _lastRead = all.length > maxEntries
+        ? all.sublist(all.length - maxEntries)
+        : all;
   }
 
   /// Newest first — same order the history sheet expects.
@@ -104,6 +127,7 @@ class TapHistoryStore {
     try {
       if (await file.exists()) await file.writeAsString('');
     } catch (_) {}
+    _entryCount = 0;
     _lastRead = const [];
   }
 
@@ -161,8 +185,12 @@ class TapHistoryStore {
   }
 
   Future<void> _compactIfNeeded(File file) async {
+    if ((_entryCount ?? 0) <= maxEntries + _compactSlack) return;
     final entries = await _parseFile(file);
-    if (entries.length <= maxEntries) return;
+    if (entries.length <= maxEntries) {
+      _entryCount = entries.length;
+      return;
+    }
     await _writeAll(file, entries.sublist(entries.length - maxEntries));
   }
 
@@ -172,5 +200,6 @@ class TapHistoryStore {
       buf.writeln(jsonEncode(e));
     }
     await file.writeAsString(buf.toString());
+    _entryCount = entries.length;
   }
 }

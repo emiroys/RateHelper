@@ -46,12 +46,20 @@ class OverlayWidget extends StatefulWidget {
   static const double pillWidthDp = 276;
   static const double pillHeightDp = 80;
 
-  /// Portrait pill width: 68dp button + 4dp inset on each side. Not a
-  /// naive swap of [pillHeightDp] — that left empty window beside the
-  /// stadium. Height stays the swapped 276 so the stacked buttons fit.
-  static const double verticalHPadDp = 4;
-  static const double verticalPillWidthDp = 76;
-  static const double verticalPillHeightDp = pillWidthDp;
+  static const double btnSizeDp = 68;
+
+  /// Portrait pill hugs its content: a uniform [verticalInsetDp] ring on all
+  /// four sides, so the stadium caps stay concentric with the round buttons
+  /// instead of leaving dead space at the ends.
+  static const double verticalInsetDp = 3;
+  static const double verticalGapDp = 8;
+  static const double verticalRateSlotDp = 36;
+  static const double verticalPillWidthDp = btnSizeDp + verticalInsetDp * 2;
+  static const double verticalPillHeightDp =
+      btnSizeDp * 2 +
+      verticalGapDp * 2 +
+      verticalRateSlotDp +
+      verticalInsetDp * 2;
 
   static const int nativeWindowWidthDp = 276;
   static const int nativeWindowHeightDp = 80;
@@ -83,10 +91,9 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   static const _pillBorder = AppColors.strongBorder;
 
   static const double _centerTextWidthDp = 100;
-  static const double _btnSizeDp = 68;
+  static const double _btnSizeDp = OverlayWidget.btnSizeDp;
   static const double _btnTextGapDp = 12;
-  static const double _verticalCenterTextWidthDp =
-      OverlayWidget.verticalPillWidthDp - OverlayWidget.verticalHPadDp * 2;
+  static const double _verticalCenterTextWidthDp = OverlayWidget.btnSizeDp;
 
   SharedPreferences? _prefs;
   StreamSubscription<dynamic>? _syncSub;
@@ -398,16 +405,17 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       ),
       SizedBox(
         width: vertical ? 0 : _btnTextGapDp,
-        height: vertical ? _btnTextGapDp : 0,
+        height: vertical ? OverlayWidget.verticalGapDp : 0,
       ),
       _AcceptRateDisplay(
         text: _formatAcceptRate(_acceptanceRate),
         color: _acceptRateColor,
         width: vertical ? _verticalCenterTextWidthDp : _centerTextWidthDp,
+        height: vertical ? OverlayWidget.verticalRateSlotDp : null,
       ),
       SizedBox(
         width: vertical ? 0 : _btnTextGapDp,
-        height: vertical ? _btnTextGapDp : 0,
+        height: vertical ? OverlayWidget.verticalGapDp : 0,
       ),
       _CircleBtn(
         size: _btnSizeDp,
@@ -441,10 +449,7 @@ class _OverlayWidgetState extends State<OverlayWidget> {
               height: height,
               child: Padding(
                 padding: vertical
-                    ? const EdgeInsets.symmetric(
-                        horizontal: OverlayWidget.verticalHPadDp,
-                        vertical: AppSpacing.sm,
-                      )
+                    ? const EdgeInsets.all(OverlayWidget.verticalInsetDp)
                     : const EdgeInsets.symmetric(
                         horizontal: AppSpacing.sm,
                         vertical: 6,
@@ -519,17 +524,20 @@ class _AcceptRateDisplay extends StatelessWidget {
     required this.text,
     required this.color,
     required this.width,
+    this.height,
   });
 
   final String text;
   final Color color;
   final double width;
+  final double? height;
 
   @override
   Widget build(BuildContext context) {
     return RepaintBoundary(
       child: SizedBox(
         width: width,
+        height: height,
         child: Align(
           alignment: Alignment.center,
           child: FittedBox(

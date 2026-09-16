@@ -439,7 +439,8 @@ class _EarningsScreenState extends State<EarningsScreen> {
   /// persisted SharedPreferences odometer and updated only on new/edited saves.
   void _setEntries(List<WeekEarning> entries) {
     _entries = entries;
-    _rowKeys.removeWhere((id, _) => !entries.any((e) => e.id == id));
+    final liveIds = {for (final e in entries) e.id};
+    _rowKeys.removeWhere((id, _) => !liveIds.contains(id));
     _months = aggregateByMonth(entries);
     _years = aggregateByYear(entries);
     _trend = _computeTrendWeeks(entries);
@@ -1637,9 +1638,12 @@ class _EarningsScreenState extends State<EarningsScreen> {
     if (all.isEmpty) return [_emptyStateSliver()];
 
     final recent = all.length > 12 ? all.sublist(all.length - 12) : all;
+    // Search the full history, not just the charted window: the yearly view
+    // drills down into any month of that year, and a month older than the
+    // last 12 would otherwise silently fall back to the newest one.
     var selected = recent.last;
     if (_selectedMonth != null) {
-      for (final m in recent) {
+      for (final m in all) {
         if (m.month.year == _selectedMonth!.year &&
             m.month.month == _selectedMonth!.month) {
           selected = m;
@@ -2222,8 +2226,11 @@ class _TrendChart extends StatelessWidget {
     final prev4 = n > 4
         ? weeks.sublist(math.max(0, n - 8), n - 4)
         : <WeekEarning>[];
-    final last4Avg = averageHourlyRate(last4);
-    final prev4Avg = averageHourlyRate(prev4);
+    // Blended (profit/hours), matching the monthly and yearly cards. An
+    // unweighted mean of weekly rates let a short high-rate week outweigh a
+    // long low-rate one and overstated the headline figure.
+    final last4Avg = blendedHourlyRate(last4);
+    final prev4Avg = blendedHourlyRate(prev4);
     final hasTrend = prev4.isNotEmpty && prev4Avg > 0;
     final up = last4Avg >= prev4Avg;
 

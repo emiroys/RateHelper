@@ -143,6 +143,28 @@ class ShiftCounterStore {
     return _enqueue(() => _writeNow(counters));
   }
 
+  /// Adds signed deltas to whatever is currently on disk, as a single queued
+  /// read-modify-write. Home must not do `read()` then `write()`: those are
+  /// two separate queue jobs, and an overlay [merge] landing in the gap would
+  /// be computed away by the stale snapshot, silently losing a tap.
+  Future<ShiftCounters> applyDelta({
+    int acceptedDelta = 0,
+    int rejectedDelta = 0,
+    int completedDelta = 0,
+    int canceledDelta = 0,
+    int max = 99999,
+  }) {
+    return _enqueue(() async {
+      final current = await _readFile(await _resolve()) ?? const ShiftCounters();
+      await _writeNow(ShiftCounters(
+        accepted: (current.accepted + acceptedDelta).clamp(0, max),
+        rejected: (current.rejected + rejectedDelta).clamp(0, max),
+        completed: (current.completed + completedDelta).clamp(0, max),
+        canceled: (current.canceled + canceledDelta).clamp(0, max),
+      ));
+    }).then((_) => _last);
+  }
+
   /// Overlay writes accepted/rejected/completed without clobbering canceled.
   Future<ShiftCounters> merge({
     int? accepted,
@@ -167,18 +189,23 @@ class ShiftCounterStore {
     await file.parent.create(recursive: true);
     final tmp = File('${file.path}.tmp');
     await tmp.writeAsString(counters.encode(), flush: false);
-    if (await file.exists()) {
-      try {
-        await file.delete();
-      } catch (_) {}
-    }
+    // rename(2) replaces the target atomically on Android, so the counters
+    // file is never absent. Deleting first would open a window where a
+    // process kill (Samsung battery manager is aggressive here) leaves no
+    // file at all and the whole shift reads back as zero.
     try {
       await tmp.rename(file.path);
     } catch (_) {
-      await file.writeAsString(counters.encode(), flush: false);
+      // Windows (test host) refuses rename onto an existing file.
       try {
-        await tmp.delete();
-      } catch (_) {}
+        if (await file.exists()) await file.delete();
+        await tmp.rename(file.path);
+      } catch (_) {
+        await file.writeAsString(counters.encode(), flush: false);
+        try {
+          await tmp.delete();
+        } catch (_) {}
+      }
     }
     _last = counters;
   }
