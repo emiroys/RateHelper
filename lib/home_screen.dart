@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -11,7 +10,6 @@ import 'package:rate_helper/fonts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
-import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'app_colors.dart';
@@ -28,10 +26,12 @@ import 'log.dart';
 import 'onboarding_screen.dart';
 import 'overlay_sync.dart';
 import 'services/event_service.dart';
+import 'services/update_service.dart';
 import 'overlay_widget.dart';
 import 'radar_screen.dart';
 import 'shift_counter_store.dart';
 import 'tap_history_store.dart';
+import 'update_dialog.dart';
 
 enum TripGoal {
   tier0(soloMinTrips: 0, pairedMinTrips: 0, requiredAcceptRate: null),
@@ -115,21 +115,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _keyArchive = 'weekly_archive';
   static const _keyLang = 'appLanguage';
 
-  /// Asset name on GitHub Releases must match this exactly (case-sensitive).
-  static const _expectedApkAsset = 'app-arm64-v8a-release.apk';
-
-  /// Only this host is reachable through the hardened HttpClient. A
-  /// compromised DNS / hostile WiFi / hijacked Gist URL cannot redirect
-  /// us elsewhere because we re-validate the host on every request and
-  /// refuse to follow redirects.
-  static const _allowedManifestHost = 'gist.githubusercontent.com';
-
-  /// Only APK URLs starting with this prefix are passed to the OS
-  /// browser. A compromised Gist that swaps `apk_url` for a malicious
-  /// site is silently ignored — the user never sees a download prompt.
-  static const _allowedApkUrlPrefix =
-      'https://github.com/emiroys/ratehelper/releases/';
-
   static tz.Location get _warsaw {
     try {
       return tz.getLocation('Europe/Warsaw');
@@ -152,6 +137,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   SharedPreferences? _prefs;
   AppLang _currentLang = AppLang.tr;
+
+  /// Read from the installed APK, so the footer badge and the update check can
+  /// never disagree about which build is running.
+  String? _appVersion;
   final _accepted = ValueNotifier<int>(0);
   final _rejected = ValueNotifier<int>(0);
   final _completed = ValueNotifier<int>(0);
@@ -299,9 +288,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!trusted) return;
     }
     if (mounted) {
-      setState(() => _currentLang = lang);
+      setState(() {
+        _currentLang = lang;
+        _appVersion = info.version;
+      });
     }
-    unawaited(_checkForUpdate(info.version));
+    unawaited(_checkForUpdate());
     await _loadAndCheckReset();
     // A cold start never fires a lifecycle resume, so this is the only place
     // steering-wheel taps taken while the app was closed reach the counters.
@@ -370,137 +362,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return false;
   }
 
-  /// Parses semver `major.minor.patch` numerically — never string-compare.
-  List<int> _parseVersionParts(String version) {
-    var core = version.trim();
-    if (core.startsWith('v') || core.startsWith('V')) {
-      core = core.substring(1).trim();
-    }
-    core = core.split('+').first.split('-').first.trim();
-    final parts = <int>[];
-    for (final segment in core.split('.')) {
-      final parsed = int.tryParse(segment.trim());
-      if (parsed == null) break;
-      parts.add(parsed);
-    }
-    while (parts.length < 3) {
-      parts.add(0);
-    }
-    return parts.take(3).toList();
-  }
-
-  /// True only when [latest] is strictly greater than [current] (numeric semver).
-  bool _isNewerVersion(String latest, String current) {
-    final latestParts = _parseVersionParts(latest);
-    final currentParts = _parseVersionParts(current);
-
-    for (var i = 0; i < 3; i++) {
-      if (latestParts[i] > currentParts[i]) return true;
-      if (latestParts[i] < currentParts[i]) return false;
-    }
-    return false;
-  }
-
-  bool _isValidApkUrl(String apkUrl) {
-    if (!apkUrl.startsWith(_allowedApkUrlPrefix)) return false;
-    if (!apkUrl.endsWith('/$_expectedApkAsset')) return false;
-    final uri = Uri.tryParse(apkUrl);
-    if (uri == null || uri.scheme != 'https' || uri.host != 'github.com') {
-      return false;
-    }
-    return uri.pathSegments.contains('latest') &&
-        uri.pathSegments.contains('download');
-  }
-
-  Future<Map<String, String>?> _fetchUpdateManifest() async {
-    // Pre-flight host check. Even if the constant is ever edited to a
-    // hostile URL, this re-derivation rejects anything outside the
-    // single approved host.
-    final manifestUri = Uri.tryParse(Env.gistUrl);
-    if (manifestUri == null ||
-        manifestUri.scheme != 'https' ||
-        manifestUri.host != _allowedManifestHost) {
-      return null;
-    }
-
-    final client = HttpClient();
-    try {
-      client.connectionTimeout = const Duration(seconds: 8);
-      // No automatic redirect-following. A compromised Gist that
-      // 30x-redirects us to attacker.example would bypass the host
-      // allowlist if we let HttpClient chase the Location header.
-      client.autoUncompress = true;
-
-      final request = await client
-          .getUrl(manifestUri)
-          .timeout(const Duration(seconds: 8));
-      request.followRedirects = false;
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final response = await request.close().timeout(
-        const Duration(seconds: 10),
-      );
-      if (response.statusCode != HttpStatus.ok) return null;
-
-      final body = await response
-          .transform(utf8.decoder)
-          .join()
-          .timeout(const Duration(seconds: 10));
-      final decoded = jsonDecode(body);
-      if (decoded is! Map) return null;
-
-      final latest = decoded['latest']?.toString().trim();
-      final apkUrl = decoded['apk_url']?.toString().trim();
-      if (latest == null ||
-          latest.isEmpty ||
-          apkUrl == null ||
-          apkUrl.isEmpty) {
-        return null;
-      }
-      return {'latest': latest, 'apk_url': apkUrl};
-    } catch (_) {
-      return null;
-    } finally {
-      client.close(force: true);
-    }
-  }
-
-  Future<void> _openApkUrl(String url) async {
-    // Belt-and-braces: re-verify the allowlist at the final hand-off
-    // to the OS browser. If a caller ever forgets the upstream check,
-    // we still refuse to dispatch unknown URLs.
-    if (!url.startsWith(_allowedApkUrlPrefix)) return;
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    if (uri.scheme != 'https' || uri.host != 'github.com') return;
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      // Silent — same policy as the manifest fetch.
-    }
-  }
-
-  Future<void> _checkForUpdate(String currentVersion) async {
-    final manifest = await _fetchUpdateManifest();
-    if (!mounted || manifest == null) return;
-
-    final latest = manifest['latest']!;
-    final apkUrl = manifest['apk_url']!;
-
-    if (!_isValidApkUrl(apkUrl)) return;
-    if (!_isNewerVersion(latest, currentVersion)) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(S.updateAvailable(latest)),
-        duration: const Duration(seconds: 10),
-        backgroundColor: AppColors.card,
-        action: SnackBarAction(
-          label: S.updateDownload,
-          textColor: _emerald,
-          onPressed: () => unawaited(_openApkUrl(apkUrl)),
-        ),
-      ),
-    );
+  /// Startup check: never blocks boot, never reports failures. An offline
+  /// driver just sees nothing, and the 12-hour cooldown plus per-version skip
+  /// live in [UpdateService.checkOnStartup].
+  Future<void> _checkForUpdate() async {
+    final result =
+        await UpdateService.instance.checkOnStartup(languageCode: S.lang.name);
+    if (!mounted || result.status != UpdateStatus.available) return;
+    await showUpdatePrompt(context, result);
   }
 
   @override
@@ -1805,6 +1674,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       key: ValueKey('footer-$_currentLang'),
                       child: Column(
                         children: [
+                          UpdateCheckTile(versionLabel: _appVersion),
+                          const SizedBox(height: 20),
                           Center(child: _buildDesignerSignature()),
                           const SizedBox(height: 12),
                           Center(child: _buildReleaseInfoRow()),
@@ -2092,91 +1963,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _buildDesignerSignature() {
     const gold = _designerGold;
-    const goldHi = Color(0xFFF8E7A0);
-    const goldLo = Color(0xFF8C6A14);
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(22, 12, 22, 11),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
         borderRadius: BorderRadius.circular(AppRadius.pill),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            const Color(0xFF221C10),
-            gold.withValues(alpha: 0.14),
-            const Color(0xFF100E0A),
-          ],
-          stops: const [0.0, 0.45, 1.0],
-        ),
-        border: Border.all(color: gold.withValues(alpha: 0.62), width: 1.25),
-        boxShadow: [
-          BoxShadow(
-            color: gold.withValues(alpha: 0.28),
-            blurRadius: 18,
-          ),
-          BoxShadow(
-            color: gold.withValues(alpha: 0.12),
-            blurRadius: 32,
-            spreadRadius: 1,
-          ),
-        ],
+        border: Border.all(color: gold.withValues(alpha: 0.22), width: 1),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _signatureJewel(),
-              const SizedBox(width: 12),
-              ShaderMask(
-                blendMode: BlendMode.srcIn,
-                shaderCallback: (bounds) => const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [goldHi, gold, goldHi, goldLo],
-                  stops: [0.0, 0.38, 0.68, 1.0],
-                ).createShader(bounds),
-                child: const Text(
-                  'KK4181R',
-                  style: TextStyle(
-                    fontFamily: AppFonts.jetBrainsMono,
-                    fontSize: 16,
-                    letterSpacing: 4.2,
-                    fontWeight: FontWeight.w700,
-                    height: 1.05,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              _signatureJewel(),
-            ],
-          ),
-          const SizedBox(height: 7),
-          Container(
-            width: 42,
-            height: 1.2,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppRadius.pill),
-              gradient: LinearGradient(
-                colors: [
-                  gold.withValues(alpha: 0),
-                  goldHi.withValues(alpha: 0.95),
-                  gold.withValues(alpha: 0),
-                ],
-              ),
+          Text(
+            'KK4181R',
+            style: TextStyle(
+              fontFamily: AppFonts.jetBrainsMono,
+              fontSize: 12,
+              letterSpacing: 3.0,
+              fontWeight: FontWeight.w600,
+              color: gold.withValues(alpha: 0.82),
+              height: 1.2,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
+          Container(
+            width: 28,
+            height: 1,
+            color: gold.withValues(alpha: 0.18),
+          ),
+          const SizedBox(height: 5),
           Text(
             S.designer.toUpperCase(),
             style: TextStyle(
               fontFamily: AppFonts.dmSans,
-              fontSize: 9,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 3.4,
-              color: goldHi.withValues(alpha: 0.78),
+              fontSize: 8,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 2.2,
+              color: gold.withValues(alpha: 0.45),
               height: 1,
             ),
           ),
@@ -2185,34 +2008,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _signatureJewel() {
-    return Transform.rotate(
-      angle: math.pi / 4,
-      child: Container(
-        width: 7,
-        height: 7,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFF8E7A0), _designerGold, Color(0xFF8C6A14)],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: _designerGold.withValues(alpha: 0.8),
-              blurRadius: 8,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildReleaseInfoRow() {
-    return const Text(
-      'RateHelper v5',
+    final version = _appVersion;
+    return Text(
+      version == null ? 'RateHelper' : 'RateHelper v$version',
       textAlign: TextAlign.center,
-      style: TextStyle(
+      style: const TextStyle(
         fontFamily: AppFonts.dmSans,
         fontSize: 12,
         color: Colors.white38,

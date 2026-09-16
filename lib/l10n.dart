@@ -671,6 +671,64 @@ class S {
         'Dostępna nowa wersja: $latest',
       );
   static String get updateDownload => _p('İndir', 'Download', 'Pobierz');
+  static String get updateCheckAction => _p(
+        'Güncellemeleri Denetle',
+        'Check for Updates',
+        'Sprawdź aktualizacje',
+      );
+  static String get updateChecking => _p(
+        'Denetleniyor…',
+        'Checking…',
+        'Sprawdzanie…',
+      );
+  static String get updateUpToDate => _p(
+        'En güncel sürümü kullanıyorsunuz',
+        'You are on the latest version',
+        'Masz najnowszą wersję',
+      );
+  static String get updateUnreachable => _p(
+        'Güncelleme sunucusuna ulaşılamadı',
+        'Could not reach the update server',
+        'Nie udało się połączyć z serwerem aktualizacji',
+      );
+  static String get updateDisabled => _p(
+        'Güncelleme denetimi bu derlemede kapalı',
+        'Update checks are disabled in this build',
+        'Sprawdzanie aktualizacji jest wyłączone',
+      );
+  static String get updateLaunchFailed => _p(
+        'İndirme başlatılamadı',
+        'Could not start the download',
+        'Nie udało się rozpocząć pobierania',
+      );
+  static String get updateAvailableTitle => _p(
+        'Yeni Sürüm Hazır',
+        'New Version Ready',
+        'Nowa wersja gotowa',
+      );
+  static String get updateMandatoryTitle => _p(
+        'Zorunlu Güncelleme',
+        'Required Update',
+        'Wymagana aktualizacja',
+      );
+  static String get updateNow => _p(
+        'Şimdi Güncelle',
+        'Update Now',
+        'Aktualizuj teraz',
+      );
+  static String get updateLater => _p('Daha Sonra', 'Later', 'Później');
+  static String get updateSkipVersion => _p(
+        'Bu sürümü atla',
+        'Skip this version',
+        'Pomiń tę wersję',
+      );
+  static String get updateBrowserHint => _p(
+        'İndirme tarayıcıda başlar. Bittiğinde dosyaya dokunup kurulumu onaylayın.',
+        'The download starts in your browser. Tap the file when it finishes and confirm the install.',
+        'Pobieranie rozpocznie się w przeglądarce. Po zakończeniu dotknij pliku i potwierdź instalację.',
+      );
+  static String get updateInstalledLabel => _p('Yüklü', 'Installed', 'Zainstalowana');
+  static String get updateLatestLabel => _p('Yeni', 'Latest', 'Najnowsza');
 
   static String get add => _p('Ekle', 'Add', 'Dodaj');
   static String get quickAddFuel => _p('Yakıt Ekle', 'Add Fuel', 'Dodaj paliwo');
