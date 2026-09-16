@@ -58,9 +58,6 @@ enum TripGoal {
 const double AMBER_BUFFER = 2.0;
 const double kAmberBuffer = AMBER_BUFFER;
 
-const String kReleaseName =
-    "2. Büyük Güncelleme"; // update manually each significant release
-
 int? calculateNeededForRecovery({
   required int acceptedRequests,
   required int rejectedRequests,
@@ -155,10 +152,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   SharedPreferences? _prefs;
   AppLang _currentLang = AppLang.tr;
-  String _versionLabel = '';
-  bool _showRawVersion = false;
-  String? _debugBuildSignature;
-
   final _accepted = ValueNotifier<int>(0);
   final _rejected = ValueNotifier<int>(0);
   final _completed = ValueNotifier<int>(0);
@@ -296,32 +289,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     S.setLang(lang);
 
     final info = await infoFuture;
-    _getActualSignature(info.buildSignature);
     if (kReleaseMode) {
       final trusted = await _verifySignature(info.buildSignature);
       if (!trusted) return;
     }
     if (mounted) {
-      setState(() {
-        _currentLang = lang;
-        _versionLabel = 'v${info.version}+${info.buildNumber}';
-      });
+      setState(() => _currentLang = lang);
     }
     unawaited(_checkForUpdate(info.version));
-    _loadAndCheckReset();
+    await _loadAndCheckReset();
+    // A cold start never fires a lifecycle resume, so this is the only place
+    // steering-wheel taps taken while the app was closed reach the counters.
+    unawaited(_drainPendingTaps());
+    unawaited(_syncSteeringWheelState());
     unawaited(_refreshOverlayState());
   }
 
   String _normalizeSignature(String sig) =>
       sig.replaceAll(':', '').replaceAll(' ', '').toUpperCase();
-
-  /// Debug only: surfaces [buildSignature] on screen so it can be copied into `.env`.
-  /// No-op in release builds.
-  void _getActualSignature(String buildSignature) {
-    if (kReleaseMode) return;
-    if (!mounted) return;
-    setState(() => _debugBuildSignature = buildSignature);
-  }
 
   /// Release-only tamper check. Returns false when the app must exit.
   Future<bool> _verifySignature(String buildSignature) async {
@@ -620,8 +605,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await _saveDataNow(); // merges delta into disk before we re-read it
     }
     if (!mounted) return;
-    _loadAndCheckReset();
+    // Must settle before draining: it reloads the counters from disk and
+    // re-syncs the save baseline, so a tap applied while it was still in
+    // flight used to be overwritten and lost.
+    await _loadAndCheckReset();
     await _drainPendingTaps();
+    unawaited(_syncSteeringWheelState());
     unawaited(_refreshOverlayState());
   }
 
@@ -1450,26 +1439,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.asset(
-                  'assets/logo.png',
-                  width: 28,
-                  height: 28,
-                  cacheWidth: logoCachePx,
-                  cacheHeight: logoCachePx,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => Container(
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0x33FFFFFF),
+                    width: 1,
+                  ),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(7),
+                  child: Image.asset(
+                    'assets/logo.png',
                     width: 28,
                     height: 28,
-                    decoration: BoxDecoration(
-                      color: _cardColor,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.local_taxi_rounded,
-                      color: Colors.white,
-                      size: 18,
+                    cacheWidth: logoCachePx,
+                    cacheHeight: logoCachePx,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: _cardColor,
+                        borderRadius: BorderRadius.circular(7),
+                      ),
+                      child: const Icon(
+                        Icons.local_taxi_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
                     ),
                   ),
                 ),
@@ -2113,70 +2111,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildReleaseInfoRow() {
-    return GestureDetector(
-      onTap: () {
-        setState(() => _showRawVersion = !_showRawVersion);
-      },
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        constraints: const BoxConstraints(minHeight: kMinTouchTarget),
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'RateHelper — ${S.releaseName}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontFamily: AppFonts.jetBrainsMono,
-                fontSize: 10,
-                color: AppColors.mutedText,
-                letterSpacing: 1.2,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            if (_versionLabel.isNotEmpty) ...[
-              const SizedBox(height: 3),
-              Text(
-                _showRawVersion ? '${S.version} $_versionLabel' : _versionLabel,
-                textAlign: TextAlign.center,
-                style: _showRawVersion
-                    ? const TextStyle(
-                        fontFamily: AppFonts.jetBrainsMono,
-                        fontSize: 9,
-                        color: AppColors.mutedText,
-                        letterSpacing: 1.0,
-                        fontWeight: FontWeight.w400,
-                      )
-                    : const TextStyle(
-                        fontFamily: AppFonts.jetBrainsMono,
-                        fontSize: 9,
-                        color: AppColors.disabledText,
-                        letterSpacing: 1.0,
-                        fontWeight: FontWeight.w400,
-                      ),
-              ),
-            ],
-            if (_showRawVersion &&
-                !kReleaseMode &&
-                _debugBuildSignature != null &&
-                _debugBuildSignature!.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              SelectableText(
-                'SIG: $_debugBuildSignature',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontFamily: AppFonts.jetBrainsMono,
-                  fontSize: 8,
-                  color: Color(0x55FFFFFF),
-                  letterSpacing: 0.5,
-                  height: 1.3,
-                ),
-              ),
-            ],
-          ],
-        ),
+    return const Text(
+      'RateHelper v5',
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontFamily: AppFonts.dmSans,
+        fontSize: 12,
+        color: Colors.white38,
+        letterSpacing: 1.5,
+        fontWeight: FontWeight.w400,
+        height: 1.2,
       ),
     );
   }
@@ -2596,6 +2540,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  /// The OS can switch the accessibility service off behind our back — OEM
+  /// battery policies kill it, and the user can revoke it in system settings.
+  /// Turn the toggle off rather than advertise a feature that is dead; one tap
+  /// re-runs the permission flow. Left untouched when the check itself fails,
+  /// so a channel error never disables a working counter.
+  Future<void> _syncSteeringWheelState() async {
+    if (!_steeringWheelEnabled) return;
+    final bool active;
+    try {
+      active =
+          await _kSysChannel.invokeMethod<bool>(
+            'isAccessibilityServiceEnabled',
+          ) ??
+          true;
+    } on PlatformException catch (e, s) {
+      loge('Steering wheel sync failed', name: 'home', error: e, stack: s);
+      return;
+    }
+    if (active || !mounted) return;
+    setState(() => _steeringWheelEnabled = false);
+    final prefs = await _getPrefs();
+    await prefs.setBool(_keySteeringWheel, false);
   }
 
   Future<void> _setSteeringWheelCounter(bool enabled) async {

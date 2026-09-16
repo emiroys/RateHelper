@@ -46,15 +46,18 @@ class OverlayWidget extends StatefulWidget {
   static const double pillWidthDp = 276;
   static const double pillHeightDp = 80;
 
-  /// Portrait (vertical) pill — swapped so the native window still clips
-  /// tightly around the visible widget.
-  static const double verticalPillWidthDp = pillHeightDp;
+  /// Portrait pill width: 68dp button + 4dp inset on each side. Not a
+  /// naive swap of [pillHeightDp] — that left empty window beside the
+  /// stadium. Height stays the swapped 276 so the stacked buttons fit.
+  static const double verticalHPadDp = 4;
+  static const double verticalPillWidthDp = 76;
   static const double verticalPillHeightDp = pillWidthDp;
 
   static const int nativeWindowWidthDp = 276;
   static const int nativeWindowHeightDp = 80;
 
-  static int windowWidthDp(PillOrientation orientation) => orientation.isVertical
+  static int windowWidthDp(PillOrientation orientation) =>
+      orientation.isVertical
       ? verticalPillWidthDp.round()
       : pillWidthDp.round();
 
@@ -82,6 +85,8 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   static const double _centerTextWidthDp = 100;
   static const double _btnSizeDp = 68;
   static const double _btnTextGapDp = 12;
+  static const double _verticalCenterTextWidthDp =
+      OverlayWidget.verticalPillWidthDp - OverlayWidget.verticalHPadDp * 2;
 
   SharedPreferences? _prefs;
   StreamSubscription<dynamic>? _syncSub;
@@ -339,10 +344,7 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     _trackedPointer = event.pointer;
     _pointerDownPos = event.position;
     _pointerIsDrag = false;
-    logd(
-      'overlay pointer down id=${event.pointer}',
-      name: 'overlay',
-    );
+    logd('overlay pointer down id=${event.pointer}', name: 'overlay');
   }
 
   void _onPointerMove(PointerMoveEvent event) {
@@ -372,10 +374,7 @@ class _OverlayWidgetState extends State<OverlayWidget> {
 
   void _onPointerCancel(PointerCancelEvent event) {
     if (_trackedPointer != event.pointer) return;
-    logd(
-      'overlay pan cancel id=${event.pointer}',
-      name: 'overlay',
-    );
+    logd('overlay pan cancel id=${event.pointer}', name: 'overlay');
     _trackedPointer = null;
     _pointerDownPos = null;
     _pointerIsDrag = false;
@@ -404,7 +403,7 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       _AcceptRateDisplay(
         text: _formatAcceptRate(_acceptanceRate),
         color: _acceptRateColor,
-        width: vertical ? _btnSizeDp : _centerTextWidthDp,
+        width: vertical ? _verticalCenterTextWidthDp : _centerTextWidthDp,
       ),
       SizedBox(
         width: vertical ? 0 : _btnTextGapDp,
@@ -418,46 +417,50 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       ),
     ];
 
-    return Material(
-      type: MaterialType.transparency,
-      color: Colors.transparent,
-      child: Listener(
-        behavior: HitTestBehavior.translucent,
-        onPointerDown: _onPointerDown,
-        onPointerMove: _onPointerMove,
-        onPointerUp: _onPointerUp,
-        onPointerCancel: _onPointerCancel,
-        child: Material(
-          color: _pillBg,
-          elevation: 8,
-          shadowColor: Colors.black,
-          shape: const StadiumBorder(
-            side: BorderSide(color: _pillBorder, width: 1),
-          ),
-          child: SizedBox(
-            width: width,
-            height: height,
-            child: Padding(
-              padding: vertical
-                  ? const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: AppSpacing.sm,
-                    )
-                  : const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm,
-                      vertical: 6,
-                    ),
-              child: vertical
-                  ? Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: children,
-                    )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: children,
-                    ),
+    return Align(
+      alignment: Alignment.topLeft,
+      child: Material(
+        type: MaterialType.transparency,
+        color: Colors.transparent,
+        child: Listener(
+          behavior: HitTestBehavior.deferToChild,
+          onPointerDown: _onPointerDown,
+          onPointerMove: _onPointerMove,
+          onPointerUp: _onPointerUp,
+          onPointerCancel: _onPointerCancel,
+          child: Material(
+            color: _pillBg,
+            elevation: 8,
+            shadowColor: Colors.black,
+            clipBehavior: Clip.antiAlias,
+            shape: const StadiumBorder(
+              side: BorderSide(color: _pillBorder, width: 1),
+            ),
+            child: SizedBox(
+              width: width,
+              height: height,
+              child: Padding(
+                padding: vertical
+                    ? const EdgeInsets.symmetric(
+                        horizontal: OverlayWidget.verticalHPadDp,
+                        vertical: AppSpacing.sm,
+                      )
+                    : const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm,
+                        vertical: 6,
+                      ),
+                child: vertical
+                    ? Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: children,
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: children,
+                      ),
+              ),
             ),
           ),
         ),

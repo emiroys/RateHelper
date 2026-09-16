@@ -38,11 +38,16 @@ void main() {
     );
     expect(
       OverlayWidget.windowWidthDp(PillOrientation.vertical),
-      OverlayWidget.nativeWindowHeightDp,
+      OverlayWidget.verticalPillWidthDp.round(),
     );
     expect(
       OverlayWidget.windowHeightDp(PillOrientation.vertical),
-      OverlayWidget.nativeWindowWidthDp,
+      OverlayWidget.verticalPillHeightDp.round(),
+    );
+    expect(OverlayWidget.verticalPillWidthDp, 76);
+    expect(
+      OverlayWidget.verticalPillWidthDp,
+      68 + OverlayWidget.verticalHPadDp * 2,
     );
     expect(PillOrientation.prefsKey, 'overlay_pill_orientation');
     expect(PillOrientation.fromName('vertical'), PillOrientation.vertical);
@@ -66,7 +71,7 @@ void main() {
     );
   });
 
-  testWidgets('vertical pill is 80x276 with a Column', (tester) async {
+  testWidgets('vertical pill is 76x276 with a Column', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: OverlayWidget(initialOrientation: PillOrientation.vertical),

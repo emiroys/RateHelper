@@ -102,6 +102,7 @@ void overlayMain() {
             brightness: Brightness.dark,
             useMaterial3: true,
             scaffoldBackgroundColor: Colors.transparent,
+            canvasColor: Colors.transparent,
             splashFactory: InkRipple.splashFactory,
             colorScheme: const ColorScheme.dark(
               surface: Colors.transparent,
