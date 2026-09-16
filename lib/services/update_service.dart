@@ -507,19 +507,36 @@ class UpdateService {
       final dir = Directory(
         '${base.path}${Platform.pathSeparator}$_apkCacheDirName',
       );
-      if (await dir.exists()) {
-        await for (final entry in dir.list()) {
-          try {
-            await entry.delete(recursive: true);
-          } catch (_) {}
-        }
-      } else {
-        await dir.create(recursive: true);
-      }
+      // No-op when it already exists.
+      await dir.create(recursive: true);
+
+      await sweepUpdateCache(dir);
       return dir;
     } catch (e) {
       await _logFailure('download: cache dir ${e.runtimeType}', e);
       return null;
+    }
+  }
+
+  /// Clears a previous download out of [dir]. Never throws.
+  ///
+  /// Reclaiming the cache is hygiene, not correctness — the next download
+  /// truncates its target anyway — so a sweep that fails must not fail the
+  /// update. Treating it as fatal is what sent every attempt after the first
+  /// one to the browser.
+  ///
+  /// The listing is snapshotted before anything is deleted: removing entries
+  /// while the directory stream is still open can abort that stream.
+  @visibleForTesting
+  Future<void> sweepUpdateCache(Directory dir) async {
+    try {
+      for (final entry in await dir.list(followLinks: false).toList()) {
+        try {
+          await entry.delete(recursive: true);
+        } catch (_) {}
+      }
+    } catch (e) {
+      await _logFailure('download: stale cache sweep ${e.runtimeType}', e);
     }
   }
 

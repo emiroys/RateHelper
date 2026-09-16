@@ -1,4 +1,9 @@
 {
-  "latest": "1.0.2",
-  "apk_url": "https://github.com/emiroys/ratehelper/releases/latest/download/app-arm64-v8a-release.apk"
+  "latest": "5.0.1",
+  "build": 6,
+  "apk_url": "https://github.com/emiroys/ratehelper/releases/download/v5.0.1/app-arm64-v8a-release.apk",
+  "mandatory": false,
+  "notes_tr": "Dikey baloncuk, güncellenmiş kazanç ortalaması, uygulama içi güncelleme.",
+  "notes_pl": "Dymek pionowy, nowa średnia zarobków, aktualizacja w aplikacji.",
+  "notes_en": "Vertical overlay, updated earnings average, in-app updates."
 }

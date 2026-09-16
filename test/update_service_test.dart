@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rate_helper/services/update_service.dart';
 
@@ -129,6 +131,56 @@ void main() {
     test('equality stays strict even though ordering is lenient', () {
       expect(AppVersion.parse('5.0.0+5') == AppVersion.parse('5.0.0'), isFalse);
       expect(AppVersion.parse('5.0.0') == AppVersion.parse('5.0.0'), isTrue);
+    });
+  });
+
+  group('UpdateService.sweepUpdateCache', () {
+    late Directory tmp;
+
+    setUp(() async {
+      tmp = await Directory.systemTemp.createTemp('update_sweep');
+    });
+
+    tearDown(() async {
+      try {
+        await tmp.delete(recursive: true);
+      } catch (_) {}
+    });
+
+    test('clears a previous download', () async {
+      final apk = File('${tmp.path}${Platform.pathSeparator}old.apk');
+      await apk.writeAsBytes(List<int>.filled(64, 0x50));
+      final nested = Directory('${tmp.path}${Platform.pathSeparator}nested');
+      await nested.create();
+      await File('${nested.path}${Platform.pathSeparator}a.tmp').writeAsString('x');
+
+      await UpdateService.instance.sweepUpdateCache(tmp);
+
+      expect(await tmp.list().isEmpty, isTrue);
+      expect(await tmp.exists(), isTrue);
+    });
+
+    test('a non-empty directory sweep never throws', () async {
+      // Regression: the sweep used to delete entries while the directory
+      // stream was still open and treated any failure as a failed update, so
+      // every attempt after the first one fell back to the browser.
+      for (var i = 0; i < 25; i++) {
+        await File('${tmp.path}${Platform.pathSeparator}f$i.apk')
+            .writeAsString('payload $i');
+      }
+      await expectLater(
+        UpdateService.instance.sweepUpdateCache(tmp),
+        completes,
+      );
+      expect(await tmp.list().isEmpty, isTrue);
+    });
+
+    test('a missing directory is not an error', () async {
+      final gone = Directory('${tmp.path}${Platform.pathSeparator}absent');
+      await expectLater(
+        UpdateService.instance.sweepUpdateCache(gone),
+        completes,
+      );
     });
   });
 }

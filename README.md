@@ -1,9 +1,9 @@
-# RateHelper v1.0 — Podręcznik Architektury i Dokumentacja Operacyjna
+# RateHelper v5 — Podręcznik Architektury i Dokumentacja Operacyjna
 
 > **Identyfikator aplikacji:** `com.ratehelper.app`  
 > **Platforma docelowa:** Android (arm64-v8a, zoptymalizowane pod flagowce typu Samsung Galaxy S24 Ultra)  
 > **Framework:** Flutter (Dart) + Natywny Kotlin/Java (Android OS Layer)  
-> **Wersja bieżąca:** `1.0.2+2`
+> **Wersja bieżąca:** `5.0.1+6` (versionName `5.0.1`, pubspec build `6`, arm64 versionCode `2006`)
 
 ---
 
@@ -55,7 +55,7 @@
 | **Radar Wydarzeń (Kraków)** | Asynchroniczny kalendarz imprez masowych w Krakowie prognozujący godziny szczytów i skoków mnożników stawek. | `radar_screen.dart`, pobieranie `krakow_events.json` z GitHub z godzinnym buforowaniem pamięci RAM, etykiety względne (Dziś/Jutro). |
 | **Integracja z Przyciskami na Kierownicy** | Rejestracja zleceń za pomocą bezprzewodowego pilota multimedialnego Bluetooth na kierownicy bez odrywania rąk. | `MediaKeyAccessibilityService.kt`: długie przytrzymanie >800 ms; ACK nakładki 1200 ms + `recordPendingTap`; `drainPendingTaps` odejmuje (nie czyści); `_drainPendingTaps` dopiero po `await _loadAndCheckReset()`. |
 | **Raporty PDF do Księgowości** | Generowanie miesięcznych lub rocznych zestawień przychodów i kosztów z podziałem ryczałtowym gotowych do przekazania księgowej. | `earnings_pdf_export.dart`, formatowanie `pdf`, czcionki DM Sans ładowane lokalnie z assetów. |
-| **Sprawdzanie Aktualizacji (OTA)** | Powiadomienie w aplikacji o wydaniu nowej wersji i bezpieczne pobieranie pliku APK bezpośrednio z GitHub Releases. | `StrictSecurityHttpOverrides`, weryfikacja semver z manifestu Gist, bezpośredni link do wydania arm64. |
+| **Sprawdzanie i instalacja aktualizacji (OTA)** | Sprawdzenie przy starcie (nieblokujące) + ręczny kafel **Sprawdź aktualizacje** w stopce ustawień. Pobieranie APK w aplikacji (~21 MB), pasek postępu, uruchomienie natywnego instalatora Androida; przeglądarka tylko jako zapas. | `lib/services/update_service.dart`, `lib/update_dialog.dart`, manifest Gist (`Env.gistUrl`) + zapas GitHub Releases API, `FileProvider`, `REQUEST_INSTALL_PACKAGES`, omijanie cache CDN Gist (`?_=` timestamp). |
 
 ---
 
@@ -207,6 +207,38 @@ Aplikacja **nie jest i nie będzie publikowana w sklepie Google Play**. Dystrybu
 2. **Zero zależności od zewnętrznych serwerów:** Aplikacja w 100% działa lokalnie. Publikacja wydań binarnych na GitHub Releases w połączeniu ze sprawdzaniem pliku manifestu w GitHub Gist zapewnia pełną niezależność, bezpłatną infrastrukturę i natychmiastowe wdrażanie poprawek bez oczekiwania na review Google.
 3. **Optymalizacja pod architekturę kierowców:** Budowanie paczek `split-per-abi` zmniejsza rozmiar pobieranego pliku APK z ~60 MB do zaledwie ~21 MB dla urządzeń `arm64-v8a` (np. Samsung Galaxy S24 Ultra).
 
+### Przepływ OTA (v5)
+
+```
+Cold start / ręczne „Sprawdź aktualizacje”
+        │
+        ▼
+UpdateService.check() / checkOnStartup()
+        │
+        ├─► GET manifest Gist (z parametrem anty-cache)
+        │         │
+        │         ├─ latest, build, apk_url, notes_*
+        │         └─ allowlist hostów + brak follow redirects
+        │
+        ├─► (zapas) GET api.github.com/.../releases/latest
+        │
+        ▼
+AppVersion.parse + porównanie numeryczne (semver + build)
+        │
+        ├─► brak nowszej → toast „Masz najnowszą wersję”
+        │
+        └─► nowsza → UpdateDialog
+                  │
+                  ├─► canInstallPackages? → ustawienia Androida
+                  ├─► downloadApk() → cache/updates/ (weryfikacja rozmiaru + PK)
+                  ├─► installApk() → FileProvider → ACTION_VIEW
+                  └─► błąd → launchDownload() (przeglądarka)
+```
+
+**Wyrównanie wersji (obowiązkowe przy każdym release):** `pubspec.yaml`, pole Gist `"latest"`, pole Gist `"build"` (numer z pubspec, **nie** versionCode z offsetem ABI), tag GitHub Release oraz plik asset muszą opisywać **tę samą** wersję binarną wskazaną przez `apk_url`. Szablon manifestu: [`release/update.json`](release/update.json). Notatki wydania PL: [`release/RELEASE_NOTES_v5_PL.md`](release/RELEASE_NOTES_v5_PL.md).
+
+**Offset versionCode przy `--split-per-abi`:** arm64 build `6` → `versionCode` **2006** (`2×1000+6`). `UpdateService.pubspecBuildNumber()` redukuje `% 1000` przed porównaniem z polem `"build"` w manifeście.
+
 ---
 
 ## 8. Procedura kompilacji wydania produkcyjnego (Release Build)
@@ -247,7 +279,8 @@ Wygenerowany plik produkcyjny dla nowoczesnych smartfonów:
 ```
 lib/
 ├── main.dart                  # Wstępna konfiguracja, StrictSecurityHttpOverrides, inicjalizacja wątków
-├── home_screen.dart           # Główny kokpit, liczniki ValueNotifier, Baloncuk Yönü, plakietka KK4181R, OTA
+├── home_screen.dart           # Główny kokpit, liczniki ValueNotifier, Baloncuk Yönü, plakietka KK4181R
+├── update_dialog.dart         # Dialog aktualizacji OTA + kafel „Sprawdź aktualizacje”
 ├── app_spacing.dart           # [DESIGN SYSTEM] Tokeny odstępów (AppSpacing) i zaokrągleń (AppRadius)
 ├── app_text_styles.dart       # [DESIGN SYSTEM] Skala typograficzna (AppTextStyles) i cyfry tabelaryczne
 ├── app_colors.dart            # [DESIGN SYSTEM] 3-tonowe tła OLED, recordGold, designerGold, actionAccent
@@ -269,17 +302,18 @@ lib/
 │   ├── event_model.dart       # Struktura danych wydarzenia masowego (Radar)
 │   └── weekly_archive_entry.dart # Model archiwalny podsumowań tygodniowych (v2 JSON)
 └── services/
-    └── event_service.dart     # Pobieranie i buforowanie danych krakow_events.json
+    ├── event_service.dart     # Pobieranie i buforowanie danych krakow_events.json
+    └── update_service.dart    # Manifest Gist, semver, pobieranie APK, instalacja natywna
 
 android/
 ├── build.gradle.kts           # Konfiguracja nadrzędna z obejściem Kotlin DSL dla modułu :jni
 └── app/
     ├── build.gradle.kts       # Konfiguracja aplikacji, weryfikacja key.properties, desugaring
     └── src/main/kotlin/com/ratehelper/app/
-        ├── MainActivity.kt    # Natywny MethodChannel oraz rejestracja zdarzeń klawiszy
+        ├── MainActivity.kt    # MethodChannel: bateria, A11y, drainPendingTaps, installApk (FileProvider)
         └── MediaKeyAccessibilityService.kt # Przechwytywanie przycisków na kierownicy
 ```
 
 ---
 
-> **RateHelper v1.0** — Bezkompromisowe narzędzie stworzone z perspektywy fotela kierowcy. Realna kontrola zysków na krakowskich drogach.
+> **RateHelper v5** — Bezkompromisowe narzędzie stworzone z perspektywy fotela kierowcy. Realna kontrola zysków na krakowskich drogach.
