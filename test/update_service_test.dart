@@ -70,4 +70,65 @@ void main() {
       expect(AppVersion.parse('5.0.1+7').toString(), '5.0.1+7');
     });
   });
+
+  group('UpdateService.pubspecBuildNumber', () {
+    test('strips the --split-per-abi versionCode offset', () {
+      // armeabi-v7a, arm64-v8a and x86_64 codes for pubspec build 5.
+      expect(UpdateService.pubspecBuildNumber('1005'), 5);
+      expect(UpdateService.pubspecBuildNumber('2005'), 5);
+      expect(UpdateService.pubspecBuildNumber('4005'), 5);
+    });
+
+    test('leaves a universal APK versionCode alone', () {
+      expect(UpdateService.pubspecBuildNumber('5'), 5);
+    });
+
+    test('a manifest build matching pubspec is not seen as an update', () {
+      // Regression: the arm64 APK reports 2005, so an un-normalized compare
+      // made manifest build 5 look older than the installed build.
+      final installed = AppVersion.parse(
+        '5.0.0',
+        build: UpdateService.pubspecBuildNumber('2005'),
+      );
+      expect(
+        AppVersion.parse('5.0.0', build: 5).isNewerThan(installed),
+        isFalse,
+      );
+      expect(
+        AppVersion.parse('5.0.0', build: 6).isNewerThan(installed),
+        isTrue,
+      );
+    });
+
+    test('unparseable or missing versionCode is unknown, not zero', () {
+      expect(UpdateService.pubspecBuildNumber(''), isNull);
+      expect(UpdateService.pubspecBuildNumber('unknown'), isNull);
+    });
+  });
+
+  group('unknown build numbers', () {
+    test('a bare release tag is not treated as a downgrade', () {
+      // Regression: git tags publish no build number. Treating the missing
+      // value as 0 made `v5.0.0` rank below the installed `5.0.0+5`, so a
+      // failed manifest fetch fell through to the Releases API and reported
+      // "you are on the latest version" instead of admitting it had failed.
+      final installed = AppVersion.parse('5.0.0', build: 5);
+      final tagged = AppVersion.parse('v5.0.0');
+
+      expect(tagged.build, isNull);
+      expect(tagged.isNewerThan(installed), isFalse);
+      expect(installed.isNewerThan(tagged), isFalse);
+    });
+
+    test('the semver triple still decides when a build is unknown', () {
+      final installed = AppVersion.parse('5.0.0', build: 5);
+      expect(AppVersion.parse('v5.0.1').isNewerThan(installed), isTrue);
+      expect(AppVersion.parse('v4').isNewerThan(installed), isFalse);
+    });
+
+    test('equality stays strict even though ordering is lenient', () {
+      expect(AppVersion.parse('5.0.0+5') == AppVersion.parse('5.0.0'), isFalse);
+      expect(AppVersion.parse('5.0.0') == AppVersion.parse('5.0.0'), isTrue);
+    });
+  });
 }

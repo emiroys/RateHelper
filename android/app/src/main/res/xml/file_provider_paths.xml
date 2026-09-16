@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Only the updater's own subfolder of getCacheDir() is shareable.
+         Declaring the whole cache root would expose unrelated app-private
+         files to any activity we grant a URI to. Must stay in sync with
+         UpdateService._apkCacheDirName on the Dart side. -->
+    <cache-path
+        name="update_apk"
+        path="updates/" />
+</paths>

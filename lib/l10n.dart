@@ -722,10 +722,49 @@ class S {
         'Skip this version',
         'Pomiń tę wersję',
       );
-  static String get updateBrowserHint => _p(
-        'İndirme tarayıcıda başlar. Bittiğinde dosyaya dokunup kurulumu onaylayın.',
-        'The download starts in your browser. Tap the file when it finishes and confirm the install.',
-        'Pobieranie rozpocznie się w przeglądarce. Po zakończeniu dotknij pliku i potwierdź instalację.',
+  static String get updateInstallHint => _p(
+        'Güncelleme uygulama içinde indirilir, ardından Android kurulum ekranı açılır.',
+        'The update downloads inside the app, then Android opens its installer.',
+        'Aktualizacja pobiera się w aplikacji, następnie Android otworzy instalator.',
+      );
+  static String get updateDownloadingLabel => _p(
+        'İndiriliyor',
+        'Downloading',
+        'Pobieranie',
+      );
+  static String get updateInstallingLabel => _p(
+        'Kurulum ekranı açılıyor',
+        'Opening the installer',
+        'Otwieranie instalatora',
+      );
+  static String updateProgressMb(String received, String total) => _p(
+        '$received / $total MB',
+        '$received / $total MB',
+        '$received / $total MB',
+      );
+  static String get updateCancel => _p('İptal', 'Cancel', 'Anuluj');
+  static String get updatePermissionTitle => _p(
+        'Kurulum İzni Gerekli',
+        'Install Permission Needed',
+        'Potrzebne pozwolenie',
+      );
+  static String get updatePermissionBody => _p(
+        'Android, güncellemeyi kurabilmek için RateHelper\'a izin vermenizi istiyor. '
+            'Açılan ekranda izni açın, sonra geri dönüp tekrar deneyin.',
+        'Android needs you to allow RateHelper to install updates. '
+            'Turn the permission on, then come back and try again.',
+        'Android wymaga zezwolenia dla RateHelper na instalację aktualizacji. '
+            'Włącz pozwolenie, a następnie wróć i spróbuj ponownie.',
+      );
+  static String get updateGrantPermission => _p(
+        'İzni Aç',
+        'Open Permission',
+        'Otwórz ustawienia',
+      );
+  static String get updateFellBackToBrowser => _p(
+        'Uygulama içi indirme olmadı, tarayıcıda açılıyor',
+        'In-app download failed, opening your browser',
+        'Pobieranie w aplikacji nie udało się, otwieram przeglądarkę',
       );
   static String get updateInstalledLabel => _p('Yüklü', 'Installed', 'Zainstalowana');
   static String get updateLatestLabel => _p('Yeni', 'Latest', 'Najnowsza');

@@ -61,30 +61,105 @@ class _UpdateDialog extends StatefulWidget {
   State<_UpdateDialog> createState() => _UpdateDialogState();
 }
 
+enum _UpdatePhase { idle, permissionNeeded, downloading, installing }
+
 class _UpdateDialogState extends State<_UpdateDialog> {
-  bool _launching = false;
+  _UpdatePhase _phase = _UpdatePhase.idle;
+  int _received = 0;
+  int? _total;
+  int _lastReportedBytes = 0;
+  bool _cancelRequested = false;
 
-  Future<void> _startDownload() async {
-    if (_launching) return;
-    setState(() => _launching = true);
+  bool get _busy =>
+      _phase == _UpdatePhase.downloading || _phase == _UpdatePhase.installing;
 
-    // Captured before the await: the dialog may be gone by the time the
-    // browser hand-off resolves.
+  /// Chunks arrive every few kilobytes; rebuilding the dialog that often
+  /// would burn frames for a bar that moves a pixel.
+  static const int _progressRepaintBytes = 256 * 1024;
+
+  Future<void> _start() async {
+    if (_busy) return;
+    final service = UpdateService.instance;
     final messenger = ScaffoldMessenger.maybeOf(context);
     final navigator = Navigator.of(context);
 
-    final launched = await UpdateService.instance.launchDownload(widget.info);
-
-    if (!mounted) return;
-    setState(() => _launching = false);
-
-    if (launched) {
-      // A mandatory release keeps the dialog up: the driver comes back from
-      // the browser to the same blocking prompt until the APK is installed.
-      if (!widget.info.mandatory) navigator.pop();
+    if (!await service.canInstallPackages()) {
+      if (!mounted) return;
+      setState(() => _phase = _UpdatePhase.permissionNeeded);
       return;
     }
-    _showUpdateSnack(messenger, S.updateLaunchFailed);
+    if (!mounted) return;
+
+    setState(() {
+      _phase = _UpdatePhase.downloading;
+      _received = 0;
+      _total = null;
+      _lastReportedBytes = 0;
+      _cancelRequested = false;
+    });
+
+    final file = await service.downloadApk(
+      widget.info,
+      onProgress: (received, total) {
+        if (!mounted) return;
+        final done = total != null && received >= total;
+        if (!done && received - _lastReportedBytes < _progressRepaintBytes) {
+          return;
+        }
+        _lastReportedBytes = received;
+        setState(() {
+          _received = received;
+          _total = total;
+        });
+      },
+      isCancelled: () => _cancelRequested,
+    );
+
+    if (!mounted) return;
+    if (_cancelRequested) {
+      setState(() => _phase = _UpdatePhase.idle);
+      return;
+    }
+    if (file == null) {
+      await _fallBackToBrowser(messenger, navigator);
+      return;
+    }
+
+    setState(() => _phase = _UpdatePhase.installing);
+    final started = await service.installApk(file);
+    if (!mounted) return;
+
+    if (!started) {
+      await _fallBackToBrowser(messenger, navigator);
+      return;
+    }
+
+    // Android's installer is in front of us now. A mandatory release keeps the
+    // dialog up so a cancelled install lands back on the same prompt.
+    setState(() => _phase = _UpdatePhase.idle);
+    if (!widget.info.mandatory) navigator.pop();
+  }
+
+  Future<void> _fallBackToBrowser(
+    ScaffoldMessengerState? messenger,
+    NavigatorState navigator,
+  ) async {
+    _showUpdateSnack(messenger, S.updateFellBackToBrowser);
+    final launched = await UpdateService.instance.launchDownload(widget.info);
+    if (!mounted) return;
+    setState(() => _phase = _UpdatePhase.idle);
+
+    if (!launched) {
+      _showUpdateSnack(messenger, S.updateLaunchFailed);
+      return;
+    }
+    if (!widget.info.mandatory) navigator.pop();
+  }
+
+  Future<void> _openPermissionSettings() async {
+    await UpdateService.instance.openInstallPermissionSettings();
+    if (!mounted) return;
+    setState(() => _phase = _UpdatePhase.idle);
   }
 
   Future<void> _skip() async {
@@ -97,9 +172,10 @@ class _UpdateDialogState extends State<_UpdateDialog> {
   Widget build(BuildContext context) {
     final info = widget.info;
     final notes = info.notes;
+    final needsPermission = _phase == _UpdatePhase.permissionNeeded;
 
     return PopScope(
-      canPop: !info.mandatory,
+      canPop: !info.mandatory && !_busy,
       child: Dialog(
         backgroundColor: AppColors.surface,
         insetPadding: const EdgeInsets.symmetric(horizontal: 24),
@@ -133,90 +209,166 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                   const SizedBox(width: AppSpacing.sm + 4),
                   Expanded(
                     child: Text(
-                      info.mandatory
-                          ? S.updateMandatoryTitle
-                          : S.updateAvailableTitle,
+                      needsPermission
+                          ? S.updatePermissionTitle
+                          : info.mandatory
+                              ? S.updateMandatoryTitle
+                              : S.updateAvailableTitle,
                       style: AppTextStyles.sectionTitleStyle,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: AppSpacing.md),
-              _VersionDelta(
-                current: widget.current,
-                latest: info.displayVersion,
-              ),
-              if (notes != null) ...[
-                const SizedBox(height: AppSpacing.md),
-                Text(notes, style: AppTextStyles.bodyStyle),
-              ],
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                S.updateBrowserHint,
-                style: AppTextStyles.captionStyle.copyWith(height: 1.4),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              SizedBox(
-                width: double.infinity,
-                child: _launching
-                    ? const _LaunchingButton()
-                    : AppPrimaryButton(
-                        label: S.updateNow,
-                        icon: Icons.download_rounded,
-                        onTap: _startDownload,
-                      ),
-              ),
-              if (!info.mandatory) ...[
-                const SizedBox(height: AppSpacing.sm + 4),
-                Row(
-                  children: [
-                    Expanded(
-                      child: AppSecondaryButton(
-                        label: S.updateLater,
-                        onTap: _launching
-                            ? null
-                            : () => Navigator.of(context).pop(),
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: AppSecondaryButton(
-                        label: S.updateSkipVersion,
-                        accentColor: AppColors.mutedText,
-                        onTap: _launching ? null : _skip,
-                      ),
-                    ),
-                  ],
+              if (needsPermission)
+                Text(S.updatePermissionBody, style: AppTextStyles.bodyStyle)
+              else ...[
+                _VersionDelta(
+                  current: widget.current,
+                  latest: info.displayVersion,
                 ),
+                if (notes != null && !_busy) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  Text(notes, style: AppTextStyles.bodyStyle),
+                ],
+                const SizedBox(height: AppSpacing.md),
+                if (_busy)
+                  _DownloadProgress(
+                    installing: _phase == _UpdatePhase.installing,
+                    received: _received,
+                    total: _total,
+                  )
+                else
+                  Text(
+                    S.updateInstallHint,
+                    style: AppTextStyles.captionStyle.copyWith(height: 1.4),
+                  ),
               ],
+              const SizedBox(height: AppSpacing.lg),
+              ..._buildActions(needsPermission: needsPermission),
             ],
           ),
         ),
       ),
     );
   }
+
+  List<Widget> _buildActions({required bool needsPermission}) {
+    if (_phase == _UpdatePhase.downloading) {
+      return [
+        SizedBox(
+          width: double.infinity,
+          child: AppSecondaryButton(
+            label: S.updateCancel,
+            accentColor: AppColors.mutedText,
+            onTap: _cancelRequested
+                ? null
+                : () => setState(() => _cancelRequested = true),
+          ),
+        ),
+      ];
+    }
+    if (_phase == _UpdatePhase.installing) {
+      return const [SizedBox.shrink()];
+    }
+
+    return [
+      SizedBox(
+        width: double.infinity,
+        child: needsPermission
+            ? AppPrimaryButton(
+                label: S.updateGrantPermission,
+                icon: Icons.lock_open_rounded,
+                onTap: _openPermissionSettings,
+              )
+            : AppPrimaryButton(
+                label: S.updateNow,
+                icon: Icons.download_rounded,
+                onTap: _start,
+              ),
+      ),
+      if (!widget.info.mandatory) ...[
+        const SizedBox(height: AppSpacing.sm + 4),
+        Row(
+          children: [
+            Expanded(
+              child: AppSecondaryButton(
+                label: S.updateLater,
+                onTap: () => Navigator.of(context).pop(),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: AppSecondaryButton(
+                label: S.updateSkipVersion,
+                accentColor: AppColors.mutedText,
+                onTap: _skip,
+              ),
+            ),
+          ],
+        ),
+      ],
+    ];
+  }
 }
 
-class _LaunchingButton extends StatelessWidget {
-  const _LaunchingButton();
+/// Determinate bar while bytes arrive, indeterminate once the installer is
+/// being handed the file.
+class _DownloadProgress extends StatelessWidget {
+  const _DownloadProgress({
+    required this.installing,
+    required this.received,
+    required this.total,
+  });
+
+  final bool installing;
+  final int received;
+  final int? total;
+
+  static String _mb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(1);
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 54,
-      alignment: Alignment.center,
-      decoration: const BoxDecoration(
-        color: AppColors.surfaceElevated,
-        borderRadius: AppRadius.mdBorder,
-      ),
-      child: const SizedBox(
-        width: 22,
-        height: 22,
-        child: CircularProgressIndicator(
-          strokeWidth: 2.4,
-          color: AppColors.emerald,
+    final knownTotal = total;
+    final fraction = installing || knownTotal == null || knownTotal <= 0
+        ? null
+        : (received / knownTotal).clamp(0.0, 1.0);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: AppRadius.xsBorder,
+          child: LinearProgressIndicator(
+            value: fraction,
+            minHeight: 8,
+            backgroundColor: AppColors.surfaceElevated,
+            color: AppColors.emerald,
+          ),
         ),
-      ),
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                installing
+                    ? S.updateInstallingLabel
+                    : S.updateDownloadingLabel,
+                style: AppTextStyles.captionStyle,
+              ),
+            ),
+            if (!installing && knownTotal != null)
+              Text(
+                S.updateProgressMb(_mb(received), _mb(knownTotal)),
+                style: AppTextStyles.tabularMonospace(
+                  fontSize: AppTextStyles.caption,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.mutedText,
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

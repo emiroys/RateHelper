@@ -12,11 +12,19 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 
 class MainActivity : FlutterActivity() {
+
+    companion object {
+        /** Must match `res/xml/file_provider_paths.xml` and the Dart updater. */
+        private const val UPDATE_APK_DIR = "updates"
+        private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
+    }
 
     private val channelName = "com.ratehelper.app/system"
     private var methodChannel: MethodChannel? = null
@@ -104,9 +112,70 @@ class MainActivity : FlutterActivity() {
                     result.success(mapOf("accepted" to accepted, "rejected" to rejected))
                 }
 
+                "canInstallPackages" -> result.success(canInstallPackages())
+
+                "openInstallPermissionSettings" -> {
+                    result.success(openInstallPermissionSettings())
+                }
+
+                "installApk" -> {
+                    result.success(installApk(call.argument<String>("path")))
+                }
+
                 else -> result.notImplemented()
             }
         }
+    }
+
+    /**
+     * Whether the user has granted "install unknown apps" to RateHelper.
+     * Without it the installer intent opens a dead end, so the update dialog
+     * asks for the permission first instead of looking broken.
+     */
+    private fun canInstallPackages(): Boolean = runCatching {
+        packageManager.canRequestPackageInstalls()
+    }.getOrDefault(false)
+
+    private fun openInstallPermissionSettings(): Boolean {
+        runCatching {
+            val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                data = Uri.parse("package:$packageName")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            return true
+        }
+        return openAppDetails()
+    }
+
+    /**
+     * Hands a downloaded APK to the system package installer.
+     *
+     * The user still confirms in Android's own dialog — this only opens it.
+     * The path is restricted to the updater's cache subfolder so the channel
+     * can never be used to install an arbitrary file on disk.
+     */
+    private fun installApk(path: String?): Boolean {
+        if (path.isNullOrBlank()) return false
+        return runCatching {
+            val allowedDir = File(cacheDir, UPDATE_APK_DIR).canonicalFile
+            val file = File(path).canonicalFile
+            if (!file.path.startsWith(allowedDir.path + File.separator)) return false
+            if (!file.isFile || file.length() <= 0L) return false
+
+            val uri = FileProvider.getUriForFile(
+                this,
+                "$packageName.fileprovider",
+                file
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, APK_MIME_TYPE)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            true
+        }.getOrDefault(false)
     }
 
     /**

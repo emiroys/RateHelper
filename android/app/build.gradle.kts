@@ -133,4 +133,10 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+
+    // FileProvider, used to grant the system package installer a scoped,
+    // one-shot read on the downloaded update APK. Declared explicitly rather
+    // than relied on transitively through the Flutter embedding, so a future
+    // embedding change cannot silently break the update flow at compile time.
+    implementation("androidx.core:core:1.13.1")
 }
