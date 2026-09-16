@@ -46,14 +46,14 @@
 
 | Moduł | Opis Funkcjonalny | Mechanizm Implementacji |
 | :--- | :--- | :--- |
-| **Pływająca Nakładka (Pill Overlay)** | Widget 276×80 dp wiszący nad aplikacją Uber/Bolt Driver. Umożliwia natychmiastowe zliczanie zleceń (+/−) bez opuszczania ekranu mapy. | Osobny, odchudzony izolat Fluttera (`packages/flutter_overlay_window`), natywny `WindowManager.updateViewLayout()`, brak przechwytywania dotyku poza obrębem pigułki. |
+| **Pływająca Nakładka (Pill Overlay)** | Widget **276×80 dp** (Yatay / poziomo) lub **74×194 dp** (Dikey / pionowo) wiszący nad aplikacją Uber/Bolt Driver. Natychmiastowe zliczanie zleceń (+/−) bez opuszczania ekranu mapy. Kierunek: ustawienie **Baloncuk Yönü**. | Osobny, odchudzony izolat Fluttera (`packages/flutter_overlay_window`), natywny `WindowManager.updateViewLayout()`, okno natywne = widoczny stadion (brak martwego pola dotyku). Zmiana orientacji zamyka i otwiera nakładkę na nowo — **bez** `resizeOverlay` z izolatu głównego. |
 | **Pulpit Akceptacji (AR) i Odzyskiwania** | Precyzyjny licznik zleceń (Zaakceptowane, Odrzucone, Ukończone, Anulowane). Dynamiczny bufor ostrzegawczy (2.0% wokół progu celu) oraz kalkulator liczby kursów potrzebnych do odzyskania bezpiecznego wskaźnika. | `home_screen.dart`, wzór odzyskiwania $X = \max(1, \lfloor \frac{r \cdot R - (1-r) \cdot A}{1-r} \rfloor + 1)$, reaktywne notifiery `ValueNotifier`. |
-| **Śledzenie Zarobków i Podatków** | Tygodniowy arkusz rozliczeniowy: automatyczne odliczenie podatku VAT (12%), opłaty rozliczeniowej ERES (4.3125%), paliwa z rabatem 10% oraz progowej stawki najmu auta. | `earnings_screen.dart`, `earnings_models.dart`, dynamiczny podgląd rentowności live na każdym wciśnięciu klawisza. |
+| **Śledzenie Zarobków i Podatków** | Tygodniowy arkusz rozliczeniowy: VAT 12%, opłata ERES 4.3125%, paliwo −10%, najem progowy. Trend 4-tygodniowy i karty miesiąc/rok używają **`blendedHourlyRate`** (zysk ÷ godziny). Tydzień-placeholder paliwa (`isUnreported`) nie dolicza najmu. | `earnings_screen.dart`, `earnings_models.dart`, podgląd live. |
 | **Paragony Paliwowe (Multi-Receipt)** | Rejestracja wielu paragonów paliwowych w danym tygodniu z pełnym formatowaniem walutowym, usuwaniem gestem z opcją cofnięcia (Undo SnackBar) i limitem FIFO (max 100). | `_buildFuelReceiptsSection`, `PolishCurrencyInputFormatter`, formatowanie walutowe zgodne z polskim standardem (`1 250,50 PLN`). |
 | **Tryby Najmu: Solo vs. Paired** | Dynamiczne dopasowanie kosztu najmu auta w zależności od jednoosobowej lub dwuosobowej obsady pojazdu. | `DriverMode.solo` / `DriverMode.paired`, odrębne tabele progowe, bezwzględna niezmienność historyczna zapisanych wpisów. |
 | **Rozdział Liczników Kursów** | Kursy osobiste kierowcy zliczają postęp do darmowego tygodnia (próg 2000), podczas gdy suma kursów auta w trybie współdzielonym decyduje o progu zniżki najmu. | `driverTripCount` (odometer) oraz `carTripCountOverride` (tier lookup). |
 | **Radar Wydarzeń (Kraków)** | Asynchroniczny kalendarz imprez masowych w Krakowie prognozujący godziny szczytów i skoków mnożników stawek. | `radar_screen.dart`, pobieranie `krakow_events.json` z GitHub z godzinnym buforowaniem pamięci RAM, etykiety względne (Dziś/Jutro). |
-| **Integracja z Przyciskami na Kierownicy** | Rejestracja zleceń za pomocą bezprzewodowego pilota multimedialnego Bluetooth na kierownicy bez odrywania rąk. | Natywna usługa `MediaKeyAccessibilityService.kt`, filtrowanie długiego przytrzymania (>800 ms), przepuszczanie krótkich kliknięć do Spotify/YT Music. |
+| **Integracja z Przyciskami na Kierownicy** | Rejestracja zleceń za pomocą bezprzewodowego pilota multimedialnego Bluetooth na kierownicy bez odrywania rąk. | `MediaKeyAccessibilityService.kt`: długie przytrzymanie >800 ms; ACK nakładki 1200 ms + `recordPendingTap`; `drainPendingTaps` odejmuje (nie czyści); `_drainPendingTaps` dopiero po `await _loadAndCheckReset()`. |
 | **Raporty PDF do Księgowości** | Generowanie miesięcznych lub rocznych zestawień przychodów i kosztów z podziałem ryczałtowym gotowych do przekazania księgowej. | `earnings_pdf_export.dart`, formatowanie `pdf`, czcionki DM Sans ładowane lokalnie z assetów. |
 | **Sprawdzanie Aktualizacji (OTA)** | Powiadomienie w aplikacji o wydaniu nowej wersji i bezpieczne pobieranie pliku APK bezpośrednio z GitHub Releases. | `StrictSecurityHttpOverrides`, weryfikacja semver z manifestu Gist, bezpośredni link do wydania arm64. |
 
@@ -70,7 +70,7 @@ RateHelper działa w oparciu o dwa w pełni rozdzielone izolaty maszyny wirtualn
 │   │   MainActivity   │  │    OverlayService     │  │  MediaKey A11y   │ │
 │   │     (Kotlin)     │  │   (Java, forked lib)  │  │     (Kotlin)     │ │
 │   │  MethodChannel   │  │  WindowManager (OS)   │  │  Przechwytywanie │ │
-│   │  Weryfikacja sig │  │  Pill Window: 276×80  │  │  KeyEvent (A11y) │ │
+│   │  Weryfikacja sig │  │  Pill: 276×80 / 74×194│  │  KeyEvent (A11y) │ │
 │   └────────┬─────────┘  └───────────┬───────────┘  └────────┬─────────┘ │
 └────────────┼────────────────────────┼───────────────────────┼───────────┘
              │ Flutter Main Engine    │ Lean Overlay Engine   │ IPC Event
@@ -90,8 +90,9 @@ RateHelper działa w oparciu o dwa w pełni rozdzielone izolaty maszyny wirtualn
 
 ### Kluczowe decyzje architektoniczne nakładki:
 1. **Chudy silnik nakładki (Lean Engine):** Izolat nakładki ma wyłączone automatyczne ładowanie pluginów (`setAutomaticallyRegisterPlugins(false)`). Zarejestrowane są jedynie wtyczki niezbędne (`SharedPreferencesPlugin`, IPC okna oraz JNI/path_provider). Wtyczki ciężkie (URL launcher, share, wakelock) nie są dołączane do pamięci nakładki.
-2. **Rozmiar okna zoptymalizowany pod dotyk:** Okno natywne ma dokładnie 276×80 dp — dzięki temu żaden niewidoczny obszar okna nie blokuje dotknięć pod spodem w aplikacji Uber/Bolt.
-3. **Synchronizacja stanów bez blokowania wątku:** Liczniki bieżącej zmiany zapisywane są do lekkiego pliku `shift_counters.json` (`ShiftCounterStore`), a dziennik kliknięć do dopisywanego pliku `tap_history.jsonl` (`TapHistoryStore`, max 500 wpisów). Komunikacja między izolatami przesyła wartości bezpośrednio w ładunku wiadomości IPC — eliminuje to kosztowne przeładowania pliku SharedPreferences XML (`prefs.reload()`) przy każdym tapnięciu.
+2. **Rozmiar okna zoptymalizowany pod dotyk:** Okno natywne ma dokładnie rozmiar widocznego stadionu — **276×80 dp** poziomo albo **74×194 dp** pionowo (68 dp przycisk + 3 dp ramka; wysokość = 2×68 + 2×8 odstęp + 36 slot procentu + 2×3). Żaden niewidoczny obszar nie blokuje Uber/Bolt. Pion **nie** jest naiwną zamianą 80×276 — to zostawiało puste końce kapsuły.
+3. **Synchronizacja stanów bez blokowania wątku:** Liczniki bieżącej zmiany zapisywane są do lekkiego pliku `shift_counters.json` (`ShiftCounterStore`), a dziennik kliknięć do dopisywanego pliku `tap_history.jsonl` (`TapHistoryStore`, max 500 wpisów). Komunikacja między izolatami przesyła wartości bezpośrednio w ładunku wiadomości IPC — eliminuje to kosztowne przeładowania pliku SharedPreferences XML (`prefs.reload()`) przy każdym tapnięciu. `prefs.reload()` wyłącznie przy starcie izolatu nakładki.
+4. **Slop przeciągania 20 dp (nie 20 px):** Na S24 Ultra (~3×) 20 pikseli fizycznych ≈ 7 dp i kradnie tapnięcia. Po przekroczeniu progu natywny `onTouch` wysyła do Fluttera `ACTION_CANCEL`, potem konsumuje MOVE/UP. Silnik nakładki jest niszczony w `OverlayService.onDestroy` (prawdziwy restart izolatu).
 
 ---
 
@@ -126,10 +127,11 @@ Aplikacja posiada rygorystyczny, scentralizowany system tokenów projektowych. *
 | **Standardowa powierzchnia karty** | `#161616` / `#181818` | `AppColors.surface` | `0xFF161616` (Karty bazowe) |
 | **Powierzchnia wyniesiona** | `#1E1E1E` / `#222222` | `AppColors.surfaceElevated` | `0xFF1E1E1E` (Nakładka, dialogi, arkusze) |
 | **Złoto rekordów i kamieni milowych** | `#F59E0B` / `#FFC107` | `AppColors.recordGold` | `0xFFFFD54A` (Kamienie milowe, 2000 kursów) |
+| **Złoto sygnatury KK4181R** | Szary chip 11 px | `AppColors.designerGold` | `0xFFD4AF37` (plakietka metaliczna, `ShaderMask`, halo) |
 | **Błękit interakcji i akcji** | Złoto / Morski | `AppColors.actionAccent` | `0xFF38BDF8` (Dodawanie paragonów, przyciski akcji) |
 
 ### Zasady typografii i ikonografii
-- **Monospace wyłącznie do tabel walutowych:** Czcionka `JetBrains Mono` jest zarezerwowana **wyłącznie** dla wyrównanych w kolumnach kwot walutowych PLN oraz sygnatury weryfikacyjnej.
+- **Monospace wyłącznie do tabel walutowych i plakietki KK4181R:** Czcionka `JetBrains Mono` jest zarezerwowana **wyłącznie** dla wyrównanych w kolumnach kwot walutowych PLN oraz złotej sygnatury projektanta (`KK4181R`) na stopce ekranu głównego.
 - **Wszystkie pozostałe liczby:** Liczniki kursów, wskaźniki procentowe oraz daty używają kroju `DM Sans` z włączoną funkcją `FontFeature.tabularFigures()`, co całkowicie zapobiega poziomemu drganiu (jitter) tekstu przy zmianie cyfr.
 - **Standaryzacja ikon Material Rounded:** Interfejs stosuje zaokrąglone warianty ikon Material (`Icons.*_rounded`). Funkcjonalne emoji interfejsowe (🟢, 🔴, 🏆, ⛽) zostały zastąpione ikonami wektorowymi. Flagi wyboru języka (`🇹🇷`, `🇬🇧`, `🇵🇱`) pozostają w formie natywnej.
 
@@ -174,6 +176,12 @@ Aplikacja wylicza koszt najmu pojazdu automatycznie na podstawie liczby przejazd
 W modelu danych [`WeekEarning`](lib/earnings_models.dart) występuje ścisły rozdział odpowiedzialności liczników:
 - `driverTripCount` — **wyłącznie osobiste kursy danego kierowcy**. To ta wartość jest bezwzględnie sumowana do długoterminowego licznika przebiegu (odometru) monitorującego próg darmowego tygodnia najmu (2000 kursów).
 - `carTripCountOverride` — opcjonalna, łączna liczba kursów wykonanych autem przez obu kierowców w trybie współdzielonym. Właściwość pomocnicza `carTripCount` przyjmuje tę wartość wyłącznie do ustalenia progu najmu w tabeli `RENTAL_TIERS_PAIRED`. Kursy partnera **nigdy nie zanieczyszczają osobistego kamienia milowego**.
+- **Tydzień niezaraportowany (`isUnreported`):** wpis z `netIncome == 0 && onlineHours == 0 && driverTripCount == 0` to placeholder po szybkim dodaniu paliwa w środku tygodnia. `rentalFee` i `totalCarRentalFee` zwracają **0**, dopóki kierowca nie uzupełni danych Ubera — w przeciwnym razie poniedziałek z paragonem doliczał ~900 PLN najmu do miesięcznego i rocznego salda.
+
+### Średnia stawka godzinowa (blended vs unweighted)
+- `averageHourlyRate` — średnia **nieważona** stawek tygodniowych (każdy tydzień liczy się tak samo).
+- `blendedHourlyRate` — `suma(netProfit) / suma(onlineHours)`, identycznie jak `MonthSummary.avgHourlyRate` i `YearSummary.avgHourlyRate`.
+- Wykres trendu 4-tygodniowego **musi** używać `blendedHourlyRate`. Przykład: 10 h @ 50 PLN/h + 40 h @ 1,25 PLN/h → nieważone 25,63, blended **11,00**.
 
 ### Próg rentowności (Break-Even)
 Aplikacja w czasie rzeczywistym wskazuje obrót brutto, od którego kierowca zaczyna zarabiać na czysto:
@@ -239,16 +247,16 @@ Wygenerowany plik produkcyjny dla nowoczesnych smartfonów:
 ```
 lib/
 ├── main.dart                  # Wstępna konfiguracja, StrictSecurityHttpOverrides, inicjalizacja wątków
-├── home_screen.dart           # Główny kokpit, liczniki z ValueNotifier, auto-reset 04:00, OTA
+├── home_screen.dart           # Główny kokpit, liczniki ValueNotifier, Baloncuk Yönü, plakietka KK4181R, OTA
 ├── app_spacing.dart           # [DESIGN SYSTEM] Tokeny odstępów (AppSpacing) i zaokrągleń (AppRadius)
 ├── app_text_styles.dart       # [DESIGN SYSTEM] Skala typograficzna (AppTextStyles) i cyfry tabelaryczne
-├── app_colors.dart            # [DESIGN SYSTEM] 3-tonowe tła OLED, tokeny recordGold i actionAccent
+├── app_colors.dart            # [DESIGN SYSTEM] 3-tonowe tła OLED, recordGold, designerGold, actionAccent
 ├── app_widgets.dart           # [DESIGN SYSTEM] Przycisk podstawowy, dodatkowy, ikony i stany puste
-├── earnings_models.dart       # Silnik finansowy ERES, stawki VAT 12% / opłata 4.3125%, tabele najmu
+├── earnings_models.dart       # Silnik ERES, VAT 12% / opłata 4.3125%, blendedHourlyRate, isUnreported
 ├── earnings_screen.dart       # Tygodniowy arkusz zarobków, lista paragonów, wykresy i wskaźniki
 ├── earnings_pdf_export.dart   # Generator miesięcznych i rocznych raportów PDF dla księgowości
 ├── radar_screen.dart          # Kalendarz i wskaźnik zapotrzebowania imprez masowych w Krakowie
-├── overlay_widget.dart        # Interfejs pigułki nakładki (276×80 dp, izolat okna)
+├── overlay_widget.dart        # Pigułka nakładki: 276×80 dp poziomo / 74×194 dp pionowo
 ├── overlay_sync.dart          # Bezpośredni protokół synchronizacji liczników IPC
 ├── shift_counter_store.dart   # Trwały magazyn liczników bieżącej zmiany (shift_counters.json)
 ├── tap_history_store.dart     # Dziennik kliknięć typu append-only (tap_history.jsonl, max 500)

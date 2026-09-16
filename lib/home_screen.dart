@@ -2091,40 +2091,119 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildDesignerSignature() {
+    const gold = _designerGold;
+    const goldHi = Color(0xFFF8E7A0);
+    const goldLo = Color(0xFF8C6A14);
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(22, 12, 22, 11),
       decoration: BoxDecoration(
-        color: _cardColor,
-        border: Border.all(color: const Color(0x26FFFFFF), width: 1),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            const Color(0xFF221C10),
+            gold.withValues(alpha: 0.14),
+            const Color(0xFF100E0A),
+          ],
+          stops: const [0.0, 0.45, 1.0],
+        ),
+        border: Border.all(color: gold.withValues(alpha: 0.62), width: 1.25),
+        boxShadow: [
+          BoxShadow(
+            color: gold.withValues(alpha: 0.28),
+            blurRadius: 18,
+          ),
+          BoxShadow(
+            color: gold.withValues(alpha: 0.12),
+            blurRadius: 32,
+            spreadRadius: 1,
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            'KK4181R',
-            style: TextStyle(
-              fontFamily: AppFonts.jetBrainsMono,
-              fontSize: 11,
-              color: _designerGold,
-              letterSpacing: 2.5,
-              fontWeight: FontWeight.w500,
-              height: 1.2,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _signatureJewel(),
+              const SizedBox(width: 12),
+              ShaderMask(
+                blendMode: BlendMode.srcIn,
+                shaderCallback: (bounds) => const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [goldHi, gold, goldHi, goldLo],
+                  stops: [0.0, 0.38, 0.68, 1.0],
+                ).createShader(bounds),
+                child: const Text(
+                  'KK4181R',
+                  style: TextStyle(
+                    fontFamily: AppFonts.jetBrainsMono,
+                    fontSize: 16,
+                    letterSpacing: 4.2,
+                    fontWeight: FontWeight.w700,
+                    height: 1.05,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              _signatureJewel(),
+            ],
+          ),
+          const SizedBox(height: 7),
+          Container(
+            width: 42,
+            height: 1.2,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+              gradient: LinearGradient(
+                colors: [
+                  gold.withValues(alpha: 0),
+                  goldHi.withValues(alpha: 0.95),
+                  gold.withValues(alpha: 0),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 3),
+          const SizedBox(height: 6),
           Text(
-            S.designer,
+            S.designer.toUpperCase(),
             style: TextStyle(
               fontFamily: AppFonts.dmSans,
               fontSize: 9,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.5,
-              color: _designerGold.withValues(alpha: 0.65),
+              fontWeight: FontWeight.w800,
+              letterSpacing: 3.4,
+              color: goldHi.withValues(alpha: 0.78),
               height: 1,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _signatureJewel() {
+    return Transform.rotate(
+      angle: math.pi / 4,
+      child: Container(
+        width: 7,
+        height: 7,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFF8E7A0), _designerGold, Color(0xFF8C6A14)],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: _designerGold.withValues(alpha: 0.8),
+              blurRadius: 8,
+            ),
+          ],
+        ),
       ),
     );
   }
