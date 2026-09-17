@@ -82,7 +82,10 @@ int? maxAdditionalCancellations({
   required int currentCancellations,
   double ceiling = 5.0,
 }) {
-  if (completedTrips == 0) return 0;
+  // No trips means no data, not an exhausted budget. Returning 0 here made
+  // every post-reset Monday open with a false amber "0 cancellations left"
+  // card; the caller renders nothing for null.
+  if (completedTrips == 0) return null;
   if ((currentCancellations / completedTrips) * 100 >= ceiling) return -1;
 
   int n = 0;
@@ -95,6 +98,17 @@ int? maxAdditionalCancellations({
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  /// Wired to the live [_HomeScreenState] and cleared on its disposal, the same
+  /// way the static method-channel handler is.
+  ///
+  /// The wakelock idle timer lives on that state but has to be fed from above
+  /// the Navigator: home's own `Listener` never saw the pushed earnings and
+  /// radar routes, so "keep screen on" expired after 10 minutes of *active*
+  /// use on either of them. See the root listener in `main.dart`.
+  static void Function()? _interactionSink;
+
+  static void reportUserInteraction() => _interactionSink?.call();
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -187,11 +201,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _saveDebounce;
   Timer? _wakelockIdleTimer;
 
+  /// Our view of whether the wakelock is currently acquired, so repeated
+  /// interactions don't re-issue the same platform call.
+  bool _wakelockHeld = false;
+
   /// Set when the user was sent to Settings to switch the accessibility
   /// service on. The toggle stays off until the service reports active.
   bool _pendingSteeringWheelEnable = false;
 
   bool _isLoadingOrResetting = false;
+
+  /// False until the first [_loadAndCheckReset] settles. Until then the hero
+  /// numbers are skeletons: `build` runs before the shift is read from disk, so
+  /// the driver used to open every shift on four zeros and `%100,00` that then
+  /// snapped to real values — the app looking momentarily like it lost a week.
+  bool _initialLoadDone = false;
   bool _overlayActive = false;
 
   /// True while [_toggleOverlay] is round-tripping through the platform
@@ -259,40 +283,54 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _drainPendingTaps();
       }
     });
+    HomeScreen._interactionSink = _onUserInteraction;
     _init();
   }
 
+  /// Cold-start sequence. Every stage is guarded on its own, because this used
+  /// to be one unbroken await chain: a throw from any single platform call
+  /// abandoned every stage after it, leaving the counters at zero, the wakelock
+  /// policy unapplied, steering-wheel taps undrained and the overlay dot grey.
+  /// To the driver that is indistinguishable from the week's data being wiped.
   Future<void> _init() async {
     final prefsFuture = _getPrefs();
     final infoFuture = PackageInfo.fromPlatform();
-    final prefs = await prefsFuture;
 
-    final AppLang lang;
-    if (prefs.containsKey(_keyLang)) {
-      final langStr = prefs.getString(_keyLang)!;
-      lang = AppLang.values.firstWhere(
-        (l) => l.name == langStr,
-        orElse: () => AppLang.en,
-      );
-    } else {
-      lang = S.langFromLocale(
-        WidgetsBinding.instance.platformDispatcher.locale,
-      );
-      await prefs.setString(_keyLang, lang.name);
+    try {
+      final prefs = await prefsFuture;
+      final AppLang lang;
+      if (prefs.containsKey(_keyLang)) {
+        final langStr = prefs.getString(_keyLang)!;
+        lang = AppLang.values.firstWhere(
+          (l) => l.name == langStr,
+          orElse: () => AppLang.en,
+        );
+      } else {
+        lang = S.langFromLocale(
+          WidgetsBinding.instance.platformDispatcher.locale,
+        );
+        await prefs.setString(_keyLang, lang.name);
+      }
+      S.setLang(lang);
+      if (mounted) setState(() => _currentLang = lang);
+    } catch (e, s) {
+      loge('language init failed', name: 'home', error: e, stack: s);
     }
-    S.setLang(lang);
 
-    final info = await infoFuture;
-    if (kReleaseMode) {
-      final trusted = await _verifySignature(info.buildSignature);
-      if (!trusted) return;
+    // Signature verification is the one stage allowed to abort the rest: a
+    // build that fails the check must not go on to load the shift. A *throw*
+    // from PackageInfo is not a failed check though, so it only costs the
+    // version badge.
+    try {
+      final info = await infoFuture;
+      if (kReleaseMode && !await _verifySignature(info.buildSignature)) {
+        return;
+      }
+      if (mounted) setState(() => _appVersion = info.version);
+    } catch (e, s) {
+      loge('package info failed', name: 'home', error: e, stack: s);
     }
-    if (mounted) {
-      setState(() {
-        _currentLang = lang;
-        _appVersion = info.version;
-      });
-    }
+
     unawaited(_checkForUpdate());
     await _loadAndCheckReset();
     // A cold start never fires a lifecycle resume, so this is the only place
@@ -366,10 +404,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// driver just sees nothing, and the 12-hour cooldown plus per-version skip
   /// live in [UpdateService.checkOnStartup].
   Future<void> _checkForUpdate() async {
-    final result =
-        await UpdateService.instance.checkOnStartup(languageCode: S.lang.name);
-    if (!mounted || result.status != UpdateStatus.available) return;
-    await showUpdatePrompt(context, result);
+    try {
+      final result = await UpdateService.instance.checkOnStartup(
+        languageCode: S.lang.name,
+      );
+      if (!mounted || result.status != UpdateStatus.available) return;
+      await showUpdatePrompt(context, result);
+    } catch (e, s) {
+      loge('startup update check failed', name: 'home', error: e, stack: s);
+    }
   }
 
   @override
@@ -377,6 +420,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Detach the media-key handler so the static channel cannot retain
     // this State or invoke setState() on it after disposal.
     _kSysChannel.setMethodCallHandler(null);
+    if (HomeScreen._interactionSink == _onUserInteraction) {
+      HomeScreen._interactionSink = null;
+    }
     _overlayListenerSub?.cancel();
     _saveDebounce?.cancel();
     _wakelockIdleTimer?.cancel();
@@ -406,13 +452,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _setWakelock(bool on) async {
+    // Skip redundant round trips. This is now reached from every pointer-down
+    // in the app, including each keystroke in the earnings form.
+    if (_wakelockHeld == on) return;
     try {
       if (on) {
         await WakelockPlus.enable();
       } else {
         await WakelockPlus.disable();
       }
-    } catch (_) {}
+      _wakelockHeld = on;
+    } catch (_) {/* leave _wakelockHeld alone so the next call retries */}
+  }
+
+  void _armWakelockIdleTimer() {
+    _wakelockIdleTimer?.cancel();
+    _wakelockIdleTimer = Timer(_wakelockIdleTimeout, () {
+      unawaited(_setWakelock(false));
+    });
   }
 
   void _applyWakelockPolicy() {
@@ -423,14 +480,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
     unawaited(_setWakelock(true));
-    _wakelockIdleTimer = Timer(_wakelockIdleTimeout, () {
-      unawaited(_setWakelock(false));
-    });
+    _armWakelockIdleTimer();
   }
 
   void _onUserInteraction() {
     if (!_keepScreenOn) return;
-    _applyWakelockPolicy();
+    // Push the idle deadline out on every interaction, but only re-acquire the
+    // lock when it actually lapsed — this runs per pointer-down app-wide.
+    _armWakelockIdleTimer();
+    if (!_wakelockHeld) unawaited(_setWakelock(true));
   }
 
   Future<void> _applyOverlayCounters(Object? event) async {
@@ -472,20 +530,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _reloadAndSync() async {
-    // Settle any debounced in-app delta FIRST; otherwise the disk read
-    // below overwrites memory+baseline and the pending taps evaporate.
-    if (_saveDebounce?.isActive ?? false) {
-      _saveDebounce!.cancel();
-      await _saveDataNow(); // merges delta into disk before we re-read it
+    try {
+      // Settle any debounced in-app delta FIRST; otherwise the disk read
+      // below overwrites memory+baseline and the pending taps evaporate.
+      if (_saveDebounce?.isActive ?? false) {
+        _saveDebounce!.cancel();
+        await _saveDataNow(); // merges delta into disk before we re-read it
+      }
+      if (!mounted) return;
+      // Must settle before draining: it reloads the counters from disk and
+      // re-syncs the save baseline, so a tap applied while it was still in
+      // flight used to be overwritten and lost.
+      await _loadAndCheckReset();
+      await _drainPendingTaps();
+      unawaited(_syncSteeringWheelState());
+      unawaited(_refreshOverlayState());
+    } catch (e, s) {
+      loge('reload/sync failed', name: 'home', error: e, stack: s);
     }
-    if (!mounted) return;
-    // Must settle before draining: it reloads the counters from disk and
-    // re-syncs the save baseline, so a tap applied while it was still in
-    // flight used to be overwritten and lost.
-    await _loadAndCheckReset();
-    await _drainPendingTaps();
-    unawaited(_syncSteeringWheelState());
-    unawaited(_refreshOverlayState());
   }
 
   Future<void> _drainPendingTaps() async {
@@ -505,9 +567,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _refreshOverlayState() async {
-    final active = await FlutterOverlayWindow.isActive();
-    if (!mounted || active == _overlayActive) return;
-    setState(() => _overlayActive = active);
+    try {
+      final active = await FlutterOverlayWindow.isActive();
+      if (!mounted || active == _overlayActive) return;
+      setState(() => _overlayActive = active);
+    } catch (e, s) {
+      // Called via unawaited(), so an unguarded channel error here would
+      // surface as an unhandled zone error instead of a log line.
+      loge('overlay state refresh failed', name: 'home', error: e, stack: s);
+    }
   }
 
   void _flushSave() {
@@ -620,9 +688,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       }
       _applyWakelockPolicy();
+    } catch (e, s) {
+      // Logged rather than rethrown: _init's remaining stages (pending-tap
+      // drain, steering-wheel sync, overlay dot) are independent of this one
+      // and must still run.
+      loge('load/reset failed', name: 'home', error: e, stack: s);
     } finally {
       _isLoadingOrResetting = false;
+      if (mounted && !_initialLoadDone) {
+        setState(() => _initialLoadDone = true);
+      }
     }
+  }
+
+  /// Pushes the pill-relevant settings to a running overlay. The overlay
+  /// isolate has its own prefs cache, so every write to one of these three
+  /// settings must be followed by this call or the pill keeps the old value
+  /// until it is closed and reopened.
+  void _notifyOverlaySettings() {
+    unawaited(
+      OverlaySync.notifySettingsChanged(
+        lang: S.lang.name,
+        goalTier: _selectedGoal.name,
+        autoComplete: _autoCompleteTrips,
+      ),
+    );
   }
 
   Future<void> _setTripGoal(TripGoal goal) async {
@@ -632,13 +722,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
     final prefs = await _getPrefs();
     await prefs.setString(_keyTripGoal, goal.name);
-    unawaited(
-      OverlaySync.notifyCountersChanged(
-        accepted: acceptedRequests,
-        rejected: rejectedRequests,
-        completed: completedTrips,
-      ),
-    );
+    _notifyOverlaySettings();
   }
 
   /// Keep 2 years of weekly snapshots, matching kMaxEarningEntries.
@@ -834,6 +918,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => _autoCompleteTrips = enabled);
     final prefs = await _getPrefs();
     await prefs.setBool(_keyAutoComplete, enabled);
+    _notifyOverlaySettings();
   }
 
   Future<void> _setKeepScreenOn(bool enabled) async {
@@ -937,6 +1022,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => _currentLang = lang);
     final prefs = await _getPrefs();
     await prefs.setString(_keyLang, lang.name);
+    _notifyOverlaySettings();
   }
 
   Future<void> _showLanguageSelector() async {
@@ -1306,6 +1392,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final logoCachePx =
         (28 * MediaQuery.devicePixelRatioOf(context)).round();
+    // Covers home's own surface. The root listener in main.dart adds the
+    // pushed routes this one cannot see; both feeds are idempotent, and
+    // keeping this one means HomeScreen still manages its own wakelock when
+    // pumped without that wrapper.
     return Listener(
       onPointerDown: (_) => _onUserInteraction(),
       child: Scaffold(
@@ -1492,6 +1582,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ListenableBuilder(
                       listenable: _ratesListenable,
                       builder: (context, _) {
+                        if (!_initialLoadDone) {
+                          return const SizedBox(
+                            height: 110,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(child: _RateCardSkeleton()),
+                                SizedBox(width: 12),
+                                Expanded(child: _RateCardSkeleton()),
+                              ],
+                            ),
+                          );
+                        }
                         final cancelColor = cancellationRate >= 5.0
                             ? _crimson
                             : _emerald;
@@ -1602,6 +1705,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _CounterRow(
                       label: S.accepted,
                       valueListenable: _accepted,
+                      loading: !_initialLoadDone,
                       onDelta: (d) => _change(_keyAccepted, d),
                       onEdit: () => _showEditCounterDialog(
                         title: S.editAcceptedTitle,
@@ -1613,6 +1717,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _CounterRow(
                       label: S.rejected,
                       valueListenable: _rejected,
+                      loading: !_initialLoadDone,
                       onDelta: (d) => _change(_keyRejected, d),
                       onEdit: () => _showEditCounterDialog(
                         title: S.editRejectedTitle,
@@ -1628,6 +1733,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _CounterRow(
                       label: S.completed,
                       valueListenable: _completed,
+                      loading: !_initialLoadDone,
                       onDelta: (d) => _change(_keyCompleted, d),
                       onEdit: () => _showEditCounterDialog(
                         title: S.editCompletedTitle,
@@ -1639,6 +1745,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _CounterRow(
                       label: S.cancelled,
                       valueListenable: _canceled,
+                      loading: !_initialLoadDone,
                       onDelta: (d) => _change(_keyCanceled, d),
                       onEdit: () => _showEditCounterDialog(
                         title: S.editCancelledTitle,
@@ -2573,6 +2680,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
+/// Same chrome as [_HomeScreenState._buildRateCard], empty, pulsing — so the
+/// first frame of a shift is a skeleton rather than `%100,00` / `0` that then
+/// snap to the real week.
+class _RateCardSkeleton extends StatelessWidget {
+  const _RateCardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return AppShimmer(
+      child: Container(
+        width: double.infinity,
+        height: double.infinity,
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          border: Border.all(color: AppColors.cardBorderColor, width: 1),
+          borderRadius: AppRadius.mdBorder,
+        ),
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AppSkeletonBar(width: 72, height: 10),
+            SizedBox(height: AppSpacing.sm),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: AppSkeletonBar(width: 96, height: 36),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Isolated so a +/- tap rebuilds only this row, not the whole home screen.
 class _CounterRow extends StatelessWidget {
   const _CounterRow({
@@ -2580,12 +2723,14 @@ class _CounterRow extends StatelessWidget {
     required this.valueListenable,
     required this.onDelta,
     this.onEdit,
+    this.loading = false,
   });
 
   final String label;
   final ValueNotifier<int> valueListenable;
   final void Function(int delta) onDelta;
   final VoidCallback? onEdit;
+  final bool loading;
 
   static const _valueStyle = AppTextStyles.hero;
 
@@ -2623,13 +2768,13 @@ class _CounterRow extends StatelessWidget {
                       Text(label, style: _labelStyle),
                       const SizedBox(height: AppSpacing.xs),
                       GestureDetector(
-                        onTap: onEdit == null
+                        onTap: loading || onEdit == null
                             ? null
                             : () {
                                 HapticFeedback.selectionClick();
                                 onEdit!();
                               },
-                        onLongPress: onEdit == null
+                        onLongPress: loading || onEdit == null
                             ? null
                             : () {
                                 HapticFeedback.mediumImpact();
@@ -2639,11 +2784,16 @@ class _CounterRow extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Text('$value', style: _valueStyle),
-                            ),
+                            if (loading)
+                              const AppShimmer(
+                                child: AppSkeletonBar(width: 56, height: 32),
+                              )
+                            else
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text('$value', style: _valueStyle),
+                              ),
                             if (onEdit != null) ...[
                               const SizedBox(width: AppSpacing.sm),
                               const Icon(
@@ -2661,19 +2811,23 @@ class _CounterRow extends StatelessWidget {
                 AppIconActionButton(
                   icon: Icons.remove_rounded,
                   tintColor: AppColors.crimson,
-                  onTap: () {
-                    HapticFeedback.mediumImpact();
-                    onDelta(-1);
-                  },
+                  onTap: loading
+                      ? null
+                      : () {
+                          HapticFeedback.mediumImpact();
+                          onDelta(-1);
+                        },
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 AppIconActionButton(
                   icon: Icons.add_rounded,
                   tintColor: AppColors.emerald,
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    onDelta(1);
-                  },
+                  onTap: loading
+                      ? null
+                      : () {
+                          HapticFeedback.lightImpact();
+                          onDelta(1);
+                        },
                 ),
               ],
             );

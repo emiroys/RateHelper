@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rate_helper/app_widgets.dart';
 import 'package:rate_helper/earnings_screen.dart';
 import 'package:rate_helper/main.dart';
 import 'package:rate_helper/overlay_widget.dart';
@@ -9,6 +10,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   testWidgets('App boots without throwing', (WidgetTester tester) async {
     await tester.pumpWidget(const RateHelperApp(showOnboarding: false));
+    // First frame is before the shift is read: heroes must be skeletons, not
+    // the `%100,00` / `0` snap that used to look like a wiped week.
+    expect(find.byType(AppShimmer), findsWidgets);
     await tester.pump();
     expect(tester.takeException(), isNull);
   });

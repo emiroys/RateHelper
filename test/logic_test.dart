@@ -306,10 +306,10 @@ void main() {
   });
 
   group('maxAdditionalCancellations', () {
-    test('returns 0 when completedTrips is 0', () {
+    test('returns null when completedTrips is 0 (no data, not an empty budget)', () {
       expect(
         maxAdditionalCancellations(completedTrips: 0, currentCancellations: 0),
-        0,
+        isNull,
       );
     });
 

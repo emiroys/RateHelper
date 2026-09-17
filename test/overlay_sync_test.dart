@@ -28,6 +28,45 @@ void main() {
     );
   });
 
+  test('parses a settings payload', () {
+    final event = <String, String>{
+      'action': OverlaySync.actionSettingsChanged,
+      OverlaySync.keyLang: 'pl',
+      OverlaySync.keyGoalTier: 'tier2',
+      OverlaySync.keyAutoComplete: 'true',
+    };
+    // A settings message must not be mistaken for a counters reload: that
+    // path early-returns on unchanged counters and would drop the settings.
+    expect(OverlaySync.shouldReloadCounters(event), isFalse);
+    final settings = OverlaySync.settingsFromEvent(event);
+    expect(settings, isNotNull);
+    expect(settings!.lang, 'pl');
+    expect(settings.goalTier, 'tier2');
+    expect(settings.autoComplete, isTrue);
+  });
+
+  test('settingsFromEvent returns null for a counters message', () {
+    expect(
+      OverlaySync.settingsFromEvent(<String, String>{
+        'action': OverlaySync.actionReloadCounters,
+        'accepted': '1',
+        'rejected': '1',
+        'completed': '1',
+      }),
+      isNull,
+    );
+  });
+
+  test('settingsFromEvent returns null when a field is missing', () {
+    expect(
+      OverlaySync.settingsFromEvent(<String, String>{
+        'action': OverlaySync.actionSettingsChanged,
+        OverlaySync.keyLang: 'tr',
+      }),
+      isNull,
+    );
+  });
+
   test('PillOrientation.fromPrefs prefers the named key over the legacy bool',
       () async {
     SharedPreferences.setMockInitialValues({

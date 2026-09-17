@@ -38,6 +38,15 @@ class MediaKeyAccessibilityService : AccessibilityService() {
         /// digit milliseconds. Anything slower than this is a wedged or
         /// half-destroyed engine, so the tap goes to the pending store.
         private const val OVERLAY_ACK_TIMEOUT_MS = 1200L
+
+        /// Waveforms are {delay, on} pairs. Accept is one 110 ms pulse;
+        /// reject is two 70 ms pulses split by a 70 ms gap — short enough to
+        /// read as one event, distinct enough to tell apart through a glove
+        /// on a steering wheel.
+        private val ACCEPT_PATTERN = longArrayOf(0, 110)
+        private val ACCEPT_AMPLITUDES = intArrayOf(0, 255)
+        private val REJECT_PATTERN = longArrayOf(0, 70, 70, 70)
+        private val REJECT_AMPLITUDES = intArrayOf(0, 200, 0, 200)
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -160,7 +169,7 @@ class MediaKeyAccessibilityService : AccessibilityService() {
 
     private fun handleLongPress(accepted: Boolean) {
         val key = if (accepted) "accepted" else "rejected"
-        vibrate()
+        vibrate(accepted)
 
         val channel = liveOverlayChannel()
         if (channel == null) {
@@ -237,21 +246,30 @@ class MediaKeyAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {}
     }
 
-    private fun vibrate() {
+    /**
+     * Distinct rhythms so the driver knows *which* counter moved without
+     * looking away from the road: accept is one crisp pulse, reject is a
+     * double tap. A single identical buzz for both — what this used to do —
+     * confirms that something was counted but not what.
+     *
+     * The overlay pill mirrors these two rhythms via HapticFeedback, so the
+     * steering wheel and the pill feel like the same gesture.
+     */
+    private fun vibrate(accepted: Boolean) {
+        val timings = if (accepted) ACCEPT_PATTERN else REJECT_PATTERN
+        val amplitudes = if (accepted) ACCEPT_AMPLITUDES else REJECT_AMPLITUDES
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-                val vibrator = vibratorManager.defaultVibrator
-                vibrator.vibrate(VibrationEffect.createOneShot(150, VibrationEffect.DEFAULT_AMPLITUDE))
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
             } else {
                 @Suppress("DEPRECATION")
-                val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator.vibrate(VibrationEffect.createOneShot(150, VibrationEffect.DEFAULT_AMPLITUDE))
-                } else {
-                    @Suppress("DEPRECATION")
-                    vibrator.vibrate(150)
-                }
+                getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(timings, -1)
             }
         } catch (e: Exception) {
             // Ignore vibration failure

@@ -151,6 +151,24 @@ const double _goodHourlyThreshold = 30.0;
 Color _hourlyColor(double rate) =>
     rate >= _goodHourlyThreshold ? _emerald : (rate > 0 ? _amber : _crimson);
 
+/// The accept-rate card's `hasGlow` recipe, applied to the two earnings heroes
+/// (PLN/h and net profit) so those numbers carry the same visual weight as the
+/// home-screen rate they already share a colour language with.
+BoxDecoration _heroGlowDecoration(Color color) {
+  return BoxDecoration(
+    color: _cardColor,
+    border: Border.all(color: color.withValues(alpha: 0.4), width: 1.2),
+    borderRadius: _cardRadius,
+    boxShadow: [
+      BoxShadow(
+        color: color.withValues(alpha: 0.2),
+        blurRadius: 20,
+        spreadRadius: 1,
+      ),
+    ],
+  );
+}
+
 /// Localized text for an informational cross-check warning.
 String _warningText(EarningsWarning w) {
   switch (w) {
@@ -192,10 +210,17 @@ class PolishCurrencyInputFormatter extends LengthLimitingTextInputFormatter {
       return newValue;
     }
 
-    String text = newValue.text.replaceAll('.', ',');
-    final commaIndex = text.indexOf(',');
-    String intPart = commaIndex == -1 ? text : text.substring(0, commaIndex);
-    String decPart = commaIndex == -1 ? '' : text.substring(commaIndex + 1);
+    // A pasted amount can carry a grouping separator *and* a decimal mark
+    // (`1.234,56`, `1,234.56`); the decimal mark is always the last of the
+    // two. Normalizing '.' to ',' before locating it read that as `1,23`.
+    // With a single separator this is the same position as before, so typing
+    // behaves identically.
+    final String text = newValue.text;
+    final int lastDot = text.lastIndexOf('.');
+    final int lastComma = text.lastIndexOf(',');
+    final int sepIndex = lastDot > lastComma ? lastDot : lastComma;
+    String intPart = sepIndex == -1 ? text : text.substring(0, sepIndex);
+    String decPart = sepIndex == -1 ? '' : text.substring(sepIndex + 1);
 
     intPart = intPart.replaceAll(RegExp(r'\D'), '');
     decPart = decPart.replaceAll(RegExp(r'\D'), '');
@@ -207,11 +232,11 @@ class PolishCurrencyInputFormatter extends LengthLimitingTextInputFormatter {
       intPart = intPart.substring(0, 7);
     }
 
-    if (intPart.isEmpty && commaIndex != -1) {
+    if (intPart.isEmpty && sepIndex != -1) {
       intPart = '0';
     }
 
-    if (intPart.isEmpty && decPart.isEmpty && commaIndex == -1) {
+    if (intPart.isEmpty && decPart.isEmpty && sepIndex == -1) {
       return const TextEditingValue(
         text: '',
         selection: TextSelection.collapsed(offset: 0),
@@ -227,7 +252,7 @@ class PolishCurrencyInputFormatter extends LengthLimitingTextInputFormatter {
     }
 
     String formatted = sb.toString();
-    if (commaIndex != -1) {
+    if (sepIndex != -1) {
       formatted += ',$decPart';
     }
 
@@ -251,6 +276,132 @@ class PolishCurrencyInputFormatter extends LengthLimitingTextInputFormatter {
       text: formatted,
       selection: TextSelection.collapsed(offset: newCursor),
     );
+  }
+}
+
+/// Parses a hand-typed money field in Polish notation — space thousands
+/// separators and a comma decimal mark, the shape
+/// [PolishCurrencyInputFormatter] produces. Returns null for anything that
+/// isn't a number so callers can surface an error instead of doing nothing.
+double? parsePlnAmount(String raw) {
+  final t = raw
+      .trim()
+      .replaceAll(' ', '')
+      .replaceAll('\u00A0', '')
+      .replaceAll(',', '.');
+  if (t.isEmpty) return null;
+  return double.tryParse(t);
+}
+
+/// The quick-fuel amount prompt, shared by the earnings screen's bottom-bar
+/// action and the form's receipt list. Returns the amount in PLN, or null when
+/// the driver cancelled.
+Future<double?> showFuelAmountDialog(BuildContext context) async {
+  final ctrl = TextEditingController();
+  try {
+    return await showDialog<double>(
+      context: context,
+      builder: (ctx) {
+        String? errorText;
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            void submit() {
+              final val = parsePlnAmount(ctrl.text);
+              if (val != null && val > 0) {
+                Navigator.of(ctx).pop(val);
+                return;
+              }
+              // Previously a silent no-op: the button did nothing and the
+              // dialog just sat there with no explanation.
+              setLocal(() => errorText = S.enterValidAmount);
+            }
+
+            return AlertDialog(
+              backgroundColor: AppColors.elevated,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Text(
+                S.quickAddFuelTitle,
+                style: const TextStyle(
+                  fontFamily: AppFonts.dmSans,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              content: TextField(
+                controller: ctrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: [PolishCurrencyInputFormatter()],
+                style: const TextStyle(
+                  fontFamily: AppFonts.dmSans,
+                  color: Colors.white,
+                  fontSize: 18,
+                ),
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: S.amountPaidLabel,
+                  labelStyle: const TextStyle(
+                    fontFamily: AppFonts.dmSans,
+                    color: AppColors.mutedText,
+                  ),
+                  errorText: errorText,
+                  errorStyle: const TextStyle(
+                    fontFamily: AppFonts.dmSans,
+                    color: AppColors.crimson,
+                  ),
+                  suffixText: 'PLN',
+                  suffixStyle: const TextStyle(
+                    fontFamily: AppFonts.dmSans,
+                    color: _actionAccent,
+                  ),
+                  enabledBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24),
+                  ),
+                  focusedBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: _actionAccent),
+                  ),
+                ),
+                onChanged: (_) {
+                  if (errorText != null) setLocal(() => errorText = null);
+                },
+                onSubmitted: (_) => submit(),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text(
+                    S.cancel,
+                    style: const TextStyle(
+                      fontFamily: AppFonts.dmSans,
+                      color: AppColors.mutedText,
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _actionAccent,
+                    foregroundColor: Colors.black,
+                  ),
+                  onPressed: submit,
+                  child: Text(
+                    S.add,
+                    style: const TextStyle(
+                      fontFamily: AppFonts.dmSans,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  } finally {
+    ctrl.dispose();
   }
 }
 
@@ -315,6 +466,22 @@ class _EarningsScreenState extends State<EarningsScreen> {
   String _driverName = '';
 
   _ViewMode _viewMode = _ViewMode.weekly;
+
+  /// Chart / count-up identities that have already played their from-zero
+  /// entrance. Those widgets are destroyed when [_viewMode] changes, so without
+  /// this the bar cascade and the 0→value roll replay every time the driver
+  /// returns to a view they already saw.
+  final Set<String> _revealed = {};
+
+  /// Whether [key] should play its entrance on this build. The key is recorded
+  /// after the frame so a debug double-build still sees a first play.
+  bool _takeReveal(String key) {
+    if (_revealed.contains(key)) return false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _revealed.add(key);
+    });
+    return true;
+  }
 
   /// First day of the month currently focused in the monthly view.
   DateTime? _selectedMonth;
@@ -776,101 +943,10 @@ class _EarningsScreenState extends State<EarningsScreen> {
   Future<void> _quickAddFuel() async {
     if (_fuelDialogActive) return;
     _fuelDialogActive = true;
-    final ctrl = TextEditingController();
     double? added;
     try {
-      added = await showDialog<double>(
-        context: context,
-        builder: (ctx) {
-          return AlertDialog(
-            backgroundColor: AppColors.elevated,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Text(
-              S.quickAddFuelTitle,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            content: TextField(
-              controller: ctrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                color: Colors.white,
-                fontSize: 18,
-              ),
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: S.amountPaidLabel,
-                labelStyle: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  color: AppColors.mutedText,
-                ),
-                suffixText: 'PLN',
-                suffixStyle: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  color: _actionAccent,
-                ),
-                enabledBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white24),
-                ),
-                focusedBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: _actionAccent),
-                ),
-              ),
-              onSubmitted: (_) {
-                final val = double.tryParse(
-                  ctrl.text.replaceAll(',', '.').trim(),
-                );
-                if (val != null && val > 0) {
-                  Navigator.of(ctx).pop(val);
-                }
-              },
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: Text(
-                  S.cancel,
-                  style: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    color: AppColors.mutedText,
-                  ),
-                ),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _actionAccent,
-                  foregroundColor: Colors.black,
-                ),
-                onPressed: () {
-                  final val = double.tryParse(
-                    ctrl.text.replaceAll(',', '.').trim(),
-                  );
-                  if (val != null && val > 0) {
-                    Navigator.of(ctx).pop(val);
-                  }
-                },
-                child: Text(
-                  S.add,
-                  style: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      );
+      added = await showFuelAmountDialog(context);
     } finally {
-      ctrl.dispose();
       _fuelDialogActive = false;
     }
 
@@ -1479,6 +1555,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
             child: _TrendChart(
               weeks: trend,
               selectedStart: start,
+              animateEntrance: _takeReveal('chart_weekly'),
               onBarTap: _selectWeek,
             ),
           ),
@@ -1509,7 +1586,10 @@ class _EarningsScreenState extends State<EarningsScreen> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-            child: _HeroCard(entry: entry),
+            child: _HeroCard(
+              entry: entry,
+              animateEntrance: _takeReveal('count_weekly'),
+            ),
           ),
         ),
         SliverToBoxAdapter(
@@ -1667,6 +1747,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
             avgHourlyRate: selected.avgHourlyRate,
             totalOnlineHours: selected.totalOnlineHours,
             weekCount: selected.weekCount,
+            animateEntrance: _takeReveal('count_monthly'),
           ),
         ),
       ),
@@ -1675,6 +1756,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
           child: _AggregateChart(
             title: S.monthlyTrendTitle,
+            animateEntrance: _takeReveal('chart_monthly'),
             bars: [
               for (final m in recent)
                 _BarDatum(
@@ -1755,6 +1837,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
             avgHourlyRate: selected.avgHourlyRate,
             totalOnlineHours: selected.totalOnlineHours,
             weekCount: selected.weekCount,
+            animateEntrance: _takeReveal('count_yearly'),
           ),
         ),
       ),
@@ -1763,6 +1846,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
           child: _AggregateChart(
             title: S.yearlyTrendTitle,
+            animateEntrance: _takeReveal('chart_yearly'),
             bars: [
               for (final y in years)
                 _BarDatum(
@@ -2041,15 +2125,23 @@ class _WeekSelector extends StatelessWidget {
 /// previously shown value to the new one over 400ms, formatting each frame
 /// with the app's PLN formatter — the single highest-impact "alive" touch.
 class _CountUp extends StatelessWidget {
-  const _CountUp({required this.value, required this.style});
+  const _CountUp({
+    required this.value,
+    required this.style,
+    this.animateEntrance = true,
+  });
 
   final double value;
   final TextStyle style;
 
+  /// False when this identity has already played its from-zero roll, so a
+  /// freshly recreated State (view-mode switch) does not look like a reload.
+  final bool animateEntrance;
+
   @override
   Widget build(BuildContext context) {
     return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0, end: value),
+      tween: Tween<double>(begin: animateEntrance ? 0 : value, end: value),
       duration: const Duration(milliseconds: 400),
       curve: Curves.easeOutCubic,
       builder: (context, v, _) => Text(formatPln(v), style: style),
@@ -2058,9 +2150,10 @@ class _CountUp extends StatelessWidget {
 }
 
 class _HeroCard extends StatelessWidget {
-  const _HeroCard({required this.entry});
+  const _HeroCard({required this.entry, required this.animateEntrance});
 
   final WeekEarning entry;
+  final bool animateEntrance;
 
   @override
   Widget build(BuildContext context) {
@@ -2068,11 +2161,7 @@ class _HeroCard extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 20),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        border: _cardBorder,
-        borderRadius: _cardRadius,
-      ),
+      decoration: _heroGlowDecoration(color),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2096,6 +2185,7 @@ class _HeroCard extends StatelessWidget {
               children: [
                 _CountUp(
                   value: entry.hourlyRate,
+                  animateEntrance: animateEntrance,
                   style: TextStyle(
                     fontFamily: AppFonts.dmSans,
                     fontSize: 56,
@@ -2209,12 +2299,14 @@ class _TrendChart extends StatelessWidget {
     required this.weeks,
     required this.selectedStart,
     required this.onBarTap,
+    required this.animateEntrance,
   });
 
   /// Oldest → newest, up to 12 weeks.
   final List<WeekEarning> weeks;
   final DateTime selectedStart;
   final void Function(WeekEarning) onBarTap;
+  final bool animateEntrance;
 
   @override
   Widget build(BuildContext context) {
@@ -2317,6 +2409,7 @@ class _TrendChart extends StatelessWidget {
                               '${weeks[i].weekStart.day}.${weeks[i].weekStart.month}',
                           selected:
                               isSameDate(weeks[i].weekStart, selectedStart),
+                          animateEntrance: animateEntrance,
                           onTap: () => onBarTap(weeks[i]),
                         ),
                       ),
@@ -2342,6 +2435,7 @@ class _ChartBar extends StatefulWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    required this.animateEntrance,
     this.color,
   });
 
@@ -2351,6 +2445,7 @@ class _ChartBar extends StatefulWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final bool animateEntrance;
   final Color? color;
 
   @override
@@ -2363,6 +2458,10 @@ class _ChartBarState extends State<_ChartBar> {
   @override
   void initState() {
     super.initState();
+    if (!widget.animateEntrance) {
+      _target = widget.heightFactor;
+      return;
+    }
     Future.delayed(Duration(milliseconds: 30 * widget.index), () {
       if (mounted) setState(() => _target = widget.heightFactor);
     });
@@ -2413,7 +2512,10 @@ class _ChartBarState extends State<_ChartBar> {
               child: Align(
                 alignment: Alignment.bottomCenter,
                 child: TweenAnimationBuilder<double>(
-                  tween: Tween<double>(begin: 0, end: _target),
+                  tween: Tween<double>(
+                    begin: widget.animateEntrance ? 0 : widget.heightFactor,
+                    end: _target,
+                  ),
                   duration: const Duration(milliseconds: 400),
                   curve: Curves.easeOutCubic,
                   builder: (context, f, _) => FractionallySizedBox(
@@ -2548,10 +2650,15 @@ class _BarDatum {
 }
 
 class _AggregateChart extends StatelessWidget {
-  const _AggregateChart({required this.title, required this.bars});
+  const _AggregateChart({
+    required this.title,
+    required this.bars,
+    required this.animateEntrance,
+  });
 
   final String title;
   final List<_BarDatum> bars;
+  final bool animateEntrance;
 
   @override
   Widget build(BuildContext context) {
@@ -2587,6 +2694,7 @@ class _AggregateChart extends StatelessWidget {
                       heightFactor: bars[i].heightFactor,
                       label: bars[i].label,
                       selected: bars[i].selected,
+                      animateEntrance: animateEntrance,
                       onTap: () {
                         HapticFeedback.selectionClick();
                         bars[i].onTap();
@@ -2609,6 +2717,7 @@ class _SummaryCard extends StatelessWidget {
     required this.avgHourlyRate,
     required this.totalOnlineHours,
     required this.weekCount,
+    required this.animateEntrance,
   });
 
   final String title;
@@ -2616,17 +2725,15 @@ class _SummaryCard extends StatelessWidget {
   final double avgHourlyRate;
   final double totalOnlineHours;
   final int weekCount;
+  final bool animateEntrance;
 
   @override
   Widget build(BuildContext context) {
+    final color = totalNetProfit >= 0 ? _emerald : _crimson;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 20),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        border: _cardBorder,
-        borderRadius: _cardRadius,
-      ),
+      decoration: _heroGlowDecoration(color),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2661,11 +2768,12 @@ class _SummaryCard extends StatelessWidget {
               children: [
                 _CountUp(
                   value: totalNetProfit,
+                  animateEntrance: animateEntrance,
                   style: TextStyle(
                     fontFamily: AppFonts.dmSans,
                     fontSize: 46,
                     fontWeight: FontWeight.w900,
-                    color: totalNetProfit >= 0 ? _emerald : _crimson,
+                    color: color,
                     height: 1,
                   ),
                 ),
@@ -3664,12 +3772,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
   /// formatters already block a typed minus sign; this is a defensive backstop
   /// so a negative can never reach the calculations.
   double _parse(TextEditingController c) {
-    final t = c.text
-        .trim()
-        .replaceAll(' ', '')
-        .replaceAll(',', '.');
-    if (t.isEmpty) return 0;
-    final v = double.tryParse(t) ?? 0;
+    final v = parsePlnAmount(c.text) ?? 0;
     return v < 0 ? 0 : v;
   }
 
@@ -3931,102 +4034,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
   );
 
   Future<void> _addReceiptInline() async {
-    final ctrl = TextEditingController();
-    double? added;
-    try {
-      added = await showDialog<double>(
-        context: context,
-        builder: (ctx) {
-          return AlertDialog(
-            backgroundColor: AppColors.elevated,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Text(
-              S.quickAddFuelTitle,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            content: TextField(
-              controller: ctrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                color: Colors.white,
-                fontSize: 18,
-              ),
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: S.amountPaidLabel,
-                labelStyle: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  color: AppColors.mutedText,
-                ),
-                suffixText: 'PLN',
-                suffixStyle: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  color: _actionAccent,
-                ),
-                enabledBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white24),
-                ),
-                focusedBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: _actionAccent),
-                ),
-              ),
-              onSubmitted: (_) {
-                final val = double.tryParse(
-                  ctrl.text.replaceAll(',', '.').trim(),
-                );
-                if (val != null && val > 0) {
-                  Navigator.of(ctx).pop(val);
-                }
-              },
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: Text(
-                  S.cancel,
-                  style: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    color: AppColors.mutedText,
-                  ),
-                ),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _actionAccent,
-                  foregroundColor: Colors.black,
-                ),
-                onPressed: () {
-                  final val = double.tryParse(
-                    ctrl.text.replaceAll(',', '.').trim(),
-                  );
-                  if (val != null && val > 0) {
-                    Navigator.of(ctx).pop(val);
-                  }
-                },
-                child: Text(
-                  S.add,
-                  style: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      );
-    } finally {
-      ctrl.dispose();
-    }
+    final added = await showFuelAmountDialog(context);
 
     if (added == null || added <= 0 || !mounted) return;
     _fuelReceiptsNotifier.value = capFuelReceipts([

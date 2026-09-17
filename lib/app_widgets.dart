@@ -8,6 +8,76 @@ import 'app_text_styles.dart';
 /// Minimum tap area for anything the driver may hit while the car is moving.
 const double kMinTouchTarget = 48.0;
 
+/// The app's one loading pulse. Wrap any skeleton shape in this so every
+/// screen's load state breathes at the same rate instead of each inventing its
+/// own (or, worse, showing a bare spinner next to a sibling that has skeletons).
+class AppShimmer extends StatefulWidget {
+  const AppShimmer({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<AppShimmer> createState() => _AppShimmerState();
+}
+
+class _AppShimmerState extends State<AppShimmer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 900),
+      vsync: this,
+    )..repeat(reverse: true);
+    _opacity = Tween<double>(begin: 0.25, end: 0.70).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(opacity: _opacity, child: widget.child);
+  }
+}
+
+/// A single skeleton block — the grey bar a real value will replace.
+class AppSkeletonBar extends StatelessWidget {
+  const AppSkeletonBar({
+    super.key,
+    this.width,
+    required this.height,
+    this.dim = false,
+  });
+
+  final double? width;
+  final double height;
+
+  /// Secondary blocks (captions, sub-labels) sit a shade back from the block
+  /// standing in for the primary value.
+  final bool dim;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: dim ? Colors.white12 : Colors.white24,
+        borderRadius: AppRadius.xsBorder,
+      ),
+    );
+  }
+}
+
 /// Wraps a small visual (usually an icon) in a forgiving [kMinTouchTarget]
 /// square hit area without changing how large the icon itself looks.
 class AppTapTarget extends StatelessWidget {

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -84,6 +85,10 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   static const _keyAutoComplete = 'autoCompleteTrips';
   static const _persistDebounce = Duration(milliseconds: 300);
 
+  /// Gap between the two reject pulses, matching REJECT_PATTERN in
+  /// MediaKeyAccessibilityService so both input paths feel identical.
+  static const _rejectPulseGap = Duration(milliseconds: 70);
+
   static const _crimson = AppColors.crimson;
   static const _emerald = AppColors.emerald;
   static const _amber = AppColors.amber;
@@ -95,9 +100,16 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   static const double _btnTextGapDp = 12;
   static const double _verticalCenterTextWidthDp = OverlayWidget.btnSizeDp;
 
-  SharedPreferences? _prefs;
   StreamSubscription<dynamic>? _syncSub;
   Timer? _persistTimer;
+  Timer? _rejectPulseTimer;
+
+  /// Bumped on every counted tap. Re-keys the value pop so it replays.
+  int _tapSeq = 0;
+
+  /// Set once home has pushed settings to this isolate. From then on prefs is
+  /// a stale mirror and must not win over a pushed value.
+  bool _settingsPushed = false;
 
   int _accepted = 0;
   int _rejected = 0;
@@ -152,10 +164,19 @@ class _OverlayWidgetState extends State<OverlayWidget> {
           } else {
             unawaited(_loadCounts());
           }
-        } else if (event is Map && event['action'] == 'media_key_increment') {
+          return;
+        }
+        final settings = OverlaySync.settingsFromEvent(event);
+        if (settings != null) {
+          _applyRemoteSettings(settings);
+          return;
+        }
+        if (event is Map && event['action'] == 'media_key_increment') {
           final keyStr = event['key'];
           final key = keyStr == 'accepted' ? _keyAccepted : _keyRejected;
-          unawaited(_increment(key));
+          // Native already fired its own accept/reject waveform before
+          // handing the tap over — a second buzz here would blur the rhythm.
+          unawaited(_increment(key, haptic: false));
         }
       });
     } catch (e, s) {
@@ -168,8 +189,7 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     }
   }
 
-  double? _parseReqRate(SharedPreferences prefs) {
-    final goalStr = prefs.getString('trip_goal_tier');
+  static double? _reqRateForTier(String? goalStr) {
     if (goalStr == 'tier0') return null;
     if (goalStr == 'tier2') return 70.0;
     if (goalStr == 'tier3') return 60.0;
@@ -177,11 +197,12 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     return 80.0;
   }
 
+  double? _parseReqRate(SharedPreferences prefs) =>
+      _reqRateForTier(prefs.getString('trip_goal_tier'));
+
   Future<void> _loadCountsOnStartup() async {
     try {
-      _prefs = null;
       final prefs = await SharedPreferences.getInstance();
-      _prefs = prefs;
       // Startup-only reload for lang / goal / autoComplete / layout.
       // Rapid taps must never call reload() — overlapping reload() on the
       // same isolate instance can stall and freeze every later read/write.
@@ -189,15 +210,21 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       unawaited(TapHistoryStore.instance.migrateFromPrefs(prefs));
       await ShiftCounterStore.instance.migrateFromPrefs(prefs);
       if (!mounted) return;
-      _updateLang(prefs);
       final stored = await ShiftCounterStore.instance.read();
       if (!mounted) return;
       final accepted = stored.accepted;
       final rejected = stored.rejected;
       final completed = stored.completed;
-      final autoComplete = prefs.getBool(_keyAutoComplete) ?? false;
-      final reqRate = _parseReqRate(prefs);
       final orientation = PillOrientation.fromPrefs(prefs);
+      // A settings push that landed while this load was in flight is newer
+      // than anything `prefs` holds — the reload above may have run before
+      // home's write reached disk. Don't roll it back.
+      final applySettings = !_settingsPushed;
+      if (applySettings) _updateLang(prefs);
+      final autoComplete = applySettings
+          ? (prefs.getBool(_keyAutoComplete) ?? false)
+          : _autoComplete;
+      final reqRate = applySettings ? _parseReqRate(prefs) : _requiredAcceptRate;
       setState(() {
         _accepted = accepted;
         _rejected = rejected;
@@ -213,6 +240,8 @@ class _OverlayWidgetState extends State<OverlayWidget> {
 
   @override
   void dispose() {
+    _rejectPulseTimer?.cancel();
+    _rejectPulseTimer = null;
     final hadPending = _persistTimer?.isActive ?? false;
     _persistTimer?.cancel();
     _persistTimer = null;
@@ -238,37 +267,50 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     });
   }
 
+  /// Applies settings pushed by the home isolate. Authoritative over anything
+  /// this isolate could read from its own prefs cache, which is frozen at the
+  /// last [SharedPreferences.reload] — i.e. at overlay startup.
+  void _applyRemoteSettings(OverlaySettings settings) {
+    if (!mounted) return;
+    _settingsPushed = true;
+    final lang = AppLang.values.firstWhere(
+      (l) => l.name == settings.lang,
+      orElse: () => S.lang,
+    );
+    final reqRate = _reqRateForTier(settings.goalTier);
+    if (lang == S.lang &&
+        reqRate == _requiredAcceptRate &&
+        settings.autoComplete == _autoComplete) {
+      return;
+    }
+    S.setLang(lang);
+    setState(() {
+      _requiredAcceptRate = reqRate;
+      _autoComplete = settings.autoComplete;
+    });
+  }
+
   Future<void> _loadCounts() async {
     if (_hasUnpersistedTaps) return;
     try {
-      final prefs = await _getPrefs();
-      // Counters live in ShiftCounterStore — no prefs.reload() on the
-      // hot path. Lang/goal/autoComplete are home-only and were loaded
-      // at overlay startup.
+      // Counters only, and no prefs.reload(): this runs on the tap-recovery
+      // path. Lang / goal / autoComplete come from startup plus the
+      // settings-changed push — re-reading them from this isolate's stale
+      // prefs cache here would silently revert a pushed setting.
       final stored = await ShiftCounterStore.instance.read();
       if (!mounted || _hasUnpersistedTaps) return;
-      _updateLang(prefs);
       final accepted = stored.accepted;
       final rejected = stored.rejected;
       final completed = stored.completed;
-      final autoComplete = prefs.getBool(_keyAutoComplete) ?? false;
-      final reqRate = _parseReqRate(prefs);
-      final orientation = PillOrientation.fromPrefs(prefs);
       if (accepted == _accepted &&
           rejected == _rejected &&
-          completed == _completed &&
-          autoComplete == _autoComplete &&
-          reqRate == _requiredAcceptRate &&
-          orientation == _orientation) {
+          completed == _completed) {
         return;
       }
       setState(() {
         _accepted = accepted;
         _rejected = rejected;
         _completed = completed;
-        _autoComplete = autoComplete;
-        _requiredAcceptRate = reqRate;
-        _orientation = orientation;
       });
     } catch (e, s) {
       loge('overlay load failed', name: 'overlay', error: e, stack: s);
@@ -291,17 +333,32 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     }
   }
 
-  Future<SharedPreferences> _getPrefs() async {
-    _prefs ??= await SharedPreferences.getInstance();
-    return _prefs!;
+  /// Mirrors the native accept/reject waveforms: one pulse for accept, two for
+  /// reject. HapticFeedback has no waveform API, so the double is two impacts
+  /// spaced by the same gap the native pattern uses. This is the only
+  /// confirmation a driver gets with their eyes on the road, so the two must
+  /// stay distinguishable.
+  void _fireTapHaptic(bool accepted) {
+    _rejectPulseTimer?.cancel();
+    if (accepted) {
+      unawaited(HapticFeedback.mediumImpact());
+      return;
+    }
+    unawaited(HapticFeedback.lightImpact());
+    _rejectPulseTimer = Timer(_rejectPulseGap, () {
+      unawaited(HapticFeedback.lightImpact());
+    });
   }
 
-  Future<void> _increment(String key) async {
+  Future<void> _increment(String key, {bool haptic = true}) async {
     final accepted = key == _keyAccepted;
 
     logd('overlay tap complete key=$key', name: 'overlay');
 
+    if (haptic) _fireTapHaptic(accepted);
+
     setState(() {
+      _tapSeq++;
       if (accepted) {
         _accepted = (_accepted + 1).clamp(0, 99999);
         if (_autoComplete) {
@@ -407,11 +464,14 @@ class _OverlayWidgetState extends State<OverlayWidget> {
         width: vertical ? 0 : _btnTextGapDp,
         height: vertical ? OverlayWidget.verticalGapDp : 0,
       ),
-      _AcceptRateDisplay(
-        text: _formatAcceptRate(_acceptanceRate),
-        color: _acceptRateColor,
-        width: vertical ? _verticalCenterTextWidthDp : _centerTextWidthDp,
-        height: vertical ? OverlayWidget.verticalRateSlotDp : null,
+      _TapPop(
+        key: ValueKey<int>(_tapSeq),
+        child: _AcceptRateDisplay(
+          text: _formatAcceptRate(_acceptanceRate),
+          color: _acceptRateColor,
+          width: vertical ? _verticalCenterTextWidthDp : _centerTextWidthDp,
+          height: vertical ? OverlayWidget.verticalRateSlotDp : null,
+        ),
       ),
       SizedBox(
         width: vertical ? 0 : _btnTextGapDp,
@@ -470,6 +530,28 @@ class _OverlayWidgetState extends State<OverlayWidget> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A one-shot scale pop, restarted by giving it a new key. Nothing schedules
+/// it: `TweenAnimationBuilder` runs begin -> end once on first build, so the
+/// pill still holds no controller and produces no frames once it has settled.
+class _TapPop extends StatelessWidget {
+  const _TapPop({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 1.14, end: 1.0),
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutBack,
+      builder: (BuildContext context, double scale, Widget? child) {
+        return Transform.scale(scale: scale, child: child);
+      },
+      child: child,
     );
   }
 }

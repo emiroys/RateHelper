@@ -7,7 +7,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:timezone/data/latest_all.dart' as tz;
+// latest_10y, not latest_all: the app resolves exactly one zone
+// (Europe/Warsaw) and only ever looks at the current week plus a 104-week
+// archive, so historical transitions outside the 10-year window are dead
+// weight. The trimmed database is ~66 KB of tzf against ~446 KB, and it is
+// parsed synchronously before runApp.
+import 'package:timezone/data/latest_10y.dart' as tz;
 
 import 'home_screen.dart';
 import 'crash_logger.dart';
@@ -176,6 +181,15 @@ class _RateHelperAppState extends State<RateHelperApp> {
         useMaterial3: true,
         textTheme: ThemeData.dark().textTheme.apply(fontFamily: AppFonts.dmSans),
       ),
+      builder: (BuildContext context, Widget? child) {
+        // Above the Navigator, so pushed routes feed the wakelock idle timer
+        // too. Home's own listener only saw home, which let the screen go dark
+        // after 10 minutes of typing in the earnings form.
+        return Listener(
+          onPointerDown: (_) => HomeScreen.reportUserInteraction(),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: _needsOnboarding
           ? OnboardingScreen(onDone: _completeOnboarding)
           : const HomeScreen(),

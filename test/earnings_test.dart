@@ -1,6 +1,8 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rate_helper/earnings_models.dart';
 import 'package:rate_helper/earnings_pdf_export.dart';
+import 'package:rate_helper/earnings_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 WeekEarning buildWeek({
@@ -1381,6 +1383,57 @@ void main() {
       expect(week, isNotNull);
       expect(week!.fuelReceipts, hasLength(kMaxFuelReceipts));
       expect(week.fuelReceipts.first.amountPaid, 3);
+    });
+  });
+
+  group('PolishCurrencyInputFormatter', () {
+    String format(String input, {String from = ''}) {
+      return PolishCurrencyInputFormatter()
+          .formatEditUpdate(
+            TextEditingValue(text: from),
+            TextEditingValue(
+              text: input,
+              selection: TextSelection.collapsed(offset: input.length),
+            ),
+          )
+          .text;
+    }
+
+    test('groups thousands with spaces and keeps the comma decimal', () {
+      expect(format('1234'), '1 234');
+      expect(format('1234567'), '1 234 567');
+      expect(format('298,90'), '298,90');
+      expect(format('298.90'), '298,90');
+      expect(format('298,905'), '298,90');
+    });
+
+    test('reads the last separator as the decimal mark on a pasted amount', () {
+      expect(format('1.234,56'), '1 234,56');
+      expect(format('1,234.56'), '1 234,56');
+      expect(format('1 234,56'), '1 234,56');
+    });
+
+    test('typing a comma then digits is unaffected', () {
+      expect(format('1,', from: '1'), '1,');
+      expect(format('1,2', from: '1,'), '1,2');
+      expect(format('1,23', from: '1,2'), '1,23');
+    });
+  });
+
+  group('parsePlnAmount', () {
+    test('accepts the space-grouped, comma-decimal form the formatter emits', () {
+      expect(parsePlnAmount('1 234,50'), 1234.5);
+      expect(parsePlnAmount('1\u00A0234,50'), 1234.5);
+      expect(parsePlnAmount('4,5'), 4.5);
+      expect(parsePlnAmount('4.5'), 4.5);
+      expect(parsePlnAmount(' 298 '), 298);
+    });
+
+    test('returns null for input a caller must reject rather than ignore', () {
+      expect(parsePlnAmount(''), isNull);
+      expect(parsePlnAmount('   '), isNull);
+      expect(parsePlnAmount('abc'), isNull);
+      expect(parsePlnAmount(','), isNull);
     });
   });
 }
