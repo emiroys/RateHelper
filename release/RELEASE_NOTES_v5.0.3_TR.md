@@ -1,8 +1,7 @@
 # RateHelper v5.0.3
 
-- **Baloncuk:** Dil, hedef veya otomatik tamamlamayı değiştirince açık baloncuk hemen uyuyor; sefer sayısı artık yanlış kalmıyor.
-- **Titreşim:** Kabul ile red farklı hissediliyor (direksiyon tuşu dahil); ekrana bakmadan hangi sayacın arttığını anlarsınız.
-- **Açılış:** Sayılar bir an “sıfırlanmış” gibi görünmüyor; veriler gelene kadar bekliyorsunuz.
-- **İptal uyarısı:** Yeni hafta, henüz sefer yokken gereksiz “iptal hakkın bitti” uyarısı kalktı.
-- **Kazanç:** Saatlik kazanç ve net kâr daha belirgin; yakıt tutarı (ör. virgüllü / boşluklu) doğru kaydoluyor; kazanç ve radar ekranında ekran kendiliğinden kapanmıyor.
-- **Hız:** Uygulama açılışı biraz daha hızlı.
+*(5–6 Ekim 2026)*
+
+- **Üç sürücü modu:** Araca üç kişi bindiğinizde Kazanç / ayarlardan **Üç Sürücü (Paylaşımlı)** seçebilirsiniz. Kira ve haftalık hedefler buna göre hesaplanır; toplam araç yolculuk sayısını ayrı girebilirsiniz.
+- **Yakıt paylaşımı:** Benzin fişi eklerken **Paylaş** ile pompada ödediğiniz tutarı 2–6 kişi arasında bölebilir, **senin payın** otomatik hesaplanır ve fişe o tutar yazılır.
+- **Baloncukta iptal:** İsterseniz ayarlardan baloncukta **iptal** düğmesi açılır; kabul/red yanında iptal sayacını da dokunarak artırabilirsiniz.

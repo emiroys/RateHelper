@@ -3,7 +3,7 @@
   "build": 8,
   "apk_url": "https://github.com/emiroys/ratehelper/releases/download/v5.0.3/app-arm64-v8a-release.apk",
   "mandatory": false,
-  "notes_tr": "Baloncuk ayarları hemen uyuyor; kabul/red farklı titreşim; açılışta yanlış sıfır yok; gereksiz iptal uyarısı kalktı; kazanç ekranı ve yakıt tutarı düzeldi; biraz daha hızlı açılış.",
-  "notes_pl": "Dymek od razu łapie ustawienia; inna wibracja akcept/odrzut; bez fałszywych zer na starcie; mniej fałszywych alertów anulowań; poprawione zarobki i paliwo; szybszy start.",
-  "notes_en": "Overlay picks up settings instantly; different accept/reject vibration; no false zero counters on start; fewer false cancel warnings; earnings and fuel fixes; slightly faster launch."
+  "notes_tr": "Üç sürücü modu; yakıt fişinde Paylaş (kişi başı pay); baloncukta isteğe bağlı iptal düğmesi.",
+  "notes_pl": "Tryb 3 kierowców; Podziel paliwo na paragonie; opcjonalny przycisk anulowania na dymku.",
+  "notes_en": "Three-driver mode; Split fuel on receipts; optional cancel button on the overlay pill."
 }

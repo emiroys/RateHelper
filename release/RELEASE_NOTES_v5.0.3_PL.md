@@ -1,8 +1,7 @@
 # RateHelper v5.0.3
 
-- **Dymek:** Po zmianie języka, celu lub auto-ukończenia ustawienia od razu działają na otwartym dymku — licznik kursów nie myli się.
-- **Wibracja:** Akceptacja i odrzucenie czują się inaczej (także kierownica) — wiesz, który licznik się zmienił bez patrzenia w ekran.
-- **Start:** Na początku nie wygląda już jakby liczniki zostały wyzerowane — czekasz, aż dane się wczytają.
-- **Anulowania:** Na początku tygodnia, gdy jeszcze nie ma kursów, znika fałszywy komunikat o braku anulowań.
-- **Zarobki:** PLN/h i zysk netto są wyraźniejsze; kwota paliwa (z przecinkiem / spacjami) zapisuje się poprawnie; ekran nie gaśnie sam na zarobkach i radarze.
-- **Szybciej:** Aplikacja uruchamia się trochę szybciej.
+*(5–6 października 2026)*
+
+- **Tryb trzech kierowców:** Gdy auto dzielą trzy osoby, w Zarobkach / ustawieniach wybierz **Trzech kierowców (Dzielony)**. Czynsz i cele tygodniowe liczą się pod to; możesz podać łączną liczbę kursów auta.
+- **Podział paliwa:** Przy dodawaniu paragonu **Podziel** — kwota ze stacji na 2–6 osób, **twój udział** liczy się sam i trafia na paragon.
+- **Anulowanie na dymku:** W ustawieniach możesz włączyć przycisk **anulowania** na dymku obok akceptacji i odrzucenia.
