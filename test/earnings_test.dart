@@ -444,6 +444,88 @@ void main() {
     });
   });
 
+  group('trio driver mode (RENTAL_TIERS_TRIO)', () {
+    tearDown(() {
+      activeDriverMode = DriverMode.solo;
+    });
+
+    test('brackets match the 3-driver ERES schedule', () {
+      expect(expectedRentalTier(0, DriverMode.trio).feePerDriver, 300);
+      expect(expectedRentalTier(139, DriverMode.trio).totalCarFee, 900);
+
+      expect(expectedRentalTier(140, DriverMode.trio).feePerDriver, 235);
+      expect(expectedRentalTier(189, DriverMode.trio).totalCarFee, 705);
+
+      expect(expectedRentalTier(190, DriverMode.trio).feePerDriver, 167);
+      expect(expectedRentalTier(239, DriverMode.trio).totalCarFee, 501);
+
+      expect(expectedRentalTier(240, DriverMode.trio).feePerDriver, 100);
+      expect(expectedRentalTier(289, DriverMode.trio).totalCarFee, 300);
+
+      expect(expectedRentalTier(290, DriverMode.trio).feePerDriver, 33);
+      expect(expectedRentalTier(5000, DriverMode.trio).totalCarFee, 99);
+    });
+
+    test('flat per-person fee is exactly one third of the car total', () {
+      for (final tier in RENTAL_TIERS_TRIO) {
+        expect(tier.feePerDriver * 3, tier.totalCarFee);
+      }
+    });
+
+    test('brackets are contiguous', () {
+      for (var i = 1; i < RENTAL_TIERS_TRIO.length; i++) {
+        expect(
+          RENTAL_TIERS_TRIO[i].minTrips,
+          RENTAL_TIERS_TRIO[i - 1].maxTrips + 1,
+        );
+      }
+      expect(rentalTierRangeLabel(expectedRentalTier(150, DriverMode.trio)), '140-189');
+      expect(rentalTierRangeLabel(expectedRentalTier(300, DriverMode.trio)), '290+');
+    });
+
+    test('discount off charges the 300 PLN base, not zero', () {
+      final week = buildWeek(
+        tripCount: 250,
+        driverMode: DriverMode.trio,
+        hasRentalDiscount: false,
+      );
+      expect(week.rentalFee, 300);
+      expect(week.totalCarRentalFee, 900);
+    });
+
+    test('combined car trips set the tier; personal trips stay on the odometer', () {
+      final w = WeekEarning(
+        id: 'trio_override',
+        weekStart: DateTime(2026, 6, 22),
+        weekEnd: DateTime(2026, 6, 28),
+        driverMode: DriverMode.trio,
+        netIncome: 5000,
+        cashReceived: 0,
+        onlineHours: 40,
+        driverTripCount: 50,
+        carTripCountOverride: 240,
+      );
+      expect(w.carTripCount, 240);
+      expect(w.rentalFee, 100);
+      expect(w.totalCarRentalFee, 300);
+      expect(calculateLifetimeTrips([w]), 50);
+    });
+
+    test('JSON round-trips trio mode', () {
+      final w = buildWeek(
+        driverMode: DriverMode.trio,
+        driverTripCount: 80,
+        carTripCountOverride: 210,
+      );
+      final decoded = WeekEarning.fromJson(w.toJson())!;
+      expect(decoded.driverMode, DriverMode.trio);
+      expect(decoded.carTripCountOverride, 210);
+      expect(decoded.rentalFee, 167);
+      expect(DriverMode.parse('trio'), DriverMode.trio);
+      expect(DriverMode.parse(null), DriverMode.solo);
+    });
+  });
+
   group('lifetime trip counter and free week progress', () {
     test('calculateLifetimeTrips sums tripCount across all entries', () {
       final weeks = [

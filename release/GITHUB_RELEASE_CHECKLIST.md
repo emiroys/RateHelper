@@ -1,7 +1,7 @@
 # GitHub Release Checklist — RateHelper v5 (OTA)
 
 **Türkçe adım adım rehber:** [`YAYIN_TR.md`](YAYIN_TR.md)  
-**v5.0.2 teknik özet:** [`CHANGELOG_v5.0.2.md`](CHANGELOG_v5.0.2.md)
+**v5.0.3 teknik özet:** [`CHANGELOG_v5.0.3.md`](CHANGELOG_v5.0.3.md)
 
 Use this every time you ship a new version. Misaligned `pubspec`, Gist, and GitHub Release tag is the #1 cause of false update prompts or silent “already up to date”.
 
@@ -10,11 +10,11 @@ Use this every time you ship a new version. Misaligned `pubspec`, Gist, and GitH
 Example:
 
 ```yaml
-version: 5.0.2+7
+version: 5.0.3+8
 ```
 
-- Before `+` → Gist `"latest"` (e.g. `"5.0.2"`).
-- After `+` → Gist `"build"` (e.g. `7`) — **not** the arm64 `versionCode` (`2007`).
+- Before `+` → Gist `"latest"` (e.g. `"5.0.3"`).
+- After `+` → Gist `"build"` (e.g. `8`) — **not** the arm64 `versionCode` (`2008`).
 
 Rebuild after every bump.
 
@@ -37,9 +37,9 @@ Archive `symbols/` for this build.
 ## 3. Create GitHub Release
 
 1. https://github.com/emiroys/ratehelper/releases → **Draft a new release**
-2. **Tag:** `v5.0.2` (match semver; `v` prefix OK)
-3. **Title:** e.g. `RateHelper v5.0.2`
-4. **Description:** copy from [`RELEASE_NOTES_v5.0.2_PL.md`](RELEASE_NOTES_v5.0.2_PL.md) (or TR: [`RELEASE_NOTES_v5.0.2_TR.md`](RELEASE_NOTES_v5.0.2_TR.md))
+2. **Tag:** `v5.0.3` (match semver; `v` prefix OK)
+3. **Title:** e.g. `RateHelper v5.0.3`
+4. **Description:** copy from [`RELEASE_NOTES_v5.0.3_PL.md`](RELEASE_NOTES_v5.0.3_PL.md) (or TR: [`RELEASE_NOTES_v5.0.3_TR.md`](RELEASE_NOTES_v5.0.3_TR.md))
 5. **Status:** **Published** — drafts do not serve download URLs
 6. Upload asset named exactly:
 
@@ -52,7 +52,7 @@ Case-sensitive. No zip wrapper.
 Verify link shape:
 
 ```
-https://github.com/emiroys/ratehelper/releases/download/v5.0.2/app-arm64-v8a-release.apk
+https://github.com/emiroys/ratehelper/releases/download/v5.0.3/app-arm64-v8a-release.apk
 ```
 
 `curl -I` → **200**, `Content-Type: application/vnd.android.package-archive`
@@ -63,9 +63,9 @@ Copy from [`release/update.json`](update.json) and adjust:
 
 ```json
 {
-  "latest": "5.0.2",
-  "build": 7,
-  "apk_url": "https://github.com/emiroys/ratehelper/releases/download/v5.0.2/app-arm64-v8a-release.apk",
+  "latest": "5.0.3",
+  "build": 8,
+  "apk_url": "https://github.com/emiroys/ratehelper/releases/download/v5.0.3/app-arm64-v8a-release.apk",
   "mandatory": false,
   "notes_tr": "...",
   "notes_pl": "...",
@@ -80,7 +80,7 @@ Copy from [`release/update.json`](update.json) and adjust:
 | `"latest"` = pubspec version name | Numeric semver compare |
 | `"build"` = pubspec build number (after `+`) | Hotfix same version name with higher build |
 | `"apk_url"` tag matches published release | Wrong tag → 404 or wrong binary |
-| **`latest` matches APK being served** | `latest: 5.0.2` + `v5.0.1` APK → infinite update loop |
+| **`latest` matches APK being served** | `latest: 5.0.3` + `v5.0.2` APK → infinite update loop |
 | Asset name exactly `app-arm64-v8a-release.apk` | Allowlist rejects other names |
 
 **CDN cache:** Gist raw has `max-age=300`. v5 app clients cache-bust automatically. Older APKs may lag up to 5 minutes after Gist edit.
@@ -92,7 +92,7 @@ Copy from [`release/update.json`](update.json) and adjust:
 1. Cold start → update dialog (or wait out 12 h cooldown / use manual **Sprawdź aktualizacje**)
 2. Grant **Install unknown apps** for RateHelper if prompted
 3. Tap update → in-app progress bar → Android installer opens
-4. Confirm install → footer shows new version (e.g. `v5.0.2`)
+4. Confirm install → footer shows new version (e.g. `v5.0.3`)
 5. Manual check again → **“Masz najnowszą wersję”** / equivalent
 
 ### B. Regression checks
@@ -110,7 +110,7 @@ Copy from [`release/update.json`](update.json) and adjust:
 
 ## 6. First-time OTA bootstrap
 
-Users on APK **without** OTA code must install **one manual** v5.0.1+ build (Samsung Internet / Files). After that, all future updates can flow through in-app OTA (current line: **v5.0.2+7**).
+Users on APK **without** OTA code must install **one manual** v5.0.1+ build (Samsung Internet / Files). After that, all future updates can flow through in-app OTA (current line: **v5.0.3+8**).
 
 **Do not** point Gist `apk_url` at an older release while testing a higher `latest` — you will reinstall old code and lose OTA.
 
@@ -127,8 +127,7 @@ Users on APK **without** OTA code must install **one manual** v5.0.1+ build (Sam
 ## Related docs
 
 - **Publish (TR):** [`YAYIN_TR.md`](YAYIN_TR.md)
-- **Current notes:** [`RELEASE_NOTES_v5.0.2_TR.md`](RELEASE_NOTES_v5.0.2_TR.md) · [`RELEASE_NOTES_v5.0.2_PL.md`](RELEASE_NOTES_v5.0.2_PL.md) · [`RELEASE_NOTES_v5.0.2_EN.md`](RELEASE_NOTES_v5.0.2_EN.md)
-- **Changelog:** [`CHANGELOG_v5.0.2.md`](CHANGELOG_v5.0.2.md)
+- **Current notes:** [`RELEASE_NOTES_v5.0.3_TR.md`](RELEASE_NOTES_v5.0.3_TR.md) · [`RELEASE_NOTES_v5.0.3_PL.md`](RELEASE_NOTES_v5.0.3_PL.md) · [`RELEASE_NOTES_v5.0.3_EN.md`](RELEASE_NOTES_v5.0.3_EN.md)
+- **Changelog:** [`CHANGELOG_v5.0.3.md`](CHANGELOG_v5.0.3.md)
 - Legacy v5.0.1 notes: [`RELEASE_NOTES_v5_PL.md`](RELEASE_NOTES_v5_PL.md)
 - Architecture: [`../README.md`](../README.md) §7 OTA flow
-- Agent rules: [`../agent-learnings.md`](../agent-learnings.md)

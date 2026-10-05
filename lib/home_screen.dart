@@ -34,24 +34,54 @@ import 'tap_history_store.dart';
 import 'update_dialog.dart';
 
 enum TripGoal {
-  tier0(soloMinTrips: 0, pairedMinTrips: 0, requiredAcceptRate: null),
-  tier1(soloMinTrips: 100, pairedMinTrips: 120, requiredAcceptRate: 80),
-  tier2(soloMinTrips: 150, pairedMinTrips: 170, requiredAcceptRate: 70),
-  tier3(soloMinTrips: 200, pairedMinTrips: 220, requiredAcceptRate: 60),
-  tier4(soloMinTrips: 250, pairedMinTrips: 270, requiredAcceptRate: 50);
+  tier0(
+    soloMinTrips: 0,
+    pairedMinTrips: 0,
+    trioMinTrips: 0,
+    requiredAcceptRate: null,
+  ),
+  tier1(
+    soloMinTrips: 100,
+    pairedMinTrips: 120,
+    trioMinTrips: 140,
+    requiredAcceptRate: 80,
+  ),
+  tier2(
+    soloMinTrips: 150,
+    pairedMinTrips: 170,
+    trioMinTrips: 190,
+    requiredAcceptRate: 70,
+  ),
+  tier3(
+    soloMinTrips: 200,
+    pairedMinTrips: 220,
+    trioMinTrips: 240,
+    requiredAcceptRate: 60,
+  ),
+  tier4(
+    soloMinTrips: 250,
+    pairedMinTrips: 270,
+    trioMinTrips: 290,
+    requiredAcceptRate: 50,
+  );
 
   const TripGoal({
     required this.soloMinTrips,
     required this.pairedMinTrips,
+    required this.trioMinTrips,
     required this.requiredAcceptRate,
   });
 
   final int soloMinTrips;
   final int pairedMinTrips;
+  final int trioMinTrips;
   final double? requiredAcceptRate;
 
-  int get minTrips =>
-      activeDriverMode == DriverMode.paired ? pairedMinTrips : soloMinTrips;
+  int get minTrips => switch (activeDriverMode) {
+        DriverMode.paired => pairedMinTrips,
+        DriverMode.trio => trioMinTrips,
+        DriverMode.solo => soloMinTrips,
+      };
 }
 
 // ignore: constant_identifier_names
@@ -644,10 +674,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             )
           : TripGoal.tier1;
 
-      final modeStr = prefs.getString(DriverMode.key);
-      activeDriverMode = modeStr == 'paired'
-          ? DriverMode.paired
-          : DriverMode.solo;
+      activeDriverMode = DriverMode.parse(prefs.getString(DriverMode.key));
 
       if (prefs.getBool(DriverMode.askedKey) != true) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1553,7 +1580,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 PopupMenuItem(
                   value: 'driver_mode',
                   child: Text(
-                    S.driverModeLabel(activeDriverMode == DriverMode.paired),
+                    S.driverModeLabel(activeDriverMode),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -2061,9 +2088,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     } else {
       newCount = 1;
-      final modeStr = prefs.getString(DriverMode.key);
-      final driverMode =
-          modeStr == 'paired' ? DriverMode.paired : DriverMode.solo;
+      final driverMode = DriverMode.parse(prefs.getString(DriverMode.key));
       nextEntries.insert(
         0,
         WeekEarning(

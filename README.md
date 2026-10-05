@@ -3,7 +3,7 @@
 > **Identyfikator aplikacji:** `com.ratehelper.app`  
 > **Platforma docelowa:** Android (arm64-v8a, zoptymalizowane pod flagowce typu Samsung Galaxy S24 Ultra)  
 > **Framework:** Flutter (Dart) + Natywny Kotlin/Java (Android OS Layer)  
-> **Wersja bieżąca:** `5.0.2+7` (versionName `5.0.2`, pubspec build `7`, arm64 versionCode `2007`)
+> **Wersja bieżąca:** `5.0.3+8` (versionName `5.0.3`, pubspec build `8`, arm64 versionCode `2008`)
 
 ---
 
@@ -15,7 +15,7 @@
 4. [System Designu i Tokenizacja UI (Design System)](#4-system-designu-i-tokenizacja-ui-design-system)
 5. [Silnik finansowy i parametry partnera ERES](#5-silnik-finansowy-i-parametry-partnera-eres)
    - [Stawki podatkowe i prowizje](#stawki-podatkowe-i-prowizje)
-   - [Tabele progowe najmu (Solo vs. Paired)](#tabele-progowe-najmu-solo-vs-paired)
+   - [Tabele progowe najmu (Solo, Paired, Trio)](#tabele-progowe-najmu-solo-paired-trio)
    - [Rozdział kursów: driverTripCount vs. carTripCount](#rozdział-kursów-drivertripcount-vs-cartripcount)
    - [Próg rentowności (Break-Even)](#próg-rentowności-break-even)
 6. [Bezpieczeństwo, Prywatność i Integralność Danych](#6-bezpieczeństwo-prywatność-i-integralność-danych)
@@ -50,7 +50,7 @@
 | **Pulpit Akceptacji (AR) i Odzyskiwania** | Precyzyjny licznik zleceń (Zaakceptowane, Odrzucone, Ukończone, Anulowane). Dynamiczny bufor ostrzegawczy (2.0% wokół progu celu) oraz kalkulator liczby kursów potrzebnych do odzyskania bezpiecznego wskaźnika. | `home_screen.dart`, wzór odzyskiwania $X = \max(1, \lfloor \frac{r \cdot R - (1-r) \cdot A}{1-r} \rfloor + 1)$, reaktywne notifiery `ValueNotifier`. |
 | **Śledzenie Zarobków i Podatków** | Tygodniowy arkusz rozliczeniowy: VAT 12%, opłata ERES 4.3125%, paliwo −10%, najem progowy. Trend 4-tygodniowy i karty miesiąc/rok używają **`blendedHourlyRate`** (zysk ÷ godziny). Tydzień-placeholder paliwa (`isUnreported`) nie dolicza najmu. | `earnings_screen.dart`, `earnings_models.dart`, podgląd live. |
 | **Paragony Paliwowe (Multi-Receipt)** | Rejestracja wielu paragonów paliwowych w danym tygodniu z pełnym formatowaniem walutowym, usuwaniem gestem z opcją cofnięcia (Undo SnackBar) i limitem FIFO (max 100). | `_buildFuelReceiptsSection`, `PolishCurrencyInputFormatter`, formatowanie walutowe zgodne z polskim standardem (`1 250,50 PLN`). |
-| **Tryby Najmu: Solo vs. Paired** | Dynamiczne dopasowanie kosztu najmu auta w zależności od jednoosobowej lub dwuosobowej obsady pojazdu. | `DriverMode.solo` / `DriverMode.paired`, odrębne tabele progowe, bezwzględna niezmienność historyczna zapisanych wpisów. |
+| **Tryby Najmu: Solo, Paired, Trio** | Dynamiczne dopasowanie kosztu najmu auta dla 1, 2 lub 3 kierowców na jednym pojeździe. | `DriverMode.solo` / `.paired` / `.trio`, odrębne tabele progowe, bezwzględna niezmienność historyczna zapisanych wpisów. |
 | **Rozdział Liczników Kursów** | Kursy osobiste kierowcy zliczają postęp do darmowego tygodnia (próg 2000), podczas gdy suma kursów auta w trybie współdzielonym decyduje o progu zniżki najmu. | `driverTripCount` (odometer) oraz `carTripCountOverride` (tier lookup). |
 | **Radar Wydarzeń (Kraków)** | Asynchroniczny kalendarz imprez masowych w Krakowie prognozujący godziny szczytów i skoków mnożników stawek. | `radar_screen.dart`, pobieranie `krakow_events.json` z GitHub z godzinnym buforowaniem pamięci RAM, etykiety względne (Dziś/Jutro). |
 | **Integracja z Przyciskami na Kierownicy** | Rejestracja zleceń za pomocą bezprzewodowego pilota multimedialnego Bluetooth na kierownicy bez odrywania rąk. | `MediaKeyAccessibilityService.kt`: długie przytrzymanie >800 ms; ACK nakładki 1200 ms + `recordPendingTap`; `drainPendingTaps` odejmuje (nie czyści); `_drainPendingTaps` dopiero po `await _loadAndCheckReset()`. |
@@ -148,7 +148,7 @@ Silnik kalkulacyjny opiera się na rzeczywistych warunkach rozliczeniowych krako
 - **Opłata rozliczeniowa partnera (Settlement Fee):** **4.3125%** (`SETTLEMENT_FEE_RATE = 0.043125`, zaktualizowana z wcześniejszej stawki 3.0%). Etykieta w interfejsie i na wydrukach PDF prezentuje zaokrąglenie do 2 miejsc po przecinku: `Hesap Kesim Ücreti (%4.31)`.
 - **Rabat partnerski na paliwo:** **10.0%** (`FUEL_PARTNER_DISCOUNT = 0.10`). Koszt paliwa kierowcy: $\text{fuelAfterDiscount} = \text{round}_2(\text{fuelPumpPaid} \times 0.90)$.
 
-### Tabele progowe najmu (Solo vs. Paired)
+### Tabele progowe najmu (Solo, Paired, Trio)
 
 Aplikacja wylicza koszt najmu pojazdu automatycznie na podstawie liczby przejazdów:
 
@@ -172,10 +172,22 @@ Aplikacja wylicza koszt najmu pojazdu automatycznie na podstawie liczby przejazd
 | 270+ kursów | **50 PLN** | 100 PLN |
 *(Gdy zniżka najmu jest wyłączona przełącznikiem: stała opłata bazowa 450 PLN na kierowcę)*
 
+#### 3. Tryb Trio (Trzech kierowców dzielących auto)
+Opłata na kierowcę to płaski podział faktury ERES (suma / 3), nie podział ważony liczbą kursów.
+
+| Łączna liczba kursów auta | Koszt na kierowcę | Łączny koszt auta | Min. akceptacja |
+| :--- | :--- | :--- | :--- |
+| 0 – 139 kursów | **300 PLN** | 900 PLN | brak |
+| 140 – 189 kursów | **235 PLN** | 705 PLN | 80% |
+| 190 – 239 kursów | **167 PLN** | 501 PLN | 70% |
+| 240 – 289 kursów | **100 PLN** | 300 PLN | 60% |
+| 290+ kursów | **33 PLN** | 99 PLN | 50% |
+*(Gdy zniżka najmu jest wyłączona przełącznikiem: stała opłata bazowa 300 PLN na kierowcę / 900 PLN za auto)*
+
 ### Rozdział kursów: driverTripCount vs. carTripCount
 W modelu danych [`WeekEarning`](lib/earnings_models.dart) występuje ścisły rozdział odpowiedzialności liczników:
 - `driverTripCount` — **wyłącznie osobiste kursy danego kierowcy**. To ta wartość jest bezwzględnie sumowana do długoterminowego licznika przebiegu (odometru) monitorującego próg darmowego tygodnia najmu (2000 kursów).
-- `carTripCountOverride` — opcjonalna, łączna liczba kursów wykonanych autem przez obu kierowców w trybie współdzielonym. Właściwość pomocnicza `carTripCount` przyjmuje tę wartość wyłącznie do ustalenia progu najmu w tabeli `RENTAL_TIERS_PAIRED`. Kursy partnera **nigdy nie zanieczyszczają osobistego kamienia milowego**.
+- `carTripCountOverride` — opcjonalna, łączna liczba kursów wykonanych autem w trybie współdzielonym (2 lub 3 kierowców). Właściwość pomocnicza `carTripCount` przyjmuje tę wartość wyłącznie do ustalenia progu najmu (`RENTAL_TIERS_PAIRED` albo `RENTAL_TIERS_TRIO`). Kursy partnerów **nigdy nie zanieczyszczają osobistego kamienia milowego**.
 - **Tydzień niezaraportowany (`isUnreported`):** wpis z `netIncome == 0 && onlineHours == 0 && driverTripCount == 0` to placeholder po szybkim dodaniu paliwa w środku tygodnia. `rentalFee` i `totalCarRentalFee` zwracają **0**, dopóki kierowca nie uzupełni danych Ubera — w przeciwnym razie poniedziałek z paragonem doliczał ~900 PLN najmu do miesięcznego i rocznego salda.
 
 ### Średnia stawka godzinowa (blended vs unweighted)
@@ -241,8 +253,8 @@ AppVersion.parse + porównanie numeryczne (semver + build)
 |---|---|
 | [`release/YAYIN_TR.md`](release/YAYIN_TR.md) | Publikacja krok po kroku (TR) |
 | [`release/GITHUB_RELEASE_CHECKLIST.md`](release/GITHUB_RELEASE_CHECKLIST.md) | Checklist EN + smoke test |
-| [`release/CHANGELOG_v5.0.2.md`](release/CHANGELOG_v5.0.2.md) | v5.0.2 — zmiany techniczne |
-| [`release/RELEASE_NOTES_v5.0.2_TR.md`](release/RELEASE_NOTES_v5.0.2_TR.md) / [`_PL.md`](release/RELEASE_NOTES_v5.0.2_PL.md) | Notatki dla kierowców (GitHub Release body) |
+| [`release/CHANGELOG_v5.0.3.md`](release/CHANGELOG_v5.0.3.md) | v5.0.3 — zmiany techniczne |
+| [`release/RELEASE_NOTES_v5.0.3_TR.md`](release/RELEASE_NOTES_v5.0.3_TR.md) / [`_PL.md`](release/RELEASE_NOTES_v5.0.3_PL.md) | Notatki dla kierowców (GitHub Release body) |
 
 **Offset versionCode przy `--split-per-abi`:** arm64 build `7` → `versionCode` **2007** (`2×1000+7`). `UpdateService.pubspecBuildNumber()` redukuje `% 1000` przed porównaniem z polem `"build"` w manifeście.
 
@@ -323,4 +335,4 @@ android/
 
 ---
 
-> **RateHelper v5.0.2** — Bezkompromisowe narzędzie stworzone z perspektywy fotela kierowcy. Realna kontrola zysków na krakowskich drogach.
+> **RateHelper v5.0.3** — Bezkompromisowe narzędzie stworzone z perspektywy fotela kierowcy. Realna kontrola zysków na krakowskich drogach.

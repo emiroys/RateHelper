@@ -62,6 +62,7 @@ Future<void> showDriverModeDialog(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              minTileHeight: 64,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -96,6 +97,7 @@ Future<void> showDriverModeDialog(
             ),
             const SizedBox(height: 8),
             ListTile(
+              minTileHeight: 64,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -122,6 +124,41 @@ Future<void> showDriverModeDialog(
               onTap: () async {
                 activeDriverMode = DriverMode.paired;
                 await prefs.setString(DriverMode.key, 'paired');
+                await prefs.setBool(DriverMode.askedKey, true);
+                if (!ctx.mounted) return;
+                Navigator.of(ctx).pop();
+                onModeChanged();
+              },
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              minTileHeight: 64,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              tileColor: activeDriverMode == DriverMode.trio
+                  ? AppColors.selected
+                  : Colors.transparent,
+              leading: Icon(
+                Icons.groups_rounded,
+                color: activeDriverMode == DriverMode.trio
+                    ? _amber
+                    : AppColors.mutedText,
+              ),
+              title: Text(
+                S.driverModeTrio,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontFamily: AppFonts.dmSans,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              onTap: () async {
+                activeDriverMode = DriverMode.trio;
+                await prefs.setString(DriverMode.key, 'trio');
                 await prefs.setBool(DriverMode.askedKey, true);
                 if (!ctx.mounted) return;
                 Navigator.of(ctx).pop();
@@ -820,10 +857,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
       final latest = entries.first.weekStart;
       _historyFilterMonth ??= DateTime(latest.year, latest.month, 1);
     }
-    final modeStr = prefs.getString(DriverMode.key);
-    activeDriverMode = modeStr == 'paired'
-        ? DriverMode.paired
-        : DriverMode.solo;
+    activeDriverMode = DriverMode.parse(prefs.getString(DriverMode.key));
 
     // --- Lifetime trip odometer migration & load ---
     // One-time backfill: seed the persisted counter from whatever history
@@ -1750,9 +1784,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                           border: Border.all(color: AppColors.disabledText),
                         ),
                         child: Text(
-                          S.driverModeLabel(
-                            activeDriverMode == DriverMode.paired,
-                          ),
+                          S.driverModeLabel(activeDriverMode),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -3553,11 +3585,14 @@ class _BreakdownCard extends StatelessWidget {
           _line(S.netIncome, entry.netIncome, income: true, bold: true),
           const SizedBox(height: 6),
           _line(S.rental, -entry.rentalFee),
-          if (entry.driverMode == DriverMode.paired)
+          if (entry.driverMode.sharesCar)
             Padding(
               padding: const EdgeInsets.only(left: 12, bottom: 4),
               child: Text(
-                S.pairedCarTotalSubtitle(formatPln(entry.totalCarRentalFee)),
+                S.sharedCarTotalSubtitle(
+                  formatPln(entry.totalCarRentalFee),
+                  entry.driverMode.driverCount,
+                ),
                 style: const TextStyle(
                   fontFamily: AppFonts.dmSans,
                   fontSize: 11,
@@ -4101,7 +4136,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       cashReceived: _parse(_cashCtrl),
       onlineHours: hours,
       driverTripCount: _parseInt(_tripsCtrl),
-      carTripCountOverride: _formDriverMode == DriverMode.paired
+      carTripCountOverride: _formDriverMode.sharesCar
           ? _parseIntOrNull(_carTripsOverrideCtrl)
           : null,
       hasRentalDiscount: _hasRentalDiscount,
@@ -4119,7 +4154,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
 
   int get _currentCarTrips {
     final driverTrips = _parseInt(_tripsCtrl);
-    if (_formDriverMode == DriverMode.paired) {
+    if (_formDriverMode.sharesCar) {
       final override = _parseIntOrNull(_carTripsOverrideCtrl);
       return override ?? driverTrips;
     }
@@ -4177,10 +4212,10 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                 required: true,
                 positive: true,
               ),
-              if (_formDriverMode == DriverMode.paired)
+              if (_formDriverMode.sharesCar)
                 _numField(
                   _carTripsOverrideCtrl,
-                  S.carTripCountOverrideLabel,
+                  S.carTripCountOverrideLabel(_formDriverMode),
                   integer: true,
                   required: false,
                   helper: S.carTripCountOverrideHint,
@@ -4231,7 +4266,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
                       _parseInt(_minutesCtrl),
                     ),
                     driverTripCount: _parseInt(_tripsCtrl),
-                    carTripCountOverride: _formDriverMode == DriverMode.paired
+                    carTripCountOverride: _formDriverMode.sharesCar
                         ? _parseIntOrNull(_carTripsOverrideCtrl)
                         : null,
                     hasRentalDiscount: _hasRentalDiscount,
@@ -4567,7 +4602,7 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
   /// [WeekEarning.rentalFee]).
   double _currentRentalFee() => _hasRentalDiscount
       ? _rentalTier().fee
-      : (_formDriverMode == DriverMode.paired ? 450.0 : 900.0);
+      : _formDriverMode.undiscountedFeePerDriver;
 
   /// Real, post-discount fuel cost for the amount currently typed in the pump
   /// field. Empty/unparsed input reads as 0 (matching the other live previews),
@@ -4645,10 +4680,11 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
   /// and rental discount toggle.
   Widget _computedRentalDisplay() {
     final tier = _rentalTier();
-    final noDiscountFee = _formDriverMode == DriverMode.paired ? 450.0 : 900.0;
+    final noDiscountFee = _formDriverMode.undiscountedFeePerDriver;
     final label = _hasRentalDiscount
         ? S.rentalComputed(rentalTierRangeLabel(tier), formatPln(tier.fee))
         : S.rentalNoDiscount(formatPln(noDiscountFee));
+    final carTotal = _hasRentalDiscount ? tier.totalCarFee : 900.0;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -4657,21 +4693,48 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
         border: Border.all(color: _emerald.withValues(alpha: 0.4), width: 1),
         borderRadius: _cardRadius,
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.directions_car_rounded, size: 18, color: _emerald),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
+          Row(
+            children: [
+              const Icon(
+                Icons.directions_car_rounded,
+                size: 18,
+                color: _emerald,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontFamily: AppFonts.dmSans,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_formDriverMode.sharesCar) ...[
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 28),
+              child: Text(
+                S.sharedCarTotalSubtitle(
+                  formatPln(carTotal),
+                  _formDriverMode.driverCount,
+                ),
+                style: const TextStyle(
+                  fontFamily: AppFonts.dmSans,
+                  fontSize: 12,
+                  color: AppColors.labelText,
+                  fontStyle: FontStyle.italic,
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );

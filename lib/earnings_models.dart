@@ -30,10 +30,39 @@ double computeFuelAfterDiscount(double fuelPumpPaid) =>
 
 enum DriverMode {
   solo,
-  paired;
+  paired,
+  trio;
 
   static const key = 'driver_mode';
   static const askedKey = 'driver_mode_asked';
+
+  /// Several drivers share one car, so the rental tier follows combined trips.
+  bool get sharesCar => this != DriverMode.solo;
+
+  int get driverCount => switch (this) {
+        DriverMode.solo => 1,
+        DriverMode.paired => 2,
+        DriverMode.trio => 3,
+      };
+
+  /// Per-driver fee when the rental-discount toggle is off (base bracket).
+  double get undiscountedFeePerDriver => switch (this) {
+        DriverMode.solo => 900,
+        DriverMode.paired => 450,
+        DriverMode.trio => 300,
+      };
+
+  List<RentalTier> get rentalTiers => switch (this) {
+        DriverMode.paired => RENTAL_TIERS_PAIRED,
+        DriverMode.trio => RENTAL_TIERS_TRIO,
+        DriverMode.solo => RENTAL_TIERS,
+      };
+
+  static DriverMode parse(String? raw) => switch (raw) {
+        'paired' => DriverMode.paired,
+        'trio' => DriverMode.trio,
+        _ => DriverMode.solo,
+      };
 }
 
 final ValueNotifier<DriverMode> driverModeNotifier =
@@ -91,9 +120,22 @@ const List<RentalTier> RENTAL_TIERS_PAIRED = [
   RentalTier(minTrips: 270, maxTrips: 999999, feePerDriver: 50, totalCarFee: 100),
 ];
 
+/// ERES rental fee schedule (PLN) for three drivers sharing one car.
+/// [feePerDriver] is the fleet's flat per-person invoice (total / 3), not a
+/// trip-weighted split. Acceptance-rate gates for these brackets are the
+/// home-screen trip goals.
+// ignore: constant_identifier_names
+const List<RentalTier> RENTAL_TIERS_TRIO = [
+  RentalTier(minTrips: 0, maxTrips: 139, feePerDriver: 300, totalCarFee: 900),
+  RentalTier(minTrips: 140, maxTrips: 189, feePerDriver: 235, totalCarFee: 705),
+  RentalTier(minTrips: 190, maxTrips: 239, feePerDriver: 167, totalCarFee: 501),
+  RentalTier(minTrips: 240, maxTrips: 289, feePerDriver: 100, totalCarFee: 300),
+  RentalTier(minTrips: 290, maxTrips: 999999, feePerDriver: 33, totalCarFee: 99),
+];
+
 /// Expected rental bracket for [tripCount] and [mode].
 RentalTier expectedRentalTier(int tripCount, DriverMode mode) {
-  final tiers = mode == DriverMode.paired ? RENTAL_TIERS_PAIRED : RENTAL_TIERS;
+  final tiers = mode.rentalTiers;
   final trips = tripCount < 0 ? 0 : tripCount;
   return tiers.firstWhere(
     (t) => trips >= t.minTrips && trips <= t.maxTrips,
@@ -437,15 +479,15 @@ class WeekEarning {
   /// Backward-compatibility alias for [driverTripCount].
   int get tripCount => driverTripCount;
 
-  /// Optional combined ride count for the entire car (2 drivers sharing a car).
-  /// Only meaningful when [driverMode] == [DriverMode.paired].
+  /// Optional combined ride count for the entire car.
+  /// Only meaningful when [driverMode] shares the car (paired or trio).
   final int? carTripCountOverride;
 
   /// Effective car trip count used for rental tier lookup.
-  /// When [driverMode] is [DriverMode.paired], uses [carTripCountOverride] if set,
+  /// When [driverMode] shares the car, uses [carTripCountOverride] if set,
   /// else falls back to [driverTripCount].
   /// In solo mode, always equals [driverTripCount].
-  int get carTripCount => driverMode == DriverMode.paired
+  int get carTripCount => driverMode.sharesCar
       ? (carTripCountOverride ?? driverTripCount)
       : driverTripCount;
 
@@ -483,10 +525,10 @@ class WeekEarning {
     if (isUnreported) return 0;
     return hasRentalDiscount
         ? expectedRentalFee(carTripCount, driverMode)
-        : (driverMode == DriverMode.paired ? 450.0 : 900.0);
+        : driverMode.undiscountedFeePerDriver;
   }
 
-  /// Total car rental fee (PLN) across both drivers if paired, or solo fee if solo.
+  /// Total car rental fee (PLN). Shared modes split this flat across drivers.
   double get totalCarRentalFee {
     if (isUnreported) return 0;
     return hasRentalDiscount
@@ -586,8 +628,7 @@ class WeekEarning {
     final end = DateTime.tryParse(json['weekEnd']?.toString() ?? '');
     if (start == null || end == null) return null;
 
-    final modeStr = json['driverMode']?.toString();
-    final mode = modeStr == 'paired' ? DriverMode.paired : DriverMode.solo;
+    final mode = DriverMode.parse(json['driverMode']?.toString());
 
     List<FuelReceipt> receipts = [];
     if (json.containsKey('fuelReceipts') && json['fuelReceipts'] is List) {

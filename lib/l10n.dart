@@ -127,18 +127,24 @@ class S {
         'Tygodniowy Cel Przejazdów',
       );
 
+  static String _goalRangeLabel(int minTrips) {
+    final tiers = activeDriverMode.rentalTiers;
+    for (final tier in tiers) {
+      if (tier.minTrips == minTrips) return rentalTierRangeLabel(tier);
+    }
+    return rentalTierRangeLabel(tiers.first);
+  }
+
   static String tripGoalChip(int minTrips, double? reqRate) {
+    final rangeStr = _goalRangeLabel(minTrips);
     if (reqRate == null) {
-      final range0 = activeDriverMode == DriverMode.paired ? '0-119' : '0-99';
       return _p(
-        'Hedef: $range0 yolculuk (Gereksinim Yok)',
-        'Goal: $range0 rides (No Req.)',
-        'Cel: $range0 przejazdów (Brak Wymag.)',
+        'Hedef: $rangeStr yolculuk (Gereksinim Yok)',
+        'Goal: $rangeStr rides (No Req.)',
+        'Cel: $rangeStr przejazdów (Brak Wymag.)',
       );
     }
-    final topMin = activeDriverMode == DriverMode.paired ? 270 : 250;
     final reqStr = reqRate.toStringAsFixed(0);
-    final rangeStr = minTrips >= topMin ? '$topMin+' : '$minTrips-${minTrips + 49}';
     return _p(
       'Hedef: $rangeStr yolculuk (Min. %$reqStr)',
       'Goal: $rangeStr rides (Min. $reqStr%)',
@@ -147,17 +153,15 @@ class S {
   }
 
   static String tripGoalOption(int minTrips, double? reqRate) {
+    final rangeStr = _goalRangeLabel(minTrips);
     if (reqRate == null) {
-      final range0 = activeDriverMode == DriverMode.paired ? '0-119' : '0-99';
       return _p(
-        '$range0 yolculuk (Gereksinim Yok)',
-        '$range0 rides (No Requirement)',
-        '$range0 przejazdów (Brak Wymagań)',
+        '$rangeStr yolculuk (Gereksinim Yok)',
+        '$rangeStr rides (No Requirement)',
+        '$rangeStr przejazdów (Brak Wymagań)',
       );
     }
-    final topMin = activeDriverMode == DriverMode.paired ? 270 : 250;
     final reqStr = reqRate.toStringAsFixed(0);
-    final rangeStr = minTrips >= topMin ? '$topMin+' : '$minTrips-${minTrips + 49}';
     return _p(
       '$rangeStr yolculuk (Min. %$reqStr Kabul)',
       '$rangeStr rides (Min. $reqStr% Accept)',
@@ -166,25 +170,46 @@ class S {
   }
 
   static String get driverModeDialogTitle => _p(
-        'Aracı paylaşıyor musun? 🚗',
-        'Do you share the car? 🚗',
-        'Dzielisz samochód z innym kierowcą? 🚗',
+        'Aracı kaç kişi kullanıyor?',
+        'How many drivers share the car?',
+        'Ilu kierowców dzieli samochód?',
       );
   static String get driverModeSolo => _p('Tek Sürücü', 'Single Driver', 'Jeden kierowca');
   static String get driverModePaired => _p('İki Sürücü (Paylaşımlı)', 'Two Drivers (Shared)', 'Dwóch kierowców (Dzielony)');
-  static String driverModeLabel(bool paired) => paired
-      ? _p('Sürüş Modu: İki Sürücü ✏️', 'Driving Mode: Two Drivers ✏️', 'Tryb jazdy: Dwóch kierowców ✏️')
-      : _p('Sürüş Modu: Tek Sürücü ✏️', 'Driving Mode: Single Driver ✏️', 'Tryb jazdy: Jeden kierowca ✏️');
+  static String get driverModeTrio => _p('Üç Sürücü (Paylaşımlı)', 'Three Drivers (Shared)', 'Trzech kierowców (Dzielony)');
+  static String driverModeLabel(DriverMode mode) => switch (mode) {
+        DriverMode.paired => _p(
+            'Sürüş Modu: İki Sürücü ✏️',
+            'Driving Mode: Two Drivers ✏️',
+            'Tryb jazdy: Dwóch kierowców ✏️',
+          ),
+        DriverMode.trio => _p(
+            'Sürüş Modu: Üç Sürücü ✏️',
+            'Driving Mode: Three Drivers ✏️',
+            'Tryb jazdy: Trzech kierowców ✏️',
+          ),
+        DriverMode.solo => _p(
+            'Sürüş Modu: Tek Sürücü ✏️',
+            'Driving Mode: Single Driver ✏️',
+            'Tryb jazdy: Jeden kierowca ✏️',
+          ),
+      };
   static String get pairedTripsHint => _p(
         'İki sürücü modunda: sen ve ortağının birlikte yaptığı toplam yolculuk sayısı',
         'Two-driver mode: combined trips completed by you and your partner',
         'Tryb dwóch kierowców: łączna liczba przejazdów wykonana przez Ciebie i partnera',
       );
-  static String pairedCarTotalSubtitle(String fee) => _p(
-        'Araç toplamı: $fee PLN (2 sürücü arası paylaşılıyor)',
-        'Car total: $fee PLN (shared between 2 drivers)',
-        'Razem za auto: $fee PLN (dzielone na 2 kierowców)',
-      );
+  static String sharedCarTotalSubtitle(String fee, int drivers) => drivers == 3
+      ? _p(
+          'Araç toplamı: $fee PLN (3 sürücü arası paylaşılıyor)',
+          'Car total: $fee PLN (shared between 3 drivers)',
+          'Razem za auto: $fee PLN (dzielone na 3 kierowców)',
+        )
+      : _p(
+          'Araç toplamı: $fee PLN (2 sürücü arası paylaşılıyor)',
+          'Car total: $fee PLN (shared between 2 drivers)',
+          'Razem za auto: $fee PLN (dzielone na 2 kierowców)',
+        );
 
   static String get resetWeek => _p('HAFTAYI SIFIRLA', 'RESET WEEK', 'RESETUJ TYDZIEŃ');
   static String get resetWeekTitle => _p('Haftayı Sıfırla', 'Reset Week', 'Resetuj Tydzień');
@@ -461,11 +486,18 @@ class S {
       _p('Kendi Yolculuk Sayın', 'Your Trip Count', 'Twoje Przejazdy');
   static String get driverTripCountLabel =>
       _p('Kendi Yolculuk Sayın', 'Your Trip Count', 'Twoje Przejazdy');
-  static String get carTripCountOverrideLabel => _p(
-        'Ortağınla Toplam (Kira için)',
-        'Total with Partner (for rental)',
-        'Łącznie z partnerem (do wynajmu)',
-      );
+  static String carTripCountOverrideLabel(DriverMode mode) =>
+      mode == DriverMode.trio
+          ? _p(
+              'Üç sürücünün toplamı (Kira için)',
+              'Combined trips of 3 drivers (for rental)',
+              'Łącznie 3 kierowców (do wynajmu)',
+            )
+          : _p(
+              'Ortağınla Toplam (Kira için)',
+              'Total with Partner (for rental)',
+              'Łącznie z partnerem (do wynajmu)',
+            );
   static String get carTripCountOverrideHint => _p(
         'Boş bırakırsan kendi sayınla aynı kabul edilir',
         'If left empty, assumed equal to your own trips',
