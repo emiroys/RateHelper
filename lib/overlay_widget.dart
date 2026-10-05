@@ -38,16 +38,33 @@ enum PillOrientation {
 }
 
 class OverlayWidget extends StatefulWidget {
-  const OverlayWidget({super.key, this.initialOrientation});
+  const OverlayWidget({
+    super.key,
+    this.initialOrientation,
+    this.initialShowCancel = false,
+  });
 
   /// When set (tests / first-frame), used until prefs load.
   final PillOrientation? initialOrientation;
+
+  /// When true, the first frame shows the cancellation button. Prefs win
+  /// once [cancelButtonPrefsKey] has been read.
+  final bool initialShowCancel;
+
+  /// SharedPreferences flag for the optional third button. Default off.
+  static const String cancelButtonPrefsKey = 'overlay_show_cancel_button';
 
   /// Landscape (horizontal) pill — native window equals the visible widget.
   static const double pillWidthDp = 276;
   static const double pillHeightDp = 80;
 
   static const double btnSizeDp = 68;
+
+  /// Smaller than [btnSizeDp], still a full 48dp target. Appended on the
+  /// long axis only, so a horizontal pill grows in width and a vertical
+  /// pill grows in height.
+  static const double cancelBtnSizeDp = 48;
+  static const double cancelGapDp = 12;
 
   /// Portrait pill hugs its content: a uniform [verticalInsetDp] ring on all
   /// four sides, so the stadium caps stay concentric with the round buttons
@@ -65,15 +82,27 @@ class OverlayWidget extends StatefulWidget {
   static const int nativeWindowWidthDp = 276;
   static const int nativeWindowHeightDp = 80;
 
-  static int windowWidthDp(PillOrientation orientation) =>
-      orientation.isVertical
-      ? verticalPillWidthDp.round()
-      : pillWidthDp.round();
+  static int windowWidthDp(
+    PillOrientation orientation, {
+    bool showCancel = false,
+  }) {
+    if (orientation.isVertical) return verticalPillWidthDp.round();
+    final width = showCancel
+        ? pillWidthDp + cancelGapDp + cancelBtnSizeDp
+        : pillWidthDp;
+    return width.round();
+  }
 
-  static int windowHeightDp(PillOrientation orientation) =>
-      orientation.isVertical
-      ? verticalPillHeightDp.round()
-      : pillHeightDp.round();
+  static int windowHeightDp(
+    PillOrientation orientation, {
+    bool showCancel = false,
+  }) {
+    if (!orientation.isVertical) return pillHeightDp.round();
+    final height = showCancel
+        ? verticalPillHeightDp + verticalGapDp + cancelBtnSizeDp
+        : verticalPillHeightDp;
+    return height.round();
+  }
 
   @override
   State<OverlayWidget> createState() => _OverlayWidgetState();
@@ -118,6 +147,12 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   double? _requiredAcceptRate = 80.0;
   late PillOrientation _orientation =
       widget.initialOrientation ?? PillOrientation.horizontal;
+  late bool _showCancelButton = widget.initialShowCancel;
+
+  /// Cancel taps waiting for the debounced write. Applied as a delta so an
+  /// in-app edit of [ShiftCounterStore.prefsKeyCanceled] (`canceledTrips`,
+  /// the main screen's "İptal Edilen") is not overwritten by a stale absolute.
+  int _unpersistedCancels = 0;
 
   int? _trackedPointer;
   Offset? _pointerDownPos;
@@ -216,6 +251,8 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       final rejected = stored.rejected;
       final completed = stored.completed;
       final orientation = PillOrientation.fromPrefs(prefs);
+      final showCancel =
+          prefs.getBool(OverlayWidget.cancelButtonPrefsKey) ?? false;
       // A settings push that landed while this load was in flight is newer
       // than anything `prefs` holds — the reload above may have run before
       // home's write reached disk. Don't roll it back.
@@ -232,6 +269,7 @@ class _OverlayWidgetState extends State<OverlayWidget> {
         _autoComplete = autoComplete;
         _requiredAcceptRate = reqRate;
         _orientation = orientation;
+        _showCancelButton = showCancel;
       });
     } catch (e, s) {
       loge('overlay startup load failed', name: 'overlay', error: e, stack: s);
@@ -350,6 +388,14 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     });
   }
 
+  /// One heavy pulse. Accept is a single medium impact and reject is two
+  /// quick light impacts, so a cancellation is a different hit entirely.
+  void _fireCancelHaptic() {
+    _rejectPulseTimer?.cancel();
+    _rejectPulseTimer = null;
+    unawaited(HapticFeedback.heavyImpact());
+  }
+
   Future<void> _increment(String key, {bool haptic = true}) async {
     final accepted = key == _keyAccepted;
 
@@ -375,6 +421,15 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     _schedulePersist();
   }
 
+  /// Logs one cancelled trip on `canceledTrips` — the counter behind
+  /// "İptal Edilen" — without touching the accept/reject request totals.
+  void _incrementCancel() {
+    logd('overlay tap complete key=canceledTrips', name: 'overlay');
+    _fireCancelHaptic();
+    _unpersistedCancels++;
+    _schedulePersist();
+  }
+
   void _schedulePersist() {
     _persistTimer?.cancel();
     _persistTimer = Timer(_persistDebounce, () {
@@ -385,20 +440,31 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   Future<void> _persistCounts() async {
     _persistTimer?.cancel();
     _persistTimer = null;
+    final cancels = _unpersistedCancels;
+    _unpersistedCancels = 0;
     try {
       await ShiftCounterStore.instance.merge(
         accepted: _accepted,
         rejected: _rejected,
         completed: _completed,
       );
+      int? canceled;
+      if (cancels != 0) {
+        final saved = await ShiftCounterStore.instance.applyDelta(
+          canceledDelta: cancels,
+        );
+        canceled = saved.canceled;
+      }
       unawaited(
         OverlaySync.notifyCountersChanged(
           accepted: _accepted,
           rejected: _rejected,
           completed: _completed,
+          canceled: canceled,
         ),
       );
     } catch (e, s) {
+      _unpersistedCancels += cancels;
       loge('overlay write failed', name: 'overlay', error: e, stack: s);
       await _loadCounts();
     }
@@ -447,12 +513,15 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   @override
   Widget build(BuildContext context) {
     final vertical = _orientation.isVertical;
-    final width = vertical
-        ? OverlayWidget.verticalPillWidthDp
-        : OverlayWidget.pillWidthDp;
-    final height = vertical
-        ? OverlayWidget.verticalPillHeightDp
-        : OverlayWidget.pillHeightDp;
+    final showCancel = _showCancelButton;
+    final width = OverlayWidget.windowWidthDp(
+      _orientation,
+      showCancel: showCancel,
+    ).toDouble();
+    final height = OverlayWidget.windowHeightDp(
+      _orientation,
+      showCancel: showCancel,
+    ).toDouble();
     final children = <Widget>[
       _CircleBtn(
         size: _btnSizeDp,
@@ -483,6 +552,18 @@ class _OverlayWidgetState extends State<OverlayWidget> {
         color: _emerald,
         onTap: () => unawaited(_increment(_keyAccepted)),
       ),
+      if (showCancel) ...[
+        SizedBox(
+          width: vertical ? 0 : OverlayWidget.cancelGapDp,
+          height: vertical ? OverlayWidget.verticalGapDp : 0,
+        ),
+        _CircleBtn(
+          size: OverlayWidget.cancelBtnSizeDp,
+          icon: Icons.block_rounded,
+          color: _amber,
+          onTap: _incrementCancel,
+        ),
+      ],
     ];
 
     return Align(

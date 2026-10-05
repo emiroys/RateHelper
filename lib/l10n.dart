@@ -57,6 +57,11 @@ class S {
         'Vertical',
         'Pionowy',
       );
+  static String get overlayShowCancelButton => _p(
+        'Baloncukta İptal Butonu Göster',
+        'Show cancellation button in overlay',
+        'Pokaż przycisk anulowania na dymku',
+      );
   static String get steeringWheelCounter => _p(
         'Direksiyon Tuşu ile Sayma (Beta)',
         'Steering Wheel Counter (Beta)',
@@ -791,6 +796,15 @@ class S {
   static String get totalPumpPaid => _p('Toplam (Pompada):', 'Total (At Pump):', 'Razem (na stacji):');
   static String get totalFuelDiscounted => _p('Toplam (%10 İndirimli):', 'Total (10% Discounted):', 'Razem (10% zniżki):');
   static String get amountPaidLabel => _p('Ödenen Tutar', 'Amount Paid', 'Zapłacona kwota');
+  static String get fuelSplitToggle => _p('Paylaş', 'Split', 'Podziel');
+  static String get fuelSplitPeopleLabel =>
+      _p('Kaç kişi?', 'How many people?', 'Ile osób?');
+  static String fuelSplitYourShare(String amount) => _p(
+        'Senin payın: $amount PLN',
+        'Your share: $amount PLN',
+        'Twój udział: $amount PLN',
+      );
+  static String get fuelSplitUse => _p('Kullan', 'Use', 'Użyj');
   static String formatReceiptTimestamp(DateTime dt) {
     final weekdaysTr = ['Pzt', 'Sal', 'Çrş', 'Prş', 'Cum', 'Cmt', 'Paz'];
     final weekdaysEn = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];

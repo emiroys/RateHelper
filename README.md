@@ -3,7 +3,7 @@
 > **Identyfikator aplikacji:** `com.ratehelper.app`  
 > **Platforma docelowa:** Android (arm64-v8a, zoptymalizowane pod flagowce typu Samsung Galaxy S24 Ultra)  
 > **Framework:** Flutter (Dart) + Natywny Kotlin/Java (Android OS Layer)  
-> **Wersja bieżąca:** `5.0.1+6` (versionName `5.0.1`, pubspec build `6`, arm64 versionCode `2006`)
+> **Wersja bieżąca:** `5.0.2+7` (versionName `5.0.2`, pubspec build `7`, arm64 versionCode `2007`)
 
 ---
 
@@ -235,9 +235,16 @@ AppVersion.parse + porównanie numeryczne (semver + build)
                   └─► błąd → launchDownload() (przeglądarka)
 ```
 
-**Wyrównanie wersji (obowiązkowe przy każdym release):** `pubspec.yaml`, pole Gist `"latest"`, pole Gist `"build"` (numer z pubspec, **nie** versionCode z offsetem ABI), tag GitHub Release oraz plik asset muszą opisywać **tę samą** wersję binarną wskazaną przez `apk_url`. Szablon manifestu: [`release/update.json`](release/update.json). Notatki wydania PL: [`release/RELEASE_NOTES_v5_PL.md`](release/RELEASE_NOTES_v5_PL.md).
+**Wyrównanie wersji (obowiązkowe przy każdym release):** `pubspec.yaml`, pole Gist `"latest"`, pole Gist `"build"` (numer z pubspec, **nie** versionCode z offsetem ABI), tag GitHub Release oraz plik asset muszą opisywać **tę samą** wersję binarną wskazaną przez `apk_url`. Szablon manifestu: [`release/update.json`](release/update.json).
 
-**Offset versionCode przy `--split-per-abi`:** arm64 build `6` → `versionCode` **2006** (`2×1000+6`). `UpdateService.pubspecBuildNumber()` redukuje `% 1000` przed porównaniem z polem `"build"` w manifeście.
+| Dokument | Cel |
+|---|---|
+| [`release/YAYIN_TR.md`](release/YAYIN_TR.md) | Publikacja krok po kroku (TR) |
+| [`release/GITHUB_RELEASE_CHECKLIST.md`](release/GITHUB_RELEASE_CHECKLIST.md) | Checklist EN + smoke test |
+| [`release/CHANGELOG_v5.0.2.md`](release/CHANGELOG_v5.0.2.md) | v5.0.2 — zmiany techniczne |
+| [`release/RELEASE_NOTES_v5.0.2_TR.md`](release/RELEASE_NOTES_v5.0.2_TR.md) / [`_PL.md`](release/RELEASE_NOTES_v5.0.2_PL.md) | Notatki dla kierowców (GitHub Release body) |
+
+**Offset versionCode przy `--split-per-abi`:** arm64 build `7` → `versionCode` **2007** (`2×1000+7`). `UpdateService.pubspecBuildNumber()` redukuje `% 1000` przed porównaniem z polem `"build"` w manifeście.
 
 ---
 
@@ -316,4 +323,4 @@ android/
 
 ---
 
-> **RateHelper v5** — Bezkompromisowe narzędzie stworzone z perspektywy fotela kierowcy. Realna kontrola zysków na krakowskich drogach.
+> **RateHelper v5.0.2** — Bezkompromisowe narzędzie stworzone z perspektywy fotela kierowcy. Realna kontrola zysków na krakowskich drogach.

@@ -179,6 +179,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _steeringWheelEnabled = false;
   bool _keepScreenOn = false;
   PillOrientation _pillOrientation = PillOrientation.horizontal;
+  bool _showOverlayCancelButton = false;
   TripGoal _selectedGoal = TripGoal.tier1;
 
   int? _prevAccepted;
@@ -506,6 +507,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     acceptedRequests = counters.accepted;
     rejectedRequests = counters.rejected;
     completedTrips = counters.completed;
+    final canceled = counters.canceled;
+    if (canceled != null) canceledTrips = canceled;
     _syncBaseline();
   }
 
@@ -663,6 +666,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _selectedGoal = loadedGoal;
             _keepScreenOn = prefs.getBool(_keyKeepScreenOn) ?? false;
             _pillOrientation = PillOrientation.fromPrefs(prefs);
+            _showOverlayCancelButton =
+                prefs.getBool(OverlayWidget.cancelButtonPrefsKey) ?? false;
           });
         }
       } else {
@@ -677,6 +682,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _steeringWheelEnabled = prefs.getBool(_keySteeringWheel) ?? false;
           _keepScreenOn = prefs.getBool(_keyKeepScreenOn) ?? false;
           _pillOrientation = PillOrientation.fromPrefs(prefs);
+          _showOverlayCancelButton =
+              prefs.getBool(OverlayWidget.cancelButtonPrefsKey) ?? false;
           _syncBaseline();
         });
         unawaited(
@@ -940,6 +947,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _reopenOverlayPreservingPosition();
   }
 
+  /// Persists the optional cancellation button and, when the pill is already
+  /// showing, closes and reopens it so the native window matches the new
+  /// width or height. Live resize from this isolate is unreliable.
+  Future<void> _setOverlayShowCancelButton(bool enabled) async {
+    if (_showOverlayCancelButton == enabled) return;
+    setState(() => _showOverlayCancelButton = enabled);
+    final prefs = await _getPrefs();
+    await prefs.setBool(OverlayWidget.cancelButtonPrefsKey, enabled);
+    if (!_overlayActive || _overlayToggleBusy) return;
+    await _reopenOverlayPreservingPosition();
+  }
+
   Future<void> _showEditCounterDialog({
     required String title,
     required int currentValue,
@@ -1131,8 +1150,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // resizeOverlay from the main isolate is unreliable — orientation changes
     // close+reopen with these dimensions instead.
     await FlutterOverlayWindow.showOverlay(
-      width: OverlayWidget.windowWidthDp(_pillOrientation),
-      height: OverlayWidget.windowHeightDp(_pillOrientation),
+      width: OverlayWidget.windowWidthDp(
+        _pillOrientation,
+        showCancel: _showOverlayCancelButton,
+      ),
+      height: OverlayWidget.windowHeightDp(
+        _pillOrientation,
+        showCancel: _showOverlayCancelButton,
+      ),
       alignment: OverlayAlignment.topLeft,
       visibility: NotificationVisibility.visibilitySecret,
       flag: OverlayFlag.defaultFlag,
@@ -1765,6 +1790,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _buildKeepScreenOnSwitch(),
                     const SizedBox(height: 10),
                     _buildPillOrientationRow(),
+                    const SizedBox(height: 10),
+                    _buildOverlayCancelButtonSwitch(),
 
                     const SizedBox(height: AppSpacing.xl),
                     SizedBox(
@@ -2458,6 +2485,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Switch(
             value: _keepScreenOn,
             onChanged: _setKeepScreenOn,
+            activeThumbColor: _emerald,
+            activeTrackColor: _emerald.withValues(alpha: 0.45),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOverlayCancelButtonSwitch() {
+    return Container(
+      decoration: BoxDecoration(
+        color: _cardColor,
+        border: _cardBorder,
+        borderRadius: _cardRadius,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              S.overlayShowCancelButton,
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.mutedText,
+              ),
+            ),
+          ),
+          Switch(
+            value: _showOverlayCancelButton,
+            onChanged: (enabled) =>
+                unawaited(_setOverlayShowCancelButton(enabled)),
             activeThumbColor: _emerald,
             activeTrackColor: _emerald.withValues(alpha: 0.45),
           ),

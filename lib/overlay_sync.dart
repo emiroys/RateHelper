@@ -9,11 +9,16 @@ class OverlayCounters {
     required this.accepted,
     required this.rejected,
     required this.completed,
+    this.canceled,
   });
 
   final int accepted;
   final int rejected;
   final int completed;
+
+  /// Present only when the sender updated `canceledTrips` ("İptal Edilen").
+  /// Null means "leave the receiver's cancellation count alone".
+  final int? canceled;
 }
 
 /// The subset of home-screen settings the pill renders with, carried in-band
@@ -42,6 +47,7 @@ abstract final class OverlaySync {
   static const String keyAccepted = 'accepted';
   static const String keyRejected = 'rejected';
   static const String keyCompleted = 'completed';
+  static const String keyCanceled = 'canceled';
 
   static const String actionSettingsChanged = 'settings_changed';
   static const String keyLang = 'lang';
@@ -64,10 +70,16 @@ abstract final class OverlaySync {
     final rejected = _asInt(event['rejected']);
     final completed = _asInt(event['completed']);
     if (accepted == null || rejected == null || completed == null) return null;
+    int? canceled;
+    if (event.containsKey(keyCanceled)) {
+      canceled = _asInt(event[keyCanceled]);
+      if (canceled == null) return null;
+    }
     return OverlayCounters(
       accepted: accepted,
       rejected: rejected,
       completed: completed,
+      canceled: canceled,
     );
   }
 
@@ -99,6 +111,7 @@ abstract final class OverlaySync {
     int? accepted,
     int? rejected,
     int? completed,
+    int? canceled,
   }) async {
     try {
       if (!await FlutterOverlayWindow.isActive()) return;
@@ -106,6 +119,7 @@ abstract final class OverlaySync {
       if (accepted != null) payload[keyAccepted] = '$accepted';
       if (rejected != null) payload[keyRejected] = '$rejected';
       if (completed != null) payload[keyCompleted] = '$completed';
+      if (canceled != null) payload[keyCanceled] = '$canceled';
       await FlutterOverlayWindow.shareData(payload);
     } catch (e, s) {
       loge(

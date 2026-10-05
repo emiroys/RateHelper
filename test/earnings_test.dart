@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rate_helper/earnings_models.dart';
 import 'package:rate_helper/earnings_pdf_export.dart';
 import 'package:rate_helper/earnings_screen.dart';
+import 'package:rate_helper/l10n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 WeekEarning buildWeek({
@@ -1434,6 +1435,53 @@ void main() {
       expect(parsePlnAmount('   '), isNull);
       expect(parsePlnAmount('abc'), isNull);
       expect(parsePlnAmount(','), isNull);
+    });
+  });
+
+  group('fuelSplitShare', () {
+    tearDown(() => S.setLang(AppLang.tr));
+
+    test('divides a shared receipt and rounds to the nearest grosz', () {
+      expect(fuelSplitShare(150, 2), 75);
+      expect(fuelSplitShare(100, 3), closeTo(33.33, 0.001));
+      expect(fuelSplitShare(10, 3), closeTo(3.33, 0.001));
+      expect(fuelSplitShare(1, 6), closeTo(0.17, 0.001));
+      expect(fuelSplitShare(99.99, 2), 50);
+      expect(fuelSplitShare(150.10, 2), closeTo(75.05, 0.001));
+    });
+
+    test('rejects a headcount outside 2–6 and a non-positive total', () {
+      expect(fuelSplitShare(150, 1), isNull);
+      expect(fuelSplitShare(150, 7), isNull);
+      expect(fuelSplitShare(150, 0), isNull);
+      expect(fuelSplitShare(0, 2), isNull);
+      expect(fuelSplitShare(-10, 2), isNull);
+      expect(fuelSplitShare(double.nan, 2), isNull);
+      expect(fuelSplitShare(double.infinity, 2), isNull);
+    });
+
+    test('returns null when the share rounds to zero', () {
+      expect(fuelSplitShare(0.01, 6), isNull);
+    });
+
+    test('split copy exists in Turkish, English, and Polish', () {
+      S.setLang(AppLang.tr);
+      expect(S.fuelSplitToggle, 'Paylaş');
+      expect(S.fuelSplitPeopleLabel, 'Kaç kişi?');
+      expect(S.fuelSplitYourShare('75,00'), 'Senin payın: 75,00 PLN');
+      expect(S.fuelSplitUse, 'Kullan');
+
+      S.setLang(AppLang.en);
+      expect(S.fuelSplitToggle, 'Split');
+      expect(S.fuelSplitPeopleLabel, 'How many people?');
+      expect(S.fuelSplitYourShare('75,00'), 'Your share: 75,00 PLN');
+      expect(S.fuelSplitUse, 'Use');
+
+      S.setLang(AppLang.pl);
+      expect(S.fuelSplitToggle, 'Podziel');
+      expect(S.fuelSplitPeopleLabel, 'Ile osób?');
+      expect(S.fuelSplitYourShare('75,00'), 'Twój udział: 75,00 PLN');
+      expect(S.fuelSplitUse, 'Użyj');
     });
   });
 }

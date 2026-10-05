@@ -17,6 +17,19 @@ void main() {
     expect(counters!.accepted, 12);
     expect(counters.rejected, 3);
     expect(counters.completed, 8);
+    expect(counters.canceled, isNull);
+  });
+
+  test('parses a canceledTrips update without touching the request counters', () {
+    final counters = OverlaySync.countersFromEvent(<String, String>{
+      'action': OverlaySync.actionReloadCounters,
+      'accepted': '12',
+      'rejected': '3',
+      'completed': '8',
+      OverlaySync.keyCanceled: '4',
+    });
+    expect(counters, isNotNull);
+    expect(counters!.canceled, 4);
   });
 
   test('returns null when the payload has no counters', () {

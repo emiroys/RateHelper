@@ -293,115 +293,389 @@ double? parsePlnAmount(String raw) {
   return double.tryParse(t);
 }
 
-/// The quick-fuel amount prompt, shared by the earnings screen's bottom-bar
-/// action and the form's receipt list. Returns the amount in PLN, or null when
-/// the driver cancelled.
-Future<double?> showFuelAmountDialog(BuildContext context) async {
-  final ctrl = TextEditingController();
-  try {
-    return await showDialog<double>(
-      context: context,
-      builder: (ctx) {
-        String? errorText;
-        return StatefulBuilder(
-          builder: (ctx, setLocal) {
-            void submit() {
-              final val = parsePlnAmount(ctrl.text);
-              if (val != null && val > 0) {
-                Navigator.of(ctx).pop(val);
-                return;
-              }
-              // Previously a silent no-op: the button did nothing and the
-              // dialog just sat there with no explanation.
-              setLocal(() => errorText = S.enterValidAmount);
-            }
+/// Shared-receipt split is only offered for a real pair or a small group.
+const int kFuelSplitMinPeople = 2;
+const int kFuelSplitMaxPeople = 6;
 
-            return AlertDialog(
-              backgroundColor: AppColors.elevated,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              title: Text(
-                S.quickAddFuelTitle,
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              content: TextField(
-                controller: ctrl,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                inputFormatters: [PolishCurrencyInputFormatter()],
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  color: Colors.white,
-                  fontSize: 18,
-                ),
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: S.amountPaidLabel,
-                  labelStyle: const TextStyle(
+/// Driver's own share of a shared fuel receipt: [total] ÷ [people], rounded
+/// half away from zero to the nearest grosz (2 decimal places).
+///
+/// Returns null when [total] is not a positive finite amount, [people] is
+/// outside [kFuelSplitMinPeople]–[kFuelSplitMaxPeople], or the share rounds
+/// to zero. Nothing here is persisted — the caller stores only the share it
+/// decides to keep, on the existing [FuelReceipt.amountPaid].
+double? fuelSplitShare(double total, int people) {
+  if (people < kFuelSplitMinPeople || people > kFuelSplitMaxPeople) {
+    return null;
+  }
+  if (!total.isFinite || total <= 0) return null;
+  final fixed = total.toStringAsFixed(2);
+  final dot = fixed.indexOf('.');
+  final grosz = int.parse(fixed.substring(0, dot)) * 100 +
+      int.parse(fixed.substring(dot + 1));
+  if (grosz <= 0) return null;
+  final shareGrosz = (grosz / people).round();
+  if (shareGrosz <= 0) return null;
+  return shareGrosz / 100.0;
+}
+
+/// The quick-fuel amount prompt, shared by the earnings screen's bottom-bar
+/// action and the entry form's inline receipt list. Returns the amount in
+/// PLN, or null when the driver cancelled.
+///
+/// The optional split helper divides a full shared receipt. The value
+/// returned — and later stored as [FuelReceipt.amountPaid] — is only the
+/// driver's own share.
+Future<double?> showFuelAmountDialog(BuildContext context) {
+  return showDialog<double>(
+    context: context,
+    builder: (_) => const _FuelAmountDialog(),
+  );
+}
+
+/// Amount prompt with an optional local split calculator. The calculator is
+/// UI-only: confirming writes the per-person share into the amount field,
+/// which is the only number this dialog returns.
+class _FuelAmountDialog extends StatefulWidget {
+  const _FuelAmountDialog();
+
+  @override
+  State<_FuelAmountDialog> createState() => _FuelAmountDialogState();
+}
+
+class _FuelAmountDialogState extends State<_FuelAmountDialog> {
+  final TextEditingController _ctrl = TextEditingController();
+  bool _splitOn = false;
+  int _people = kFuelSplitMinPeople;
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  double? get _typedTotal => parsePlnAmount(_ctrl.text);
+
+  double? _shareFor(int people) {
+    final total = _typedTotal;
+    if (total == null) return null;
+    return fuelSplitShare(total, people);
+  }
+
+  /// What Add commits. With the helper open this is the per-person share, so
+  /// a full receipt total can never land in [FuelReceipt.amountPaid].
+  double? _amountToCommit() {
+    final total = _typedTotal;
+    if (total == null || total <= 0) return null;
+    if (!_splitOn) return total;
+    return fuelSplitShare(total, _people);
+  }
+
+  void _submit() {
+    final val = _amountToCommit();
+    if (val != null && val > 0) {
+      Navigator.of(context).pop(val);
+      return;
+    }
+    setState(() => _errorText = S.enterValidAmount);
+  }
+
+  void _useShare() {
+    final share = _shareFor(_people);
+    if (share == null || share <= 0) {
+      setState(() => _errorText = S.enterValidAmount);
+      return;
+    }
+    final formatted = _formatPolishCurrency(share);
+    _ctrl.value = TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+    setState(() {
+      _splitOn = false;
+      _errorText = null;
+    });
+  }
+
+  void _setPeople(int next) {
+    if (next < kFuelSplitMinPeople || next > kFuelSplitMaxPeople) return;
+    setState(() => _people = next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final share = _splitOn ? _shareFor(_people) : null;
+    return AlertDialog(
+      backgroundColor: AppColors.elevated,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      title: Text(
+        S.quickAddFuelTitle,
+        style: const TextStyle(
+          fontFamily: AppFonts.dmSans,
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _amountField()),
+                const SizedBox(width: AppSpacing.sm),
+                _splitToggle(),
+              ],
+            ),
+            if (_splitOn) ...[
+              const SizedBox(height: AppSpacing.md),
+              _splitPanel(share),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(
+            S.cancel,
+            style: const TextStyle(
+              fontFamily: AppFonts.dmSans,
+              color: AppColors.mutedText,
+            ),
+          ),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _actionAccent,
+            foregroundColor: Colors.black,
+            minimumSize: const Size(0, _kMinTouchTarget),
+          ),
+          onPressed: _submit,
+          child: Text(
+            S.add,
+            style: const TextStyle(
+              fontFamily: AppFonts.dmSans,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _amountField() {
+    return TextField(
+      controller: _ctrl,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [PolishCurrencyInputFormatter()],
+      style: const TextStyle(
+        fontFamily: AppFonts.dmSans,
+        color: Colors.white,
+        fontSize: 18,
+      ),
+      autofocus: true,
+      decoration: InputDecoration(
+        label: Text(
+          S.amountPaidLabel,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontFamily: AppFonts.dmSans,
+            color: AppColors.mutedText,
+          ),
+        ),
+        errorText: _errorText,
+        errorStyle: const TextStyle(
+          fontFamily: AppFonts.dmSans,
+          color: AppColors.crimson,
+        ),
+        suffixText: 'PLN',
+        suffixStyle: const TextStyle(
+          fontFamily: AppFonts.dmSans,
+          color: _actionAccent,
+        ),
+        enabledBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: Colors.white24),
+        ),
+        focusedBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: _actionAccent),
+        ),
+      ),
+      onChanged: (_) {
+        if (!_splitOn && _errorText == null) return;
+        setState(() => _errorText = null);
+      },
+      onSubmitted: (_) => _submit(),
+    );
+  }
+
+  Widget _splitToggle() {
+    final on = _splitOn;
+    final color = on ? _actionAccent : AppColors.mutedText;
+    return Semantics(
+      button: true,
+      toggled: on,
+      label: S.fuelSplitToggle,
+      child: Material(
+        color: on ? _actionAccent.withValues(alpha: 0.18) : Colors.transparent,
+        borderRadius: AppRadius.smBorder,
+        child: InkWell(
+          onTap: () => setState(() => _splitOn = !_splitOn),
+          borderRadius: AppRadius.smBorder,
+          child: Container(
+            constraints: const BoxConstraints(
+              minWidth: _kMinTouchTarget,
+              minHeight: _kMinTouchTarget,
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm,
+              vertical: AppSpacing.xs,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: AppRadius.smBorder,
+              border: Border.all(color: on ? _actionAccent : Colors.white24),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.groups_rounded, size: 20, color: color),
+                const SizedBox(height: 2),
+                Text(
+                  S.fuelSplitToggle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
                     fontFamily: AppFonts.dmSans,
-                    color: AppColors.mutedText,
-                  ),
-                  errorText: errorText,
-                  errorStyle: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    color: AppColors.crimson,
-                  ),
-                  suffixText: 'PLN',
-                  suffixStyle: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    color: _actionAccent,
-                  ),
-                  enabledBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24),
-                  ),
-                  focusedBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: _actionAccent),
-                  ),
-                ),
-                onChanged: (_) {
-                  if (errorText != null) setLocal(() => errorText = null);
-                },
-                onSubmitted: (_) => submit(),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: Text(
-                    S.cancel,
-                    style: const TextStyle(
-                      fontFamily: AppFonts.dmSans,
-                      color: AppColors.mutedText,
-                    ),
-                  ),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _actionAccent,
-                    foregroundColor: Colors.black,
-                  ),
-                  onPressed: submit,
-                  child: Text(
-                    S.add,
-                    style: const TextStyle(
-                      fontFamily: AppFonts.dmSans,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: color,
                   ),
                 ),
               ],
-            );
-          },
-        );
-      },
+            ),
+          ),
+        ),
+      ),
     );
-  } finally {
-    ctrl.dispose();
+  }
+
+  Widget _splitPanel(double? share) {
+    final canUse = share != null && share > 0;
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.inset,
+        borderRadius: AppRadius.smBorder,
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            S.fuelSplitPeopleLabel,
+            style: const TextStyle(
+              fontFamily: AppFonts.dmSans,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.mutedText,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _peopleStep(
+                icon: Icons.remove_rounded,
+                enabled: _people > kFuelSplitMinPeople,
+                onTap: () => _setPeople(_people - 1),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              SizedBox(
+                width: 40,
+                child: Text(
+                  '$_people',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontFamily: AppFonts.dmSans,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              _peopleStep(
+                icon: Icons.add_rounded,
+                enabled: _people < kFuelSplitMaxPeople,
+                onTap: () => _setPeople(_people + 1),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            S.fuelSplitYourShare(canUse ? formatPln(share) : '—'),
+            style: TextStyle(
+              fontFamily: AppFonts.dmSans,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: canUse ? _actionAccent : AppColors.mutedText,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          SizedBox(
+            height: _kMinTouchTarget,
+            child: OutlinedButton(
+              onPressed: canUse ? _useShare : null,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _actionAccent,
+                disabledForegroundColor: AppColors.disabledText,
+                side: BorderSide(
+                  color: canUse ? _actionAccent : Colors.white24,
+                ),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: AppRadius.smBorder,
+                ),
+              ),
+              child: Text(
+                S.fuelSplitUse,
+                style: const TextStyle(
+                  fontFamily: AppFonts.dmSans,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _peopleStep({
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: Colors.white10,
+        shape: BoxShape.circle,
+      ),
+      child: AppTapTarget(
+        onTap: enabled ? onTap : null,
+        child: Icon(
+          icon,
+          size: 22,
+          color: enabled ? Colors.white : AppColors.disabledText,
+        ),
+      ),
+    );
   }
 }
 
@@ -4033,6 +4307,8 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
     ),
   );
 
+  /// Same split-aware prompt as the bottom-bar quick-add. Only the driver's
+  /// own share is appended to the receipt list.
   Future<void> _addReceiptInline() async {
     final added = await showFuelAmountDialog(context);
 

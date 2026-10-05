@@ -3,7 +3,12 @@
 *.log
 *.pyc
 *.swp
+*.orig
+*.rej
 .DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 .atom/
 .build/
 .buildlog/
@@ -18,7 +23,10 @@ migrate_working_dir/
 *.iws
 .idea/
 .vscode/
+# Cursor — local only, do not commit
+.cursor/
 .cursorrules
+agent-learnings.md
 
 # Flutter/Dart/Pub related
 **/doc/api/
@@ -32,10 +40,21 @@ migrate_working_dir/
 build/
 **/build/
 /coverage/
+.test_runner/
+
+# Ad-hoc dependency dumps — regenerate locally; never commit
+deps.txt
+**/deps.txt
+
+# Python scratch (not part of the Flutter app build)
+requirements.txt
 
 # Android specifics
 .gradle/
 **/.gradle/
+**/.kotlin/
+**/*.salive
+**/.cxx/
 **/local.properties
 **/captures/
 **/output.json
@@ -53,11 +72,16 @@ macos/Flutter/ephemeral/
 # Binaries (Do not commit heavy app files)
 *.apk
 *.aab
+*.zip
 
 # Symbolication & Obfuscation
 app.*.symbols
 app.*.map.json
 symbols/
+**/symbols/
+
+# JVM / native crash dumps
+*.hprof
 
 # Signing keys — never commit (CRITICAL)
 key.properties
@@ -81,8 +105,8 @@ key.properties
 **/.env.*
 !**/.env.example
 **/env.g.dart
+lib/env.g.dart
 google-services.json
 **/google-services.json
 GoogleService-Info.plist
 **/GoogleService-Info.plist
-agent-learnings.md
