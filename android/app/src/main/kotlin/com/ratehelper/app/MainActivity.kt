@@ -6,17 +6,22 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.Signature
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.security.MessageDigest
 
 class MainActivity : FlutterActivity() {
 
@@ -41,11 +46,12 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val filter = IntentFilter(MediaKeyAccessibilityService.ACTION_MEDIA_KEY_INCREMENT)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(mediaKeyReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(mediaKeyReceiver, filter)
-        }
+        ContextCompat.registerReceiver(
+            this,
+            mediaKeyReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
     }
 
     override fun onDestroy() {
@@ -118,6 +124,10 @@ class MainActivity : FlutterActivity() {
                     result.success(openInstallPermissionSettings())
                 }
 
+                "inspectUpdateApk" -> {
+                    result.success(inspectUpdateApk(call.argument<String>("path")))
+                }
+
                 "installApk" -> {
                     result.success(installApk(call.argument<String>("path")))
                 }
@@ -149,20 +159,49 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
-     * Hands a downloaded APK to the system package installer.
+     * Package name, versionCode, and signing-cert SHA-256 of a cache APK,
+     * plus the same facts for the app that is running. Dart compares them
+     * before it asks to launch the installer. Null when the file is outside
+     * the cache dir or the archive cannot be read.
      *
-     * The user still confirms in Android's own dialog — this only opens it.
-     * The path is restricted to the updater's cache subfolder so the channel
-     * can never be used to install an arbitrary file on disk.
+     * Keep the comparison in lockstep with `decideApkInstall`.
      */
-    private fun installApk(path: String?): Boolean {
-        if (path.isNullOrBlank()) return false
-        return runCatching {
-            val allowedDir = File(cacheDir, UPDATE_APK_DIR).canonicalFile
-            val file = File(path).canonicalFile
-            if (!file.path.startsWith(allowedDir.path + File.separator)) return false
-            if (!file.isFile || file.length() <= 0L) return false
+    private fun inspectUpdateApk(path: String?): Map<String, Any>? {
+        val file = allowedUpdateFile(path) ?: return null
+        val facts = readUpdateApkFacts(file) ?: return null
+        if (facts.archiveVersionCode > Int.MAX_VALUE) return null
+        if (facts.installedVersionCode > Int.MAX_VALUE) return null
+        return mapOf(
+            "archivePackage" to facts.archivePackage,
+            "archiveVersionCode" to facts.archiveVersionCode.toInt(),
+            "archiveCertSha256" to facts.archiveCertSha256,
+            "installedPackage" to packageName,
+            "installedVersionCode" to facts.installedVersionCode.toInt(),
+            "installedCertSha256" to facts.installedCertSha256,
+        )
+    }
 
+    /**
+     * Opens the system installer only when the archive is this app, signed
+     * by the same certificate, and has a higher versionCode.
+     *
+     * Returns `launched`, `signature`, `package`, `version`, or `rejected`.
+     * A mismatch deletes the file and does not call startActivity. Paths are
+     * not logged.
+     */
+    private fun installApk(path: String?): String {
+        val file = allowedUpdateFile(path) ?: return "rejected"
+        val facts = readUpdateApkFacts(file)
+        if (facts == null) {
+            file.delete()
+            return "rejected"
+        }
+        val code = trustCode(facts)
+        if (code != "ok") {
+            file.delete()
+            return code
+        }
+        return runCatching {
             val uri = FileProvider.getUriForFile(
                 this,
                 "$packageName.fileprovider",
@@ -174,9 +213,128 @@ class MainActivity : FlutterActivity() {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             startActivity(intent)
-            true
-        }.getOrDefault(false)
+            "launched"
+        }.getOrElse {
+            file.delete()
+            "rejected"
+        }
     }
+
+    private fun trustCode(facts: UpdateApkFacts): String {
+        if (facts.archivePackage != packageName) return "package"
+        if (!facts.archiveCertSha256.equals(facts.installedCertSha256, ignoreCase = true)) {
+            return "signature"
+        }
+        if (facts.archiveVersionCode <= facts.installedVersionCode) return "version"
+        return "ok"
+    }
+
+    private fun allowedUpdateFile(path: String?): File? {
+        if (path.isNullOrBlank()) return null
+        return runCatching {
+            val allowedDir = File(cacheDir, UPDATE_APK_DIR).canonicalFile
+            val file = File(path).canonicalFile
+            if (!file.path.startsWith(allowedDir.path + File.separator)) return null
+            if (!file.isFile || file.length() <= 0L) return null
+            file
+        }.getOrNull()
+    }
+
+    private fun readUpdateApkFacts(file: File): UpdateApkFacts? {
+        return runCatching {
+            val archive = packageArchiveInfo(file.path) ?: return null
+            val installed = installedPackageInfo()
+            val archiveCert = signerSha256(archive) ?: return null
+            val installedCert = signerSha256(installed) ?: return null
+            UpdateApkFacts(
+                archivePackage = archive.packageName,
+                archiveVersionCode = versionCodeOf(archive),
+                archiveCertSha256 = archiveCert,
+                installedVersionCode = versionCodeOf(installed),
+                installedCertSha256 = installedCert,
+            )
+        }.getOrNull()
+    }
+
+    private fun packageArchiveInfo(path: String): PackageInfo? {
+        val flags = signingFlags()
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageArchiveInfo(
+                path,
+                PackageManager.PackageInfoFlags.of(flags.toLong()),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageArchiveInfo(path, flags)
+        }
+    }
+
+    private fun installedPackageInfo(): PackageInfo {
+        val flags = signingFlags()
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageInfo(
+                packageName,
+                PackageManager.PackageInfoFlags.of(flags.toLong()),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(packageName, flags)
+        }
+    }
+
+    private fun signingFlags(): Int {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            PackageManager.GET_SIGNING_CERTIFICATES
+        } else {
+            @Suppress("DEPRECATION")
+            PackageManager.GET_SIGNATURES
+        }
+    }
+
+    private fun versionCodeOf(info: PackageInfo): Long {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            info.versionCode.toLong()
+        }
+    }
+
+    /** Current signer set, sorted SHA-256 hex, comma-separated. */
+    private fun signerSha256(info: PackageInfo): String? {
+        val hashes = signerHashes(info)
+        if (hashes.isEmpty()) return null
+        return hashes.sorted().joinToString(",")
+    }
+
+    private fun signerHashes(info: PackageInfo): List<String> {
+        val signatures: List<Signature> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val signing = info.signingInfo ?: return emptyList()
+            if (signing.hasMultipleSigners()) {
+                signing.apkContentsSigners?.toList().orEmpty()
+            } else {
+                val history = signing.signingCertificateHistory
+                if (history.isNullOrEmpty()) emptyList() else listOf(history.last())
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            info.signatures?.toList().orEmpty()
+        }
+        return signatures.map { sha256Hex(it.toByteArray()) }
+    }
+
+    private fun sha256Hex(bytes: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+        return digest.joinToString("") { byte -> "%02X".format(byte) }
+    }
+
+    private data class UpdateApkFacts(
+        val archivePackage: String,
+        val archiveVersionCode: Long,
+        val archiveCertSha256: String,
+        val installedVersionCode: Long,
+        val installedCertSha256: String,
+    )
 
     /**
      * Whether the media-key accessibility service is switched on for us.

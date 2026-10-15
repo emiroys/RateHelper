@@ -7,6 +7,7 @@ import 'package:rate_helper/l10n.dart';
 import 'package:rate_helper/onboarding_screen.dart';
 import 'package:rate_helper/overlay_widget.dart';
 import 'package:rate_helper/radar_screen.dart';
+import 'package:rate_helper/settings_screen.dart';
 import 'package:rate_helper/services/event_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -43,11 +44,7 @@ void _stubChannels() {
   stub('x-slayer/overlay_messenger', (_) => null);
 }
 
-Future<void> _pumpAt(
-  WidgetTester tester,
-  Size size,
-  Widget child,
-) async {
+Future<void> _pumpAt(WidgetTester tester, Size size, Widget child) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -75,8 +72,9 @@ void main() {
           expect(tester.takeException(), isNull);
         });
 
-        testWidgets('EarningsScreen entry form renders clean — $label',
-            (tester) async {
+        testWidgets('EarningsScreen entry form renders clean — $label', (
+          tester,
+        ) async {
           S.setLang(lang);
           await _pumpAt(tester, size, const EarningsScreen(autoAddWeek: true));
           await tester.pumpAndSettle();
@@ -102,16 +100,54 @@ void main() {
           expect(tester.takeException(), isNull, reason: 'error state');
         });
 
-        testWidgets('OverlayWidget pill renders clean — $label',
-            (tester) async {
+        testWidgets('OverlayWidget pill renders clean — $label', (
+          tester,
+        ) async {
           S.setLang(lang);
           await _pumpAt(tester, size, const OverlayWidget());
           await tester.pump();
           expect(tester.takeException(), isNull);
         });
 
-        testWidgets('keep-screen-on switch renders clean — $label',
-            (tester) async {
+        testWidgets('SettingsScreen renders clean — $label', (tester) async {
+          S.setLang(lang);
+          final snapshot = ValueNotifier(SettingsSnapshot.initial);
+          addTearDown(snapshot.dispose);
+          await _pumpAt(
+            tester,
+            size,
+            SettingsScreen(
+              bindings: SettingsBindings(
+                snapshot: snapshot,
+                versionLabel: () => '5.0.4',
+                setAutoComplete: (_) async {},
+                setSteeringWheel: (_) async {},
+                setKeepScreenOn: (_) async {},
+                setAutoUpdate: (_) async {},
+                setAutoEvents: (_) async {},
+                setPillOrientation: (_) async {},
+                setOverlayCancel: (_) async {},
+                setLanguage: (_) async {},
+                onDriverModeChanged: () {},
+              ),
+            ),
+          );
+          expect(find.text(S.keepScreenOn), findsOneWidget);
+          expect(find.text(S.overlayPillOrientation), findsOneWidget);
+          await tester.scrollUntilVisible(
+            find.text(S.crashLogTitle),
+            300,
+            scrollable: find.byType(Scrollable),
+          );
+          await tester.pump();
+          expect(find.text(S.crashLogTitle), findsOneWidget);
+          expect(find.text('v5.0.4'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('keep-screen-on switch renders clean — $label', (
+          tester,
+        ) async {
           S.setLang(lang);
           await _pumpAt(
             tester,
@@ -142,8 +178,9 @@ void main() {
           expect(tester.takeException(), isNull);
         });
 
-        testWidgets('pill orientation row renders clean — $label',
-            (tester) async {
+        testWidgets('pill orientation row renders clean — $label', (
+          tester,
+        ) async {
           S.setLang(lang);
           await _pumpAt(
             tester,
@@ -183,8 +220,9 @@ void main() {
   });
 
   group('earnings empty states are designed, not blank', () {
-    testWidgets('shows an icon, copy and a call to action with no data',
-        (tester) async {
+    testWidgets('shows an icon, copy and a call to action with no data', (
+      tester,
+    ) async {
       S.setLang(AppLang.pl);
       await _pumpAt(tester, _target, const EarningsScreen());
       await tester.pumpAndSettle();

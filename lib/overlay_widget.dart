@@ -42,6 +42,7 @@ class OverlayWidget extends StatefulWidget {
     super.key,
     this.initialOrientation,
     this.initialShowCancel = false,
+    this.initialCollapsed = false,
   });
 
   /// When set (tests / first-frame), used until prefs load.
@@ -51,8 +52,21 @@ class OverlayWidget extends StatefulWidget {
   /// once [cancelButtonPrefsKey] has been read.
   final bool initialShowCancel;
 
+  /// When true, the first frame draws the "R" bubble and the window shrinks
+  /// to it right after. `overlayMain` reads [collapsedPrefsKey] before
+  /// `runApp` so a collapsed pill does not flash open on every reopen.
+  final bool initialCollapsed;
+
   /// SharedPreferences flag for the optional third button. Default off.
   static const String cancelButtonPrefsKey = 'overlay_show_cancel_button';
+
+  /// SharedPreferences flag: pill collapsed to the "R" bubble. Written by
+  /// the overlay isolate only.
+  static const String collapsedPrefsKey = 'overlay_pill_collapsed';
+
+  /// Collapsed bubble — the native window shrinks to exactly this square so
+  /// the rest of the old pill area passes touches to the app underneath.
+  static const double bubbleSizeDp = 48;
 
   /// Landscape (horizontal) pill — native window equals the visible widget.
   static const double pillWidthDp = 276;
@@ -108,7 +122,8 @@ class OverlayWidget extends StatefulWidget {
   State<OverlayWidget> createState() => _OverlayWidgetState();
 }
 
-class _OverlayWidgetState extends State<OverlayWidget> {
+class _OverlayWidgetState extends State<OverlayWidget>
+    with WidgetsBindingObserver {
   static const _keyAccepted = 'acceptedRequests';
   static const _keyRejected = 'rejectedRequests';
   static const _keyAutoComplete = 'autoCompleteTrips';
@@ -117,6 +132,13 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   /// Gap between the two reject pulses, matching REJECT_PATTERN in
   /// MediaKeyAccessibilityService so both input paths feel identical.
   static const _rejectPulseGap = Duration(milliseconds: 70);
+
+  /// Cap on the native resize round-trip. An APK whose plugin has no handler
+  /// must not leave [_windowResizeBusy] stuck and the bubble dead.
+  static const _resizeTimeout = Duration(milliseconds: 1500);
+
+  /// Cap on waiting for the grown window's metrics before drawing the pill.
+  static const _viewSizeWait = Duration(milliseconds: 250);
 
   static const _crimson = AppColors.crimson;
   static const _emerald = AppColors.emerald;
@@ -148,6 +170,21 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   late PillOrientation _orientation =
       widget.initialOrientation ?? PillOrientation.horizontal;
   late bool _showCancelButton = widget.initialShowCancel;
+
+  /// UI state only. Counters, tap log, persistence, pings and steering-wheel
+  /// increments run the same whether the pill or the bubble is showing.
+  late bool _collapsed = widget.initialCollapsed;
+
+  /// A collapse/expand is between "draw" and "native window resized".
+  /// Taps on the percentage or bubble are ignored until it settles.
+  bool _windowResizeBusy = false;
+
+  /// The driver toggled before the startup prefs read landed; that read is
+  /// older than the tap and must not undo it.
+  bool _collapseToggledByUser = false;
+
+  Completer<void>? _viewSizeWaiter;
+  Size _viewSizeTarget = Size.zero;
 
   /// Cancel taps waiting for the debounced write. Applied as a delta so an
   /// in-app edit of [ShiftCounterStore.prefsKeyCanceled] (`canceledTrips`,
@@ -189,30 +226,29 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   void initState() {
     super.initState();
     _orientation = widget.initialOrientation ?? PillOrientation.horizontal;
+    WidgetsBinding.instance.addObserver(this);
+    if (_collapsed) {
+      // Home opens the window at pill size. Shrink once the bubble frame is
+      // on screen so no frame shows a clipped pill.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_syncCollapsedWindowOnStartup());
+      });
+    }
     unawaited(_loadCountsOnStartup());
     try {
       _syncSub = FlutterOverlayWindow.overlayListener.listen((event) {
-        if (OverlaySync.shouldReloadCounters(event)) {
-          final counters = OverlaySync.countersFromEvent(event);
-          if (counters != null) {
-            _applyRemoteCounters(counters);
-          } else {
-            unawaited(_loadCounts());
-          }
-          return;
-        }
-        final settings = OverlaySync.settingsFromEvent(event);
-        if (settings != null) {
-          _applyRemoteSettings(settings);
-          return;
-        }
-        if (event is Map && event['action'] == 'media_key_increment') {
-          final keyStr = event['key'];
-          final key = keyStr == 'accepted' ? _keyAccepted : _keyRejected;
-          // Native already fired its own accept/reject waveform before
-          // handing the tap over — a second buzz here would blur the rhythm.
-          unawaited(_increment(key, haptic: false));
-        }
+        OverlaySync.deliver(
+          event,
+          onCounters: _applyRemoteCounters,
+          onCountersReloadFromStore: () => unawaited(_loadCounts()),
+          onSettings: _applyRemoteSettings,
+          onMediaKey: (target) {
+            final key = target == 'accepted' ? _keyAccepted : _keyRejected;
+            // Native already fired its own accept/reject waveform before
+            // handing the tap over — a second buzz here would blur the rhythm.
+            unawaited(_increment(key, haptic: false));
+          },
+        );
       });
     } catch (e, s) {
       loge(
@@ -253,6 +289,8 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       final orientation = PillOrientation.fromPrefs(prefs);
       final showCancel =
           prefs.getBool(OverlayWidget.cancelButtonPrefsKey) ?? false;
+      final collapsed =
+          prefs.getBool(OverlayWidget.collapsedPrefsKey) ?? false;
       // A settings push that landed while this load was in flight is newer
       // than anything `prefs` holds — the reload above may have run before
       // home's write reached disk. Don't roll it back.
@@ -261,7 +299,9 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       final autoComplete = applySettings
           ? (prefs.getBool(_keyAutoComplete) ?? false)
           : _autoComplete;
-      final reqRate = applySettings ? _parseReqRate(prefs) : _requiredAcceptRate;
+      final reqRate = applySettings
+          ? _parseReqRate(prefs)
+          : _requiredAcceptRate;
       setState(() {
         _accepted = accepted;
         _rejected = rejected;
@@ -271,6 +311,13 @@ class _OverlayWidgetState extends State<OverlayWidget> {
         _orientation = orientation;
         _showCancelButton = showCancel;
       });
+      // overlayMain already seeded [_collapsed] from the same key; this only
+      // matters when that early read failed or timed out.
+      if (collapsed != _collapsed &&
+          !_windowResizeBusy &&
+          !_collapseToggledByUser) {
+        unawaited(_setCollapsed(collapsed, persist: false));
+      }
     } catch (e, s) {
       loge('overlay startup load failed', name: 'overlay', error: e, stack: s);
     }
@@ -287,7 +334,148 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       unawaited(_persistCounts());
     }
     _syncSub?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    final waiter = _viewSizeWaiter;
+    _viewSizeWaiter = null;
+    if (waiter != null && !waiter.isCompleted) waiter.complete();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    final waiter = _viewSizeWaiter;
+    if (waiter == null || waiter.isCompleted) return;
+    if (_viewCovers(_viewSizeTarget)) waiter.complete();
+  }
+
+  double get _expandedWidthDp => OverlayWidget.windowWidthDp(
+    _orientation,
+    showCancel: _showCancelButton,
+  ).toDouble();
+
+  double get _expandedHeightDp => OverlayWidget.windowHeightDp(
+    _orientation,
+    showCancel: _showCancelButton,
+  ).toDouble();
+
+  /// Whether this isolate's FlutterView (= the native window) is at least
+  /// [target] logical px. Native dp→px truncates, so allow 1px of slack.
+  bool _viewCovers(Size target) {
+    if (!mounted) return false;
+    final view = View.maybeOf(context);
+    if (view == null) return true;
+    final size = view.physicalSize / view.devicePixelRatio;
+    return size.width >= target.width - 1 && size.height >= target.height - 1;
+  }
+
+  Future<void> _awaitViewSize(Size target) async {
+    if (_viewCovers(target)) return;
+    final waiter = Completer<void>();
+    _viewSizeWaiter = waiter;
+    _viewSizeTarget = target;
+    try {
+      await waiter.future.timeout(_viewSizeWait);
+    } on TimeoutException {
+      logd('overlay view size wait timed out', name: 'overlay');
+    } finally {
+      if (identical(_viewSizeWaiter, waiter)) _viewSizeWaiter = null;
+    }
+  }
+
+  /// Native window resize. Never throws: a failure is logged and reported as
+  /// false so the caller can keep the UI consistent with the real window.
+  Future<bool> _resizeWindow(double widthDp, double heightDp) async {
+    try {
+      final ok = await FlutterOverlayWindow.resizeOverlay(
+        widthDp.round(),
+        heightDp.round(),
+      ).timeout(_resizeTimeout);
+      if (ok != true) {
+        loge(
+          'overlay resize to ${widthDp.round()}x${heightDp.round()} '
+          'returned $ok',
+          name: 'overlay',
+        );
+      }
+      return ok == true;
+    } catch (e, s) {
+      loge('overlay resize failed', name: 'overlay', error: e, stack: s);
+      return false;
+    }
+  }
+
+  Future<void> _syncCollapsedWindowOnStartup() async {
+    if (!mounted || !_collapsed || _windowResizeBusy) return;
+    _windowResizeBusy = true;
+    try {
+      const bubble = OverlayWidget.bubbleSizeDp;
+      final ok = await _resizeWindow(bubble, bubble);
+      // The window is still pill-sized; show the pill that fits it.
+      if (!ok && mounted) setState(() => _collapsed = false);
+    } finally {
+      _windowResizeBusy = false;
+    }
+  }
+
+  void _onToggleCollapsedTap(bool collapse) {
+    if (_windowResizeBusy) {
+      logd('overlay collapse toggle ignored (busy)', name: 'overlay');
+      return;
+    }
+    _collapseToggledByUser = true;
+    unawaited(HapticFeedback.selectionClick());
+    unawaited(_setCollapsed(collapse));
+  }
+
+  /// Order matters for touch pass-through and for flashes:
+  /// collapse draws the bubble first, then shrinks the window; expand grows
+  /// the window first, then draws the pill. The drawn content never needs
+  /// more room than the window has, and a failed resize leaves the UI
+  /// matching whatever size the window really is.
+  Future<void> _setCollapsed(bool collapse, {bool persist = true}) async {
+    if (!mounted || _windowResizeBusy || collapse == _collapsed) return;
+    _windowResizeBusy = true;
+    try {
+      if (collapse) {
+        setState(() => _collapsed = true);
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
+        const bubble = OverlayWidget.bubbleSizeDp;
+        final ok = await _resizeWindow(bubble, bubble);
+        if (!mounted) return;
+        if (!ok) {
+          setState(() => _collapsed = false);
+          return;
+        }
+      } else {
+        final width = _expandedWidthDp;
+        final height = _expandedHeightDp;
+        final ok = await _resizeWindow(width, height);
+        if (!mounted || !ok) return;
+        await _awaitViewSize(Size(width, height));
+        if (!mounted) return;
+        setState(() => _collapsed = false);
+      }
+      if (persist) _persistCollapsed(collapse);
+    } finally {
+      _windowResizeBusy = false;
+    }
+  }
+
+  void _persistCollapsed(bool collapsed) {
+    unawaited(
+      SharedPreferences.getInstance()
+          .then((p) => p.setBool(OverlayWidget.collapsedPrefsKey, collapsed))
+          .catchError((Object e, StackTrace s) {
+            loge(
+              'overlay collapsed pref write failed',
+              name: 'overlay',
+              error: e,
+              stack: s,
+            );
+            return false;
+          }),
+    );
   }
 
   void _applyRemoteCounters(OverlayCounters counters) {
@@ -419,6 +607,9 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       TapHistoryStore.instance.append(accepted ? 'accepted' : 'rejected'),
     );
     _schedulePersist();
+    // Live path to the home isolate. Not chained onto the store queue and
+    // not awaited — a missed ping cannot freeze the button.
+    _pingMain();
   }
 
   /// Logs one cancelled trip on `canceledTrips` — the counter behind
@@ -428,6 +619,15 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     _fireCancelHaptic();
     _unpersistedCancels++;
     _schedulePersist();
+  }
+
+  void _pingMain({int? canceled}) {
+    OverlaySync.pingCountersChanged(
+      accepted: _accepted,
+      rejected: _rejected,
+      completed: _completed,
+      canceled: canceled,
+    );
   }
 
   void _schedulePersist() {
@@ -455,14 +655,10 @@ class _OverlayWidgetState extends State<OverlayWidget> {
         );
         canceled = saved.canceled;
       }
-      unawaited(
-        OverlaySync.notifyCountersChanged(
-          accepted: _accepted,
-          rejected: _rejected,
-          completed: _completed,
-          canceled: canceled,
-        ),
-      );
+      // Latest in-memory counts, not the snapshot merge() just wrote.
+      // A tap that landed during the await is already newer; pinging the
+      // stale snapshot would roll the home screen backwards.
+      _pingMain(canceled: canceled);
     } catch (e, s) {
       _unpersistedCancels += cancels;
       loge('overlay write failed', name: 'overlay', error: e, stack: s);
@@ -522,90 +718,169 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       _orientation,
       showCancel: showCancel,
     ).toDouble();
+    // Long-axis order: [cancel] → reject → percentage → accept, so the rate
+    // sits dead-centre between − and + with the same gap on both sides.
+    // The optional cancel hangs off the reject end; the gap after it is
+    // cancelGapDp (12) horizontally and verticalGapDp (8, AppSpacing.sm)
+    // vertically, so the 48dp cancel target does not meet the reject target.
+    SizedBox alongGap() => SizedBox(
+      width: vertical ? 0 : _btnTextGapDp,
+      height: vertical ? OverlayWidget.verticalGapDp : 0,
+    );
     final children = <Widget>[
-      _CircleBtn(
-        size: _btnSizeDp,
-        icon: Icons.remove_rounded,
-        color: _crimson,
-        onTap: () => unawaited(_increment(_keyRejected)),
-      ),
-      SizedBox(
-        width: vertical ? 0 : _btnTextGapDp,
-        height: vertical ? OverlayWidget.verticalGapDp : 0,
-      ),
-      _TapPop(
-        key: ValueKey<int>(_tapSeq),
-        child: _AcceptRateDisplay(
-          text: _formatAcceptRate(_acceptanceRate),
-          color: _acceptRateColor,
-          width: vertical ? _verticalCenterTextWidthDp : _centerTextWidthDp,
-          height: vertical ? OverlayWidget.verticalRateSlotDp : null,
-        ),
-      ),
-      SizedBox(
-        width: vertical ? 0 : _btnTextGapDp,
-        height: vertical ? OverlayWidget.verticalGapDp : 0,
-      ),
-      _CircleBtn(
-        size: _btnSizeDp,
-        icon: Icons.add_rounded,
-        color: _emerald,
-        onTap: () => unawaited(_increment(_keyAccepted)),
-      ),
       if (showCancel) ...[
-        SizedBox(
-          width: vertical ? 0 : OverlayWidget.cancelGapDp,
-          height: vertical ? OverlayWidget.verticalGapDp : 0,
-        ),
         _CircleBtn(
           size: OverlayWidget.cancelBtnSizeDp,
           icon: Icons.block_rounded,
           color: _amber,
           onTap: _incrementCancel,
         ),
+        SizedBox(
+          width: vertical ? 0 : OverlayWidget.cancelGapDp,
+          height: vertical ? OverlayWidget.verticalGapDp : 0,
+        ),
       ],
+      _CircleBtn(
+        size: _btnSizeDp,
+        icon: Icons.remove_rounded,
+        color: _crimson,
+        onTap: () => unawaited(_increment(_keyRejected)),
+      ),
+      alongGap(),
+      _TapPop(
+        key: ValueKey<int>(_tapSeq),
+        child: _AcceptRateDisplay(
+          text: _formatAcceptRate(_acceptanceRate),
+          color: _acceptRateColor,
+          width: vertical ? _verticalCenterTextWidthDp : _centerTextWidthDp,
+          // Full button height horizontally so the collapse target is as
+          // forgiving as the +/− buttons next to it.
+          height: vertical ? OverlayWidget.verticalRateSlotDp : _btnSizeDp,
+          // The vertical slot spans the pill's straight sides, 3dp from
+          // the stroke; the inset keeps the glyphs off the border.
+          textPadding: vertical
+              ? const EdgeInsets.symmetric(horizontal: AppSpacing.sm)
+              : const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+          onTap: () => _onToggleCollapsedTap(true),
+        ),
+      ),
+      alongGap(),
+      _CircleBtn(
+        size: _btnSizeDp,
+        icon: Icons.add_rounded,
+        color: _emerald,
+        onTap: () => unawaited(_increment(_keyAccepted)),
+      ),
     ];
 
-    return Align(
-      alignment: Alignment.topLeft,
+    final pill = Material(
+      color: _pillBg,
+      elevation: 8,
+      shadowColor: Colors.black,
+      clipBehavior: Clip.antiAlias,
+      shape: const StadiumBorder(
+        side: BorderSide(color: _pillBorder, width: 1),
+      ),
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: Padding(
+          padding: vertical
+              ? const EdgeInsets.all(OverlayWidget.verticalInsetDp)
+              : const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm,
+                  vertical: 6,
+                ),
+          child: vertical
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: children,
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: children,
+                ),
+        ),
+      ),
+    );
+
+    const bubbleSize = OverlayWidget.bubbleSizeDp;
+    final collapsed = _collapsed;
+    // The window and the drawn content change size in separate frames
+    // (native resize vs setState). Fixed constraints here keep the pill's
+    // Row/Column from ever being laid out inside a 48dp window, so the
+    // transition cannot raise a RenderFlex overflow.
+    return Material(
+      type: MaterialType.transparency,
+      color: Colors.transparent,
+      child: Listener(
+        behavior: HitTestBehavior.deferToChild,
+        onPointerDown: _onPointerDown,
+        onPointerMove: _onPointerMove,
+        onPointerUp: _onPointerUp,
+        onPointerCancel: _onPointerCancel,
+        child: OverflowBox(
+          alignment: Alignment.topLeft,
+          minWidth: collapsed ? bubbleSize : width,
+          maxWidth: collapsed ? bubbleSize : width,
+          minHeight: collapsed ? bubbleSize : height,
+          maxHeight: collapsed ? bubbleSize : height,
+          child: collapsed
+              ? _CollapsedBubble(onTap: () => _onToggleCollapsedTap(false))
+              : pill,
+        ),
+      ),
+    );
+  }
+}
+
+/// The collapsed pill: one 48dp dark circle with a white "R". Tapping expands; dragging goes
+/// through the same native window drag (20dp slop + ACTION_CANCEL) as the
+/// pill, so the InkWell cannot be left holding a stuck pointer.
+class _CollapsedBubble extends StatelessWidget {
+  const _CollapsedBubble({required this.onTap});
+
+  final VoidCallback onTap;
+
+  /// A capital has no descender, so a centred line box leaves the "R"
+  /// sitting high. At 20sp DM Sans the cap centre is ~2dp above the box
+  /// centre; this drop centres the glyph itself, not its line box.
+  static const double _glyphOpticalDropDp = 2;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: S.overlayExpand,
+      excludeSemantics: true,
       child: Material(
-        type: MaterialType.transparency,
-        color: Colors.transparent,
-        child: Listener(
-          behavior: HitTestBehavior.deferToChild,
-          onPointerDown: _onPointerDown,
-          onPointerMove: _onPointerMove,
-          onPointerUp: _onPointerUp,
-          onPointerCancel: _onPointerCancel,
-          child: Material(
-            color: _pillBg,
-            elevation: 8,
-            shadowColor: Colors.black,
-            clipBehavior: Clip.antiAlias,
-            shape: const StadiumBorder(
-              side: BorderSide(color: _pillBorder, width: 1),
-            ),
-            child: SizedBox(
-              width: width,
-              height: height,
-              child: Padding(
-                padding: vertical
-                    ? const EdgeInsets.all(OverlayWidget.verticalInsetDp)
-                    : const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.sm,
-                        vertical: 6,
-                      ),
-                child: vertical
-                    ? Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: children,
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: children,
-                      ),
+        // Opaque, same hue as the pill: crisp over light and dark maps alike.
+        color: AppColors.surface,
+        elevation: 8,
+        shadowColor: Colors.black,
+        clipBehavior: Clip.antiAlias,
+        shape: const CircleBorder(
+          side: BorderSide(color: AppColors.strongBorder, width: 1.5),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          splashColor: AppColors.hairline,
+          highlightColor: AppColors.cardBorderColor,
+          child: SizedBox.square(
+            dimension: OverlayWidget.bubbleSizeDp,
+            child: Center(
+              child: Transform.translate(
+                offset: const Offset(0, _glyphOpticalDropDp),
+                child: Text(
+                  S.overlayBubbleLetter,
+                  maxLines: 1,
+                  softWrap: false,
+                  textAlign: TextAlign.center,
+                  style: T.overlayBubbleLetter,
+                ),
               ),
             ),
           ),
@@ -687,7 +962,9 @@ class _AcceptRateDisplay extends StatelessWidget {
     required this.text,
     required this.color,
     required this.width,
+    required this.onTap,
     this.height,
+    this.textPadding = EdgeInsets.zero,
   });
 
   final String text;
@@ -695,22 +972,42 @@ class _AcceptRateDisplay extends StatelessWidget {
   final double width;
   final double? height;
 
+  /// Inset between the tap target's edge and the scaled-down text. The tap
+  /// target keeps the full slot; only the glyphs move in.
+  final EdgeInsets textPadding;
+
+  /// Collapses the pill to the bubble.
+  final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
     return RepaintBoundary(
-      child: SizedBox(
-        width: width,
-        height: height,
-        child: Align(
-          alignment: Alignment.center,
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              text,
-              maxLines: 1,
-              softWrap: false,
-              textAlign: TextAlign.center,
-              style: T.rateFor(color),
+      child: Semantics(
+        button: true,
+        hint: S.overlayCollapse,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const StadiumBorder(),
+          splashColor: color.withValues(alpha: 0.20),
+          highlightColor: color.withValues(alpha: 0.10),
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: Padding(
+              padding: textPadding,
+              child: Align(
+                alignment: Alignment.center,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    text,
+                    maxLines: 1,
+                    softWrap: false,
+                    textAlign: TextAlign.center,
+                    style: T.rateFor(color),
+                  ),
+                ),
+              ),
             ),
           ),
         ),

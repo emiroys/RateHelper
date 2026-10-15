@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -11,6 +12,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../crash_logger.dart';
 import '../env.dart';
+import 'apk_install_check.dart';
+import 'github_access.dart';
+import 'github_http.dart';
+
+export 'apk_install_check.dart' show UpdateInstallResult;
 
 /// Outcome of a single update check.
 enum UpdateStatus {
@@ -133,6 +139,7 @@ class UpdateInfo {
     required this.apkUrl,
     required this.mandatory,
     this.notes,
+    this.apkSha256,
   });
 
   final AppVersion version;
@@ -147,6 +154,10 @@ class UpdateInfo {
 
   /// Short localized changelog, already picked for the active language.
   final String? notes;
+
+  /// Optional SHA-256 of the APK bytes from the manifest (`apk_sha256`).
+  /// Null when the field is absent — the update is not failed for that.
+  final String? apkSha256;
 }
 
 class UpdateCheckResult {
@@ -221,6 +232,15 @@ class UpdateService {
   /// Cache subfolder the APK is downloaded into. Must stay in sync with
   /// `res/xml/file_provider_paths.xml` and `MainActivity.UPDATE_APK_DIR`.
   static const String _apkCacheDirName = 'updates';
+
+  /// Hard cap on a downloaded APK. A larger `Content-Length` or stream is
+  /// rejected before the installer can see it.
+  static const int maxApkBytes = 100 * 1024 * 1024;
+
+  /// How long the cache file stays after the installer activity is started,
+  /// so the other process can open the FileProvider fd. Unlink after that
+  /// does not invalidate an fd the installer already holds.
+  static const Duration apkDeleteAfterLaunch = Duration(seconds: 3);
 
   static const MethodChannel _systemChannel =
       MethodChannel('com.ratehelper.app/system');
@@ -298,25 +318,29 @@ class UpdateService {
       return UpdateCheckResult(UpdateStatus.disabled, current);
     }
 
-    final manifest = await _fromManifest(languageCode: languageCode);
-    final info = manifest ?? await _fromReleasesApi();
+    try {
+      final manifest = await _fromManifest(languageCode: languageCode);
+      final info = manifest ?? await _fromReleasesApi();
 
-    if (info == null) {
-      return UpdateCheckResult(UpdateStatus.unreachable, current);
-    }
-    if (info.version.isNewerThan(current)) {
-      return UpdateCheckResult(UpdateStatus.available, current, info);
-    }
+      if (info == null) {
+        return UpdateCheckResult(UpdateStatus.unreachable, current);
+      }
+      if (info.version.isNewerThan(current)) {
+        return UpdateCheckResult(UpdateStatus.available, current, info);
+      }
 
-    // The manifest is the source of truth. When it could not be read, the
-    // fallback's "nothing newer" is a guess — the Releases API only knows
-    // about tags, which lag behind a manifest bump. Reporting "up to date"
-    // here is how a broken manifest used to hide in plain sight.
-    if (manifest == null) {
-      await _logFailure('manifest unreadable; releases fallback not newer');
-      return UpdateCheckResult(UpdateStatus.unreachable, current);
+      // The manifest is the source of truth. When it could not be read, the
+      // fallback's "nothing newer" is a guess — the Releases API only knows
+      // about tags, which lag behind a manifest bump. Reporting "up to date"
+      // here is how a broken manifest used to hide in plain sight.
+      if (manifest == null) {
+        await _logFailure('manifest unreadable; releases fallback not newer');
+        return UpdateCheckResult(UpdateStatus.unreachable, current);
+      }
+      return UpdateCheckResult(UpdateStatus.upToDate, current);
+    } finally {
+      await _rememberChecked();
     }
-    return UpdateCheckResult(UpdateStatus.upToDate, current);
   }
 
   /// Whether Android will let us open the package installer at all.
@@ -346,16 +370,18 @@ class UpdateService {
     }
   }
 
-  /// Downloads the APK into the app's own cache and returns the file.
+  /// Downloads the APK into the app cache. Call this only after the driver
+  /// taps the update action — startup checks the manifest and must not
+  /// download the package.
   ///
-  /// Chrome receives the whole file on this device but stalls before handing
-  /// it to the installer, which is why the download is done here instead.
-  /// Returns null on any failure so the caller can fall back to the browser.
+  /// Bytes are hashed with SHA-256 as they are written. The file is capped
+  /// at [maxApkBytes]. Returns null on any failure (the partial file is
+  /// deleted) so the caller can fall back to the browser.
   ///
   /// [onProgress] reports received/total bytes (total is null when the server
   /// omits `Content-Length`). [isCancelled] is polled per chunk so the driver
-  /// can abort a 22 MB download started by accident on mobile data.
-  Future<File?> downloadApk(
+  /// can abort a download started by accident on mobile data.
+  Future<DownloadedApk?> downloadApk(
     UpdateInfo info, {
     void Function(int received, int? total)? onProgress,
     bool Function()? isCancelled,
@@ -372,8 +398,7 @@ class UpdateService {
       '${dir.path}${Platform.pathSeparator}${info.apkUrl.pathSegments.last}',
     );
 
-    final client = HttpClient();
-    IOSink? sink;
+    final client = GithubHttp.open();
     try {
       client.connectionTimeout = _connectTimeout;
 
@@ -381,48 +406,28 @@ class UpdateService {
       if (response == null) return null;
 
       final declared = response.contentLength;
-      final total = declared > 0 ? declared : null;
-      var received = 0;
-      var cancelled = false;
+      if (declared > maxApkBytes) {
+        await _logFailure('download: content-length exceeds cap');
+        await response.drain<void>().catchError((Object _) {});
+        return null;
+      }
 
-      sink = file.openWrite();
-      await for (final chunk in response) {
-        if (isCancelled?.call() ?? false) {
-          cancelled = true;
-          break;
+      final write = await consumeApkDownload(
+        bytes: response,
+        file: file,
+        contentLength: declared > 0 ? declared : null,
+        onProgress: onProgress,
+        isCancelled: isCancelled,
+      );
+      if (!write.accepted) {
+        if (write.reject != ApkRejectReason.cancelled) {
+          await _logFailure('download: ${write.reject?.name ?? 'rejected'}');
         }
-        sink.add(chunk);
-        received += chunk.length;
-        onProgress?.call(received, total);
-      }
-      await sink.flush();
-      await sink.close();
-      sink = null;
-
-      if (cancelled) {
-        await _deleteQuietly(file);
         return null;
       }
-
-      // A dropped connection yields a short file that Android would reject
-      // with an unhelpful "package appears to be invalid", so check here.
-      final written = await file.length();
-      if (total != null && written != total) {
-        await _logFailure('download: got $written of $total bytes');
-        await _deleteQuietly(file);
-        return null;
-      }
-      if (!await _looksLikeApk(file)) {
-        await _logFailure('download: payload is not a zip/apk');
-        await _deleteQuietly(file);
-        return null;
-      }
-      return file;
+      return DownloadedApk(file: file, sha256: write.sha256);
     } catch (e) {
-      await _logFailure('download: ${e.runtimeType}', e);
-      try {
-        await sink?.close();
-      } catch (_) {}
+      await _logFailure('download: ${e.runtimeType}');
       await _deleteQuietly(file);
       return null;
     } finally {
@@ -430,22 +435,94 @@ class UpdateService {
     }
   }
 
-  /// Opens Android's package installer on a downloaded APK. The user still
-  /// confirms in the system dialog.
-  Future<bool> installApk(File file) async {
+  /// Checks the downloaded APK, then opens the system installer.
+  ///
+  /// A signing-certificate mismatch returns
+  /// [UpdateInstallResult.signatureMismatch] and does not launch anything.
+  /// The cache file is deleted on every failure, and shortly after a
+  /// successful launch.
+  Future<UpdateInstallResult> verifyAndInstall(
+    DownloadedApk apk,
+    UpdateInfo info,
+  ) async {
     try {
-      final started = await _systemChannel.invokeMethod<bool>(
-        'installApk',
-        <String, dynamic>{'path': file.path},
-      );
-      if (started != true) {
-        await _logFailure('install: installer intent refused the file');
+      final facts = await _inspectUpdateApk(apk.file.path);
+      final decision = facts == null
+          ? const ApkInstallDecision.reject(ApkRejectReason.unreadable)
+          : decideApkInstall(
+              archivePackage: facts.archivePackage,
+              archiveVersionCode: facts.archiveVersionCode,
+              archiveCertSha256: facts.archiveCertSha256,
+              installedPackage: facts.installedPackage,
+              installedVersionCode: facts.installedVersionCode,
+              installedCertSha256: facts.installedCertSha256,
+              streamedSha256: apk.sha256,
+              manifestSha256: info.apkSha256,
+            );
+      if (!decision.shouldInstall) {
+        await _logFailure('install: ${decision.reason?.name ?? 'rejected'}');
       }
-      return started ?? false;
+      return await finishApkInstall(
+        decision: decision,
+        launchInstaller: () => _launchInstaller(apk.file),
+        deleteFile: () => _deleteQuietly(apk.file),
+        deleteAfterLaunch: () async {
+          unawaited(
+            Future<void>.delayed(
+              apkDeleteAfterLaunch,
+              () => _deleteQuietly(apk.file),
+            ),
+          );
+        },
+      );
     } catch (e) {
-      await _logFailure('install: ${e.runtimeType}', e);
+      await _logFailure('install: ${e.runtimeType}');
+      await _deleteQuietly(apk.file);
+      return UpdateInstallResult.rejected;
+    }
+  }
+
+  Future<bool> _launchInstaller(File file) async {
+    final code = await _systemChannel.invokeMethod<String>(
+      'installApk',
+      <String, dynamic>{'path': file.path},
+    );
+    if (code != 'launched') {
+      await _logFailure('install: ${code ?? 'rejected'}');
       return false;
     }
+    return true;
+  }
+
+  Future<_UpdateApkFacts?> _inspectUpdateApk(String path) async {
+    final raw = await _systemChannel.invokeMethod<Object?>(
+      'inspectUpdateApk',
+      <String, dynamic>{'path': path},
+    );
+    if (raw is! Map) return null;
+    final archivePackage = raw['archivePackage']?.toString() ?? '';
+    final installedPackage = raw['installedPackage']?.toString() ?? '';
+    final archiveVersionCode = _asInt(raw['archiveVersionCode']);
+    final installedVersionCode = _asInt(raw['installedVersionCode']);
+    final archiveCert = raw['archiveCertSha256']?.toString() ?? '';
+    final installedCert = raw['installedCertSha256']?.toString() ?? '';
+    if (archiveVersionCode == null || installedVersionCode == null) {
+      return null;
+    }
+    return _UpdateApkFacts(
+      archivePackage: archivePackage,
+      archiveVersionCode: archiveVersionCode,
+      archiveCertSha256: archiveCert,
+      installedPackage: installedPackage,
+      installedVersionCode: installedVersionCode,
+      installedCertSha256: installedCert,
+    );
+  }
+
+  static int? _asInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return null;
   }
 
   /// Follows GitHub's redirect chain to the signed asset URL, re-validating
@@ -456,6 +533,7 @@ class UpdateService {
   ) async {
     var uri = start;
     for (var hop = 0; hop <= _maxDownloadRedirects; hop++) {
+      GithubHttp.note(uri);
       final request = await client.getUrl(uri).timeout(_connectTimeout);
       request.followRedirects = false;
       request.headers.set(HttpHeaders.userAgentHeader, 'RateHelper-Updater');
@@ -540,18 +618,112 @@ class UpdateService {
     }
   }
 
-  /// Cheap sanity check: an APK is a zip, so it starts with `PK`. Catches a
-  /// captive-portal HTML page saved under an `.apk` name.
-  Future<bool> _looksLikeApk(File file) async {
+  /// Writes [bytes] to [file] while hashing them. Rejects a short body when
+  /// [contentLength] is known, a stream over [maxBytes], and anything that
+  /// does not start with the zip magic `PK`. The file is deleted on every
+  /// reject. No second read of the file.
+  @visibleForTesting
+  static Future<ApkDownloadWrite> consumeApkDownload({
+    required Stream<List<int>> bytes,
+    required File file,
+    int? contentLength,
+    int maxBytes = maxApkBytes,
+    bool Function()? isCancelled,
+    void Function(int received, int? total)? onProgress,
+  }) async {
+    if (contentLength != null && contentLength > maxBytes) {
+      return const ApkDownloadWrite.rejected(ApkRejectReason.tooLarge);
+    }
+
+    final capture = _DigestCapture();
+    final hasher = sha256.startChunkedConversion(capture);
+    IOSink? sink;
+    var received = 0;
+    var magic0 = -1;
+    var magic1 = -1;
+    var cancelled = false;
     try {
-      final head = await file.openRead(0, 2).first;
-      return head.length >= 2 && head[0] == 0x50 && head[1] == 0x4B;
+      final opened = file.openWrite();
+      sink = opened;
+      await for (final chunk in bytes) {
+        if (isCancelled?.call() ?? false) {
+          cancelled = true;
+          break;
+        }
+        if (chunk.isEmpty) continue;
+        if (chunk.length > maxBytes || received > maxBytes - chunk.length) {
+          sink = null;
+          await _abortApkWrite(opened, hasher, file);
+          return const ApkDownloadWrite.rejected(ApkRejectReason.tooLarge);
+        }
+        for (final b in chunk) {
+          if (magic0 < 0) {
+            magic0 = b;
+          } else if (magic1 < 0) {
+            magic1 = b;
+          } else {
+            break;
+          }
+        }
+        hasher.add(chunk);
+        opened.add(chunk);
+        received += chunk.length;
+        onProgress?.call(received, contentLength);
+      }
+      await opened.flush();
+      await opened.close();
+      sink = null;
+      hasher.close();
+
+      if (cancelled) {
+        await _deleteQuietly(file);
+        return const ApkDownloadWrite.rejected(ApkRejectReason.cancelled);
+      }
+      final digest = capture.value?.toString() ?? '';
+      if (magic0 != 0x50 || magic1 != 0x4B) {
+        await _deleteQuietly(file);
+        return ApkDownloadWrite.rejected(ApkRejectReason.notAnApk, sha256: digest);
+      }
+      if (contentLength != null && received != contentLength) {
+        await _deleteQuietly(file);
+        return ApkDownloadWrite.rejected(
+          ApkRejectReason.truncated,
+          sha256: digest,
+        );
+      }
+      return ApkDownloadWrite.accepted(sha256: digest, written: received);
     } catch (_) {
-      return false;
+      if (sink != null) {
+        try {
+          await sink.close();
+        } catch (_) {}
+      }
+      try {
+        hasher.close();
+      } catch (_) {}
+      await _deleteQuietly(file);
+      rethrow;
     }
   }
 
-  Future<void> _deleteQuietly(File file) async {
+  static Future<void> _abortApkWrite(
+    IOSink sink,
+    ByteConversionSink hasher,
+    File file,
+  ) async {
+    try {
+      await sink.flush();
+    } catch (_) {}
+    try {
+      await sink.close();
+    } catch (_) {}
+    try {
+      hasher.close();
+    } catch (_) {}
+    await _deleteQuietly(file);
+  }
+
+  static Future<void> _deleteQuietly(File file) async {
     try {
       if (await file.exists()) await file.delete();
     } catch (_) {}
@@ -607,6 +779,17 @@ class UpdateService {
     }
   }
 
+  /// Writes the clock time of a finished check (including a failed one) so the
+  /// menu row can show it. A build with no manifest URL never calls this,
+  /// because that path does not touch the network.
+  Future<void> _rememberChecked() async {
+    try {
+      final prefs = await _prefs();
+      if (prefs == null) return;
+      await GithubAccess.markUpdateChecked(prefs, DateTime.now());
+    } catch (_) {}
+  }
+
   // ---------------------------------------------------------------- sources
 
   Future<UpdateInfo?> _fromManifest({String? languageCode}) async {
@@ -653,6 +836,7 @@ class UpdateService {
       apkUrl: apkUrl,
       mandatory: json['mandatory'] == true,
       notes: _pickNotes(json, languageCode),
+      apkSha256: parseOptionalApkSha256(json['apk_sha256']),
     );
   }
 
@@ -710,7 +894,8 @@ class UpdateService {
       return null;
     }
 
-    final client = HttpClient();
+    GithubHttp.note(uri);
+    final client = GithubHttp.open();
     try {
       client.connectionTimeout = _connectTimeout;
       client.autoUncompress = true;
@@ -753,7 +938,15 @@ class UpdateService {
   /// settings screen can already display and copy.
   Future<void> _logFailure(String message, [Object? error]) async {
     try {
-      await CrashLogger.appendError('UPDATE', message, error, null);
+      // Release crash logs must not keep the download URL or an APK path.
+      // Exception strings (HttpException, FileSystemException) contain both,
+      // so the object is dropped outside debug.
+      await CrashLogger.appendError(
+        'UPDATE',
+        message,
+        kReleaseMode ? null : error,
+        null,
+      );
     } catch (_) {}
   }
 
@@ -806,4 +999,58 @@ class UpdateService {
   }
 
   bool _isTrustedApkUrl(Uri uri) => _sanitizeApkUrl(uri.toString()) != null;
+}
+
+/// A finished download sitting in the cache, plus the digest of the bytes
+/// that were written. [sha256] is lowercase hex.
+class DownloadedApk {
+  const DownloadedApk({required this.file, required this.sha256});
+
+  final File file;
+  final String sha256;
+}
+
+class ApkDownloadWrite {
+  const ApkDownloadWrite.accepted({
+    required this.sha256,
+    required this.written,
+  })  : accepted = true,
+        reject = null;
+
+  const ApkDownloadWrite.rejected(this.reject, {this.sha256 = ''})
+      : accepted = false,
+        written = 0;
+
+  final bool accepted;
+  final ApkRejectReason? reject;
+  final String sha256;
+  final int written;
+}
+
+class _UpdateApkFacts {
+  const _UpdateApkFacts({
+    required this.archivePackage,
+    required this.archiveVersionCode,
+    required this.archiveCertSha256,
+    required this.installedPackage,
+    required this.installedVersionCode,
+    required this.installedCertSha256,
+  });
+
+  final String archivePackage;
+  final int archiveVersionCode;
+  final String archiveCertSha256;
+  final String installedPackage;
+  final int installedVersionCode;
+  final String installedCertSha256;
+}
+
+class _DigestCapture implements Sink<Digest> {
+  Digest? value;
+
+  @override
+  void add(Digest data) => value = data;
+
+  @override
+  void close() {}
 }

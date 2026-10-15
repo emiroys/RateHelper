@@ -25,63 +25,64 @@ class S {
   static String get requests => _p('GELEN İSTEKLER', 'REQUESTS', 'ZLECENIA');
   static String get trips => _p('YOLCULUKLAR', 'TRIPS', 'PRZEJAZDY');
   static String get settings => _p('AYARLAR', 'SETTINGS', 'USTAWIENIA');
-  static String get acceptRate => _p('KABUL ORANI', 'ACCEPT RATE', 'AKCEPTACJA %');
-  static String get cancelRate => _p('İPTAL ORANI', 'CANCEL RATE', 'ANULOWANIE %');
+  static String get settingsTitle => _p('Ayarlar', 'Settings', 'Ustawienia');
+  static String get settingsDriving =>
+      _p('SÜRÜŞ VE SAYAÇLAR', 'DRIVING & COUNTERS', 'JAZDA I LICZNIKI');
+  static String get settingsOverlay => _p('BALONCUK', 'OVERLAY PILL', 'DYMEK');
+  static String get settingsPreferences => _p(
+    'UYGULAMA VE TERCİHLER',
+    'APP & PREFERENCES',
+    'APLIKACJA I PREFERENCJE',
+  );
+  static String get settingsSystem =>
+      _p('SİSTEM VE DESTEK', 'SYSTEM & SUPPORT', 'SYSTEM I POMOC');
+  static String get drivingMode =>
+      _p('Sürüş Modu', 'Driving Mode', 'Tryb jazdy');
+  static String get acceptRate =>
+      _p('KABUL ORANI', 'ACCEPT RATE', 'AKCEPTACJA %');
+  static String get cancelRate =>
+      _p('İPTAL ORANI', 'CANCEL RATE', 'ANULOWANIE %');
   static String formatPercent(String val) => _p('%$val', '$val%', '$val%');
   static String get accepted => _p('Kabul Edilen', 'Accepted', 'Zaakceptowane');
   static String get rejected => _p('Reddedilen', 'Rejected', 'Odrzucone');
   static String get completed => _p('Tamamlanan', 'Completed', 'Ukończone');
   static String get cancelled => _p('İptal Edilen', 'Cancelled', 'Anulowane');
-  static String get autoCompleteTrips => _p(
-        'Otomatik tamamla',
-        'Auto-complete trips',
-        'Automatyczne ukończenie',
-      );
-  static String get keepScreenOn => _p(
-        'Ekranı açık tut',
-        'Keep screen on',
-        'Nie wygaszaj ekranu',
-      );
-  static String get overlayPillOrientation => _p(
-        'Baloncuk Yönü',
-        'Bubble direction',
-        'Kierunek dymka',
-      );
-  static String get overlayPillHorizontal => _p(
-        'Yatay',
-        'Horizontal',
-        'Poziomy',
-      );
-  static String get overlayPillVertical => _p(
-        'Dikey',
-        'Vertical',
-        'Pionowy',
-      );
+  static String get autoCompleteTrips =>
+      _p('Otomatik tamamla', 'Auto-complete trips', 'Automatyczne ukończenie');
+  static String get keepScreenOn =>
+      _p('Ekranı açık tut', 'Keep screen on', 'Nie wygaszaj ekranu');
+  static String get overlayPillOrientation =>
+      _p('Baloncuk Yönü', 'Bubble direction', 'Kierunek dymka');
+  static String get overlayPillHorizontal =>
+      _p('Yatay', 'Horizontal', 'Poziomy');
+  static String get overlayPillVertical => _p('Dikey', 'Vertical', 'Pionowy');
+  static String get overlayBubbleLetter => _p('R', 'R', 'R');
+  static String get overlayCollapse =>
+      _p('Baloncuğu küçült', 'Collapse bubble', 'Zwiń dymek');
+  static String get overlayExpand =>
+      _p('Baloncuğu aç', 'Expand bubble', 'Rozwiń dymek');
   static String get overlayShowCancelButton => _p(
-        'Baloncukta İptal Butonu Göster',
-        'Show cancellation button in overlay',
-        'Pokaż przycisk anulowania na dymku',
-      );
+    'Baloncukta İptal Butonu Göster',
+    'Show cancellation button in overlay',
+    'Pokaż przycisk anulowania na dymku',
+  );
   static String get steeringWheelCounter => _p(
-        'Direksiyon Tuşu ile Sayma (Beta)',
-        'Steering Wheel Counter (Beta)',
-        'Licznik z kierownicy (Beta)',
-      );
+    'Direksiyon Tuşu ile Sayma (Beta)',
+    'Steering Wheel Counter (Beta)',
+    'Licznik z kierownicy (Beta)',
+  );
   static String get steeringWheelDialogTitle => _p(
-        'Erişilebilirlik İzni Gerekli',
-        'Accessibility Permission Required',
-        'Wymagane uprawnienie dostępności',
-      );
+    'Erişilebilirlik İzni Gerekli',
+    'Accessibility Permission Required',
+    'Wymagane uprawnienie dostępności',
+  );
   static String get steeringWheelDialogDesc => _p(
-        'Direksiyondaki Sonraki Şarkı tuşuna basılı tutarak (800ms) müzik kesilmeden sefer sayacı artırma özelliğinin çalışabilmesi için Erişilebilirlik ayarlarından RateHelper servisinin açılması gereklidir.',
-        'To count rides by long-pressing (800ms) the Next Track steering wheel button without interrupting music, RateHelper service must be enabled in Accessibility settings.',
-        'Aby liczyć przejazdy poprzez długie naciśnięcie (800 ms) przycisku następnego utworu bez przerywania muzyki, musisz włączyć usługę RateHelper w ustawieniach ułatwień dostępu.',
-      );
-  static String get openSettings => _p(
-        'AYARLARA GİT',
-        'OPEN SETTINGS',
-        'OTWÓRZ USTAWIENIA',
-      );
+    'Direksiyondaki Sonraki Şarkı tuşuna basılı tutarak (800ms) müzik kesilmeden sefer sayacı artırma özelliğinin çalışabilmesi için Erişilebilirlik ayarlarından RateHelper servisinin açılması gereklidir.',
+    'To count rides by long-pressing (800ms) the Next Track steering wheel button without interrupting music, RateHelper service must be enabled in Accessibility settings.',
+    'Aby liczyć przejazdy poprzez długie naciśnięcie (800 ms) przycisku następnego utworu bez przerywania muzyki, musisz włączyć usługę RateHelper w ustawieniach ułatwień dostępu.',
+  );
+  static String get openSettings =>
+      _p('AYARLARA GİT', 'OPEN SETTINGS', 'OTWÓRZ USTAWIENIA');
   static String get editCompletedTitle =>
       _p('Tamamlanan Sayısı', 'Completed Trips', 'Ukończone przejazdy');
   static String get editAcceptedTitle =>
@@ -104,28 +105,28 @@ class S {
   }
 
   static String get safeButClose => _p(
-        'Güvende ama sınırda: Birkaç ret üst üste gelirse kademeyi kaybedebilirsin.',
-        'Safe but close: one bad string of rejects could drop you below requirement.',
-        'Bezpiecznie, ale blisko: seria odrzuceń może obniżyć stawkę poniżej wymogu.',
-      );
+    'Güvende ama sınırda: Birkaç ret üst üste gelirse kademeyi kaybedebilirsin.',
+    'Safe but close: one bad string of rejects could drop you below requirement.',
+    'Bezpiecznie, ale blisko: seria odrzuceń może obniżyć stawkę poniżej wymogu.',
+  );
 
   static String maxAdditionalCancellations(int n) => _p(
-        'Bu haftaki %5 iptal sınırını aşmadan en fazla $n iptal daha hakkın var.',
-        'You can afford up to $n more cancellations without breaching the 5% limit.',
-        'Możesz anulować jeszcze maksymalnie $n razy, nie przekraczając limitu 5%.',
-      );
-      
+    'Bu haftaki %5 iptal sınırını aşmadan en fazla $n iptal daha hakkın var.',
+    'You can afford up to $n more cancellations without breaching the 5% limit.',
+    'Możesz anulować jeszcze maksymalnie $n razy, nie przekraczając limitu 5%.',
+  );
+
   static String get cancellationLimitExceeded => _p(
-        'İptal oranın sınırın üzerinde, kademen risk altında.',
-        'Your cancellation rate is over the limit, your tier is at risk.',
-        'Twój wskaźnik anulowań przekracza limit, Twój próg jest zagrożony.',
-      );
+    'İptal oranın sınırın üzerinde, kademen risk altında.',
+    'Your cancellation rate is over the limit, your tier is at risk.',
+    'Twój wskaźnik anulowań przekracza limit, Twój próg jest zagrożony.',
+  );
 
   static String get tripGoalTitle => _p(
-        'Haftalık Yolculuk Hedefi',
-        'Weekly Trip Goal',
-        'Tygodniowy Cel Przejazdów',
-      );
+    'Haftalık Yolculuk Hedefi',
+    'Weekly Trip Goal',
+    'Tygodniowy Cel Przejazdów',
+  );
 
   static String _goalRangeLabel(int minTrips) {
     final tiers = activeDriverMode.rentalTiers;
@@ -170,35 +171,44 @@ class S {
   }
 
   static String get driverModeDialogTitle => _p(
-        'Aracı kaç kişi kullanıyor?',
-        'How many drivers share the car?',
-        'Ilu kierowców dzieli samochód?',
-      );
-  static String get driverModeSolo => _p('Tek Sürücü', 'Single Driver', 'Jeden kierowca');
-  static String get driverModePaired => _p('İki Sürücü (Paylaşımlı)', 'Two Drivers (Shared)', 'Dwóch kierowców (Dzielony)');
-  static String get driverModeTrio => _p('Üç Sürücü (Paylaşımlı)', 'Three Drivers (Shared)', 'Trzech kierowców (Dzielony)');
+    'Aracı kaç kişi kullanıyor?',
+    'How many drivers share the car?',
+    'Ilu kierowców dzieli samochód?',
+  );
+  static String get driverModeSolo =>
+      _p('Tek Sürücü', 'Single Driver', 'Jeden kierowca');
+  static String get driverModePaired => _p(
+    'İki Sürücü (Paylaşımlı)',
+    'Two Drivers (Shared)',
+    'Dwóch kierowców (Dzielony)',
+  );
+  static String get driverModeTrio => _p(
+    'Üç Sürücü (Paylaşımlı)',
+    'Three Drivers (Shared)',
+    'Trzech kierowców (Dzielony)',
+  );
   static String driverModeLabel(DriverMode mode) => switch (mode) {
-        DriverMode.paired => _p(
-            'Sürüş Modu: İki Sürücü ✏️',
-            'Driving Mode: Two Drivers ✏️',
-            'Tryb jazdy: Dwóch kierowców ✏️',
-          ),
-        DriverMode.trio => _p(
-            'Sürüş Modu: Üç Sürücü ✏️',
-            'Driving Mode: Three Drivers ✏️',
-            'Tryb jazdy: Trzech kierowców ✏️',
-          ),
-        DriverMode.solo => _p(
-            'Sürüş Modu: Tek Sürücü ✏️',
-            'Driving Mode: Single Driver ✏️',
-            'Tryb jazdy: Jeden kierowca ✏️',
-          ),
-      };
+    DriverMode.paired => _p(
+      'Sürüş Modu: İki Sürücü ✏️',
+      'Driving Mode: Two Drivers ✏️',
+      'Tryb jazdy: Dwóch kierowców ✏️',
+    ),
+    DriverMode.trio => _p(
+      'Sürüş Modu: Üç Sürücü ✏️',
+      'Driving Mode: Three Drivers ✏️',
+      'Tryb jazdy: Trzech kierowców ✏️',
+    ),
+    DriverMode.solo => _p(
+      'Sürüş Modu: Tek Sürücü ✏️',
+      'Driving Mode: Single Driver ✏️',
+      'Tryb jazdy: Jeden kierowca ✏️',
+    ),
+  };
   static String get pairedTripsHint => _p(
-        'İki sürücü modunda: sen ve ortağının birlikte yaptığı toplam yolculuk sayısı',
-        'Two-driver mode: combined trips completed by you and your partner',
-        'Tryb dwóch kierowców: łączna liczba przejazdów wykonana przez Ciebie i partnera',
-      );
+    'İki sürücü modunda: sen ve ortağının birlikte yaptığı toplam yolculuk sayısı',
+    'Two-driver mode: combined trips completed by you and your partner',
+    'Tryb dwóch kierowców: łączna liczba przejazdów wykonana przez Ciebie i partnera',
+  );
   static String sharedCarTotalSubtitle(String fee, int drivers) => drivers == 3
       ? _p(
           'Araç toplamı: $fee PLN (3 sürücü arası paylaşılıyor)',
@@ -211,13 +221,15 @@ class S {
           'Razem za auto: $fee PLN (dzielone na 2 kierowców)',
         );
 
-  static String get resetWeek => _p('HAFTAYI SIFIRLA', 'RESET WEEK', 'RESETUJ TYDZIEŃ');
-  static String get resetWeekTitle => _p('Haftayı Sıfırla', 'Reset Week', 'Resetuj Tydzień');
+  static String get resetWeek =>
+      _p('HAFTAYI SIFIRLA', 'RESET WEEK', 'RESETUJ TYDZIEŃ');
+  static String get resetWeekTitle =>
+      _p('Haftayı Sıfırla', 'Reset Week', 'Resetuj Tydzień');
   static String get resetConfirm => _p(
-        'Tüm sayaçlar sıfırlanacak. Emin misin?',
-        'All counters will be reset. Are you sure?',
-        'Wszystkie liczniki zostaną zresetowane. Na pewno?',
-      );
+    'Tüm sayaçlar sıfırlanacak. Emin misin?',
+    'All counters will be reset. Are you sure?',
+    'Wszystkie liczniki zostaną zresetowane. Na pewno?',
+  );
   static String get cancel => _p('İPTAL', 'CANCEL', 'ANULUJ');
   static String get reset => _p('SIFIRLA', 'RESET', 'RESETUJ');
   static String get history => _p('GEÇMİŞ', 'HISTORY', 'HISTORIA');
@@ -226,47 +238,38 @@ class S {
   static String get tapLogTab => _p('KAYITLAR', 'TAPS', 'DOTKNIĘCIA');
   static String get weeklyTab => _p('HAFTALIK', 'WEEKLY', 'TYGODNIOWE');
   static String get noTapHistory => _p(
-        'Henüz dokunuş kaydı yok.',
-        'No tap records yet.',
-        'Brak zapisów dotknięć.',
-      );
-  static String get noTapHistoryTitle => _p(
-        'Kayıt Yok',
-        'No Records',
-        'Brak zapisów',
-      );
+    'Henüz dokunuş kaydı yok.',
+    'No tap records yet.',
+    'Brak zapisów dotknięć.',
+  );
+  static String get noTapHistoryTitle =>
+      _p('Kayıt Yok', 'No Records', 'Brak zapisów');
   static String get noTapHistoryDesc => _p(
-        'Widget üzerindeki + ve − tuşlarına bastığın her istek burada listelenir.',
-        'Every request you log with the + and − buttons on the widget shows up here.',
-        'Każde zlecenie zapisane przyciskami + i − na widżecie pojawi się tutaj.',
-      );
-  static String get noHistoryTitle => _p(
-        'Arşiv Boş',
-        'Archive Empty',
-        'Archiwum puste',
-      );
+    'Widget üzerindeki + ve − tuşlarına bastığın her istek burada listelenir.',
+    'Every request you log with the + and − buttons on the widget shows up here.',
+    'Każde zlecenie zapisane przyciskami + i − na widżecie pojawi się tutaj.',
+  );
+  static String get noHistoryTitle =>
+      _p('Arşiv Boş', 'Archive Empty', 'Archiwum puste');
   static String get noHistoryDesc => _p(
-        'Haftayı her sıfırladığında o haftanın özeti burada saklanır.',
-        'Each time you reset the week, that week’s summary is stored here.',
-        'Za każdym razem, gdy resetujesz tydzień, jego podsumowanie trafia tutaj.',
-      );
-  static String get crashLogEmptyTitle => _p(
-        'Kayıt Yok',
-        'No Entries',
-        'Brak wpisów',
-      );
+    'Haftayı her sıfırladığında o haftanın özeti burada saklanır.',
+    'Each time you reset the week, that week’s summary is stored here.',
+    'Za każdym razem, gdy resetujesz tydzień, jego podsumowanie trafia tutaj.',
+  );
+  static String get crashLogEmptyTitle =>
+      _p('Kayıt Yok', 'No Entries', 'Brak wpisów');
   static String get tapHistoryClear => _p('Temizle', 'Clear', 'Wyczyść');
   static String get tapHistoryClearConfirm => _p(
-        'Tüm kayıtlar silinecek. Emin misin?',
-        'All tap records will be deleted. Are you sure?',
-        'Wszystkie zapisy dotknięć zostaną usunięte. Na pewno?',
-      );
+    'Tüm kayıtlar silinecek. Emin misin?',
+    'All tap records will be deleted. Are you sure?',
+    'Wszystkie zapisy dotknięć zostaną usunięte. Na pewno?',
+  );
   static String get weeklyArchiveClear => _p('Temizle', 'Clear', 'Wyczyść');
   static String get weeklyArchiveClearConfirm => _p(
-        'Tüm haftalık kayıtlar silinecek. Emin misin?',
-        'All weekly archive records will be deleted. Are you sure?',
-        'Wszystkie cotygodniowe wpisy zostaną usunięte. Na pewno?',
-      );
+    'Tüm haftalık kayıtlar silinecek. Emin misin?',
+    'All weekly archive records will be deleted. Are you sure?',
+    'Wszystkie cotygodniowe wpisy zostaną usunięte. Na pewno?',
+  );
   static String get filterToday => _p('Bugün', 'Today', 'Dziś');
   static String get filterAll => _p('Tümü', 'All', 'Wszystko');
   static String get tapAcceptShort => _p('Kabul', 'Accept', 'Akceptacja');
@@ -275,68 +278,85 @@ class S {
       _p('RateHelper Aktif', 'RateHelper Active', 'RateHelper Aktywny');
   static String get overlayOff =>
       _p('RateHelper Kapatıldı', 'RateHelper Closed', 'RateHelper Wyłączony');
-  static String get overlayToggleFailed => 
-      _p('Widget başlatılamadı. Tekrar deneyin.', 'Failed to start widget. Try again.', 'Nie udało się uruchomić widżetu. Spróbuj ponownie.');
+  static String get overlayToggleFailed => _p(
+    'Widget başlatılamadı. Tekrar deneyin.',
+    'Failed to start widget. Try again.',
+    'Nie udało się uruchomić widżetu. Spróbuj ponownie.',
+  );
   static String get archiveAccept => _p('Kabul', 'Accept', 'Akceptacja');
   static String get archiveCancel => _p('İptal', 'Cancel', 'Anulowanie');
+  static String archiveWeekSummary(int trips, int accepted, int rejected) => _p(
+    'Yolculuk: $trips • Kabul: $accepted • Red: $rejected',
+    'Trips: $trips • Accept: $accepted • Reject: $rejected',
+    'Przejazdy: $trips • Akceptacja: $accepted • Odrzucenie: $rejected',
+  );
+  static String get archiveCompletedTrips =>
+      _p('Tamamlanan Yolculuk', 'Completed Trips', 'Ukończone przejazdy');
+  static String get archiveCancelledTrips =>
+      _p('İptal Edilen Yolculuk', 'Cancelled Trips', 'Anulowane przejazdy');
+  static String get archiveAcceptedRequests =>
+      _p('Kabul Edilen İstek', 'Accepted Requests', 'Zaakceptowane zlecenia');
+  static String get archiveRejectedRequests =>
+      _p('Reddedilen İstek', 'Rejected Requests', 'Odrzucone zlecenia');
+  static String get archiveTotalRequests =>
+      _p('Toplam İstek', 'Total Requests', 'Wszystkie zlecenia');
+  static String get archiveWeeklyGoal =>
+      _p('Haftalık Hedef', 'Weekly Goal', 'Cel tygodniowy');
+  static String get archiveGoalMet =>
+      _p('Hedef Tuttu', 'Goal Met', 'Cel osiągnięty');
+  static String get archiveGoalMissed =>
+      _p('Hedef Tutmadı', 'Goal Missed', 'Cel nieosiągnięty');
+
+  /// Acceptance target plus met/missed. [threshold] is already localized
+  /// (`%80` / `80%`). Null means the tier had no acceptance requirement.
+  static String archiveGoalLine(String? threshold, bool met) {
+    final status = met ? archiveGoalMet : archiveGoalMissed;
+    if (threshold == null || threshold.isEmpty) return status;
+    return '$threshold • $status';
+  }
+
   static String get overlayTitle =>
       _p('RateHelper Aktif', 'RateHelper Active', 'RateHelper Aktywny');
-  static String get overlayContent => _p(
-        'Çalışıyor.',
-        'Running.',
-        'Działa.',
-      );
+  static String get overlayContent => _p('Çalışıyor.', 'Running.', 'Działa.');
 
-  static String get onboardingTitle => _p(
-        'RateHelper Kurulumu',
-        'RateHelper Setup',
-        'Konfiguracja RateHelper',
-      );
+  static String get onboardingTitle =>
+      _p('RateHelper Kurulumu', 'RateHelper Setup', 'Konfiguracja RateHelper');
   static String get onboardingIntro => _p(
-        'RateHelper’in arka planda çalışabilmesi için iki Android iznine ihtiyacı var. Aşağıdaki adımları sırayla yap.',
-        'RateHelper needs two Android permissions to run in the background. Complete the steps below in order.',
-        'RateHelper potrzebuje dwóch uprawnień Androida, aby działać w tle. Wykonaj poniższe kroki po kolei.',
-      );
+    'RateHelper’in arka planda çalışabilmesi için iki Android iznine ihtiyacı var. Aşağıdaki adımları sırayla yap. Yolculuk ve kazanç verin cihazdan çıkmaz. Uygulama GitHub’a yalnızca sen izin verirsen ya da kendin istersen bağlanır.',
+    'RateHelper needs two Android permissions to run in the background. Complete the steps below in order. Your trips and earnings stay on this device. The app contacts GitHub only when you allow it or ask.',
+    'RateHelper potrzebuje dwóch uprawnień Androida, aby działać w tle. Wykonaj poniższe kroki po kolei. Twoje przejazdy i zarobki zostają na urządzeniu. Aplikacja łączy się z GitHubem tylko gdy na to pozwolisz albo o to poprosisz.',
+  );
   static String get stepOverlayTitle => _p(
-        '1. Üzerine Çizim İzni',
-        '1. Display Over Other Apps',
-        '1. Nakładka nad innymi aplikacjami',
-      );
+    '1. Üzerine Çizim İzni',
+    '1. Display Over Other Apps',
+    '1. Nakładka nad innymi aplikacjami',
+  );
   static String get stepOverlayBody => _p(
-        'Uber Driver açıkken RateHelper’in butonlarını göstermesi için bu izin şart. Açılan ayar ekranında RateHelper’i bul ve aç.',
-        'Required so RateHelper buttons appear on top of Uber Driver. In the settings screen that opens, find RateHelper and enable the switch.',
-        'Wymagane, aby przyciski RateHelper pojawiały się nad Uber Driver. W otwartym ekranie ustawień znajdź RateHelper i włącz przełącznik.',
-      );
-  static String get stepOverlayCta => _p(
-        'İZNİ AÇ',
-        'GRANT PERMISSION',
-        'NADAJ UPRAWNIENIE',
-      );
+    'Uber Driver açıkken RateHelper’in butonlarını göstermesi için bu izin şart. Açılan ayar ekranında RateHelper’i bul ve aç.',
+    'Required so RateHelper buttons appear on top of Uber Driver. In the settings screen that opens, find RateHelper and enable the switch.',
+    'Wymagane, aby przyciski RateHelper pojawiały się nad Uber Driver. W otwartym ekranie ustawień znajdź RateHelper i włącz przełącznik.',
+  );
+  static String get stepOverlayCta =>
+      _p('İZNİ AÇ', 'GRANT PERMISSION', 'NADAJ UPRAWNIENIE');
   static String get stepOverlayDone => _p('VERİLDİ', 'GRANTED', 'NADANO');
 
   static String get stepBatteryTitle => _p(
-        '2. Pil Optimizasyonunu Kapat',
-        '2. Disable Battery Optimization',
-        '2. Wyłącz oszczędzanie baterii',
-      );
+    '2. Pil Optimizasyonunu Kapat',
+    '2. Disable Battery Optimization',
+    '2. Wyłącz oszczędzanie baterii',
+  );
   static String get stepBatteryBody => _p(
-        'Vardiya boyunca RateHelper’in arka planda öldürülmemesi için pil optimizasyonu KAPALI olmalı. Telefon markana göre talimat aşağıda.',
-        'To prevent RateHelper being killed during your shift, battery optimization must be OFF. Instructions per phone brand below.',
-        'Aby RateHelper nie został zabity podczas zmiany, optymalizacja baterii musi być WYŁĄCZONA. Instrukcje dla marki telefonu poniżej.',
-      );
-  static String get stepBatteryCta => _p(
-        'AYARLARI AÇ',
-        'OPEN SETTINGS',
-        'OTWÓRZ USTAWIENIA',
-      );
+    'Vardiya boyunca RateHelper’in arka planda öldürülmemesi için pil optimizasyonu KAPALI olmalı. Telefon markana göre talimat aşağıda.',
+    'To prevent RateHelper being killed during your shift, battery optimization must be OFF. Instructions per phone brand below.',
+    'Aby RateHelper nie został zabity podczas zmiany, optymalizacja baterii musi być WYŁĄCZONA. Instrukcje dla marki telefonu poniżej.',
+  );
+  static String get stepBatteryCta =>
+      _p('AYARLARI AÇ', 'OPEN SETTINGS', 'OTWÓRZ USTAWIENIA');
 
   static String get finish => _p('BİTİR', 'FINISH', 'ZAKOŃCZ');
   static String get skip => _p('Atla', 'Skip', 'Pomiń');
-  static String get setupGuide => _p(
-        'Kurulum Rehberi',
-        'Setup Guide',
-        'Przewodnik konfiguracji',
-      );
+  static String get setupGuide =>
+      _p('Kurulum Rehberi', 'Setup Guide', 'Przewodnik konfiguracji');
 
   static String get brandSamsung => 'Samsung (One UI)';
   static String get brandXiaomi => 'Xiaomi / Redmi (MIUI / HyperOS)';
@@ -345,66 +365,49 @@ class S {
   static String get brandOther => _p('Diğer', 'Other', 'Inne');
 
   static String get samsungSteps => _p(
-        'Ayarlar → Cihaz bakımı → Pil → Arka plan kullanım sınırları → Asla uyutulmayacak uygulamalar → RateHelper ekle.',
-        'Settings → Device care → Battery → Background usage limits → Never sleeping apps → add RateHelper.',
-        'Ustawienia → Konserwacja → Bateria → Limity tła → Aplikacje, które nigdy nie usypiają → dodaj RateHelper.',
-      );
+    'Ayarlar → Cihaz bakımı → Pil → Arka plan kullanım sınırları → Asla uyutulmayacak uygulamalar → RateHelper ekle.',
+    'Settings → Device care → Battery → Background usage limits → Never sleeping apps → add RateHelper.',
+    'Ustawienia → Konserwacja → Bateria → Limity tła → Aplikacje, które nigdy nie usypiają → dodaj RateHelper.',
+  );
   static String get xiaomiSteps => _p(
-        'Ayarlar → Uygulamalar → RateHelper → Pil tasarrufu → Kısıtlama yok. Ayrıca: Otomatik başlatma → AÇIK.',
-        'Settings → Apps → RateHelper → Battery saver → No restrictions. Also: Autostart → ON.',
-        'Ustawienia → Aplikacje → RateHelper → Oszczędzanie baterii → Brak ograniczeń. Także: Autostart → WŁ.',
-      );
+    'Ayarlar → Uygulamalar → RateHelper → Pil tasarrufu → Kısıtlama yok. Ayrıca: Otomatik başlatma → AÇIK.',
+    'Settings → Apps → RateHelper → Battery saver → No restrictions. Also: Autostart → ON.',
+    'Ustawienia → Aplikacje → RateHelper → Oszczędzanie baterii → Brak ograniczeń. Także: Autostart → WŁ.',
+  );
   static String get huaweiSteps => _p(
-        'Ayarlar → Uygulamalar → RateHelper → Pil → Uygulama başlatma → Otomatik yönet KAPAT → tüm manuel anahtarlar AÇIK.',
-        'Settings → Apps → RateHelper → Battery → App launch → turn OFF Manage automatically → turn ON all three switches.',
-        'Ustawienia → Aplikacje → RateHelper → Bateria → Uruchamianie aplikacji → wyłącz Zarządzaj automatycznie → wszystkie trzy włączniki WŁ.',
-      );
+    'Ayarlar → Uygulamalar → RateHelper → Pil → Uygulama başlatma → Otomatik yönet KAPAT → tüm manuel anahtarlar AÇIK.',
+    'Settings → Apps → RateHelper → Battery → App launch → turn OFF Manage automatically → turn ON all three switches.',
+    'Ustawienia → Aplikacje → RateHelper → Bateria → Uruchamianie aplikacji → wyłącz Zarządzaj automatycznie → wszystkie trzy włączniki WŁ.',
+  );
   static String get onePlusSteps => _p(
-        'Ayarlar → Pil → Pil optimizasyonu → RateHelper → Optimize etme. Ayrıca: Son uygulamalar ekranında RateHelper kartını yukarıdan kilitle.',
-        'Settings → Battery → Battery optimization → RateHelper → Don’t optimize. Also: lock the RateHelper card from the top in Recents.',
-        'Ustawienia → Bateria → Optymalizacja baterii → RateHelper → Nie optymalizuj. Także: zablokuj kartę RateHelper w Ostatnich.',
-      );
+    'Ayarlar → Pil → Pil optimizasyonu → RateHelper → Optimize etme. Ayrıca: Son uygulamalar ekranında RateHelper kartını yukarıdan kilitle.',
+    'Settings → Battery → Battery optimization → RateHelper → Don’t optimize. Also: lock the RateHelper card from the top in Recents.',
+    'Ustawienia → Bateria → Optymalizacja baterii → RateHelper → Nie optymalizuj. Także: zablokuj kartę RateHelper w Ostatnich.',
+  );
   static String get otherSteps => _p(
-        'Telefonun pil ayarlarında "RateHelper" uygulamasını bul ve pil optimizasyonunu KAPAT veya "Kısıtlanmamış" olarak işaretle.',
-        'In your phone’s battery settings, find "RateHelper" and turn battery optimization OFF, or mark it as "Unrestricted".',
-        'W ustawieniach baterii telefonu znajdź "RateHelper" i wyłącz optymalizację lub oznacz jako "Bez ograniczeń".',
-      );
+    'Telefonun pil ayarlarında "RateHelper" uygulamasını bul ve pil optimizasyonunu KAPAT veya "Kısıtlanmamış" olarak işaretle.',
+    'In your phone’s battery settings, find "RateHelper" and turn battery optimization OFF, or mark it as "Unrestricted".',
+    'W ustawieniach baterii telefonu znajdź "RateHelper" i wyłącz optymalizację lub oznacz jako "Bez ograniczeń".',
+  );
 
-  static String get crashLogTitle => _p(
-        'Çökme Kayıtları',
-        'Crash Log',
-        'Dziennik awarii',
-      );
+  static String get crashLogTitle =>
+      _p('Çökme Kayıtları', 'Crash Log', 'Dziennik awarii');
   static String get crashLogEmpty => _p(
-        'Henüz kayıt yok. Uygulama her şey yolundaysa burası boş kalır.',
-        'No entries yet. If everything is working this stays empty.',
-        'Brak wpisów. Jeśli wszystko działa, jest pusto.',
-      );
-  static String get crashLogCopy => _p(
-        'KOPYALA',
-        'COPY',
-        'KOPIUJ',
-      );
-  static String get crashLogClear => _p(
-        'TEMİZLE',
-        'CLEAR',
-        'WYCZYŚĆ',
-      );
-  static String get crashLogCopied => _p(
-        'Panoya kopyalandı',
-        'Copied to clipboard',
-        'Skopiowano do schowka',
-      );
+    'Henüz kayıt yok. Uygulama her şey yolundaysa burası boş kalır.',
+    'No entries yet. If everything is working this stays empty.',
+    'Brak wpisów. Jeśli wszystko działa, jest pusto.',
+  );
+  static String get crashLogCopy => _p('KOPYALA', 'COPY', 'KOPIUJ');
+  static String get crashLogClear => _p('TEMİZLE', 'CLEAR', 'WYCZYŚĆ');
+  static String get crashLogCopied =>
+      _p('Panoya kopyalandı', 'Copied to clipboard', 'Skopiowano do schowka');
 
   static String get version => _p('Sürüm', 'Version', 'Wersja');
-  static String get releaseName => _p(
-        '2. Büyük Güncelleme',
-        '2nd Major Update',
-        '2. Duża Aktualizacja',
-      );
+  static String get releaseName =>
+      _p('2. Büyük Güncelleme', '2nd Major Update', '2. Duża Aktualizacja');
   static String get designer => _p('Tasarımcı', 'Designer', 'Projektant');
 
-  static String get navLang => _p('Dil', 'Lang', 'Język');
+  static String get navLang => _p('Dil', 'Language', 'Język');
   static String get quickFuelNavLabel => _p('Yakıt', 'Fuel', 'Paliwo');
   static String get navLogs => _p('Kayıtlar', 'Log', 'Logi');
   static String get navEarnings => _p('Kazanç', 'Earnings', 'Zarobki');
@@ -420,58 +423,58 @@ class S {
   // Earnings entry — single section
   static String get netIncome => _p('Net Gelir', 'Net Income', 'Dochód Netto');
   static String get netIncomeHint => _p(
-        'Uber uygulamasında Kazançlar ekranının en üstünde yazan büyük rakam',
-        'The big number at the top of the Earnings screen in the Uber app',
-        'Duża liczba na górze ekranu Zarobki w aplikacji Uber',
-      );
+    'Uber uygulamasında Kazançlar ekranının en üstünde yazan büyük rakam',
+    'The big number at the top of the Earnings screen in the Uber app',
+    'Duża liczba na górze ekranu Zarobki w aplikacji Uber',
+  );
   static String get cashReceived =>
       _p('Alınan Nakit', 'Cash Received', 'Otrzymana Gotówka');
   static String get vat => _p('VAT (%12)', 'VAT (12%)', 'VAT (12%)');
   static String get settlementFee => _p(
-        'Hesap Kesim Ücreti (%4.31)',
-        'Settlement Fee (4.31%)',
-        'Opłata rozliczeniowa (4.31%)',
-      );
+    'Hesap Kesim Ücreti (%4.31)',
+    'Settlement Fee (4.31%)',
+    'Opłata rozliczeniowa (4.31%)',
+  );
   static String get rental => _p('Kira', 'Rental', 'Wynajem');
   static String rentalComputed(String range, String value) => _p(
-        'Kira (Kademe: $range): $value PLN',
-        'Rental (Tier: $range): $value PLN',
-        'Wynajem (Próg: $range): $value PLN',
-      );
+    'Kira (Kademe: $range): $value PLN',
+    'Rental (Tier: $range): $value PLN',
+    'Wynajem (Próg: $range): $value PLN',
+  );
   static String get hasRentalDiscountToggle => _p(
-        'Kira İndirimi Var mı?',
-        'Rental Discount Active?',
-        'Zniżka na wynajem?',
-      );
+    'Kira İndirimi Var mı?',
+    'Rental Discount Active?',
+    'Zniżka na wynajem?',
+  );
   static String rentalNoDiscount(String value) => _p(
-        'Kira (İndirimsiz): $value PLN',
-        'Rental (No Discount): $value PLN',
-        'Wynajem (Bez zniżki): $value PLN',
-      );
+    'Kira (İndirimsiz): $value PLN',
+    'Rental (No Discount): $value PLN',
+    'Wynajem (Bez zniżki): $value PLN',
+  );
   static String freeWeekProgress(int current, int total) => _p(
-        'Ücretsiz Hafta İlerlemesi: $current / $total yolculuk',
-        'Free Week Progress: $current / $total trips',
-        'Postęp darmowego tygodnia: $current / $total przejazdów',
-      );
+    'Ücretsiz Hafta İlerlemesi: $current / $total yolculuk',
+    'Free Week Progress: $current / $total trips',
+    'Postęp darmowego tygodnia: $current / $total przejazdów',
+  );
   static String get freeWeekRewardBadge => _p(
-        '🎉 Ücretsiz hafta hakkın var!',
-        '🎉 You earned a free week!',
-        '🎉 Masz prawo do darmowego tygodnia!',
-      );
+    '🎉 Ücretsiz hafta hakkın var!',
+    '🎉 You earned a free week!',
+    '🎉 Masz prawo do darmowego tygodnia!',
+  );
   static String freeWeekRewardBadgeCount(int count) => _p(
-        '🎉 Ücretsiz hafta hakkın var! ($count adet)',
-        '🎉 You earned free week(s)! ($count)',
-        '🎉 Masz prawo do darmowego tygodnia! ($count)',
-      );
+    '🎉 Ücretsiz hafta hakkın var! ($count adet)',
+    '🎉 You earned free week(s)! ($count)',
+    '🎉 Masz prawo do darmowego tygodnia! ($count)',
+  );
   static String get adminCost =>
       _p('İdari Gider', 'Administrative Cost', 'Koszt Administracyjny');
   static String get fuelPumpPaid =>
       _p('Pompada Ödenen', 'Paid at Pump', 'Zapłacono na stacji');
   static String fuelRealCostPreview(String value) => _p(
-        'Gerçek maliyet (%10 indirimli): $value PLN',
-        'Real cost (10% discount): $value PLN',
-        'Rzeczywisty koszt (10% rabatu): $value PLN',
-      );
+    'Gerçek maliyet (%10 indirimli): $value PLN',
+    'Real cost (10% discount): $value PLN',
+    'Rzeczywisty koszt (10% rabatu): $value PLN',
+  );
   static String get fuelDiscounted =>
       _p('Yakıt (İndirimli)', 'Fuel (discounted)', 'Paliwo (rabat)');
 
@@ -488,49 +491,48 @@ class S {
       _p('Kendi Yolculuk Sayın', 'Your Trip Count', 'Twoje Przejazdy');
   static String carTripCountOverrideLabel(DriverMode mode) =>
       mode == DriverMode.trio
-          ? _p(
-              'Üç sürücünün toplamı (Kira için)',
-              'Combined trips of 3 drivers (for rental)',
-              'Łącznie 3 kierowców (do wynajmu)',
-            )
-          : _p(
-              'Ortağınla Toplam (Kira için)',
-              'Total with Partner (for rental)',
-              'Łącznie z partnerem (do wynajmu)',
-            );
+      ? _p(
+          'Üç sürücünün toplamı (Kira için)',
+          'Combined trips of 3 drivers (for rental)',
+          'Łącznie 3 kierowców (do wynajmu)',
+        )
+      : _p(
+          'Ortağınla Toplam (Kira için)',
+          'Total with Partner (for rental)',
+          'Łącznie z partnerem (do wynajmu)',
+        );
   static String get carTripCountOverrideHint => _p(
-        'Boş bırakırsan kendi sayınla aynı kabul edilir',
-        'If left empty, assumed equal to your own trips',
-        'Jeśli puste, przyjęta zostanie Twoja liczba przejazdów',
-      );
+    'Boş bırakırsan kendi sayınla aynı kabul edilir',
+    'If left empty, assumed equal to your own trips',
+    'Jeśli puste, przyjęta zostanie Twoja liczba przejazdów',
+  );
   static String get edit => _p('Düzenle', 'Edit', 'Edytuj');
   static String get addWeek =>
       _p('Yeni Hafta Ekle', 'Add Week', 'Dodaj Tydzień');
   static String get editWeek =>
       _p('Haftayı Düzenle', 'Edit Week', 'Edytuj Tydzień');
   static String get noEarnings => _p(
-        'Henüz hafta eklenmedi. İlk haftanı ekle.',
-        'No weeks added yet. Add your first week.',
-        'Brak tygodni. Dodaj pierwszy tydzień.',
-      );
+    'Henüz hafta eklenmedi. İlk haftanı ekle.',
+    'No weeks added yet. Add your first week.',
+    'Brak tygodni. Dodaj pierwszy tydzień.',
+  );
   static String get delete => _p('Sil', 'Delete', 'Usuń');
   static String get deleteWeekConfirm => _p(
-        'Bu hafta silinecek. Emin misin?',
-        'This week will be deleted. Are you sure?',
-        'Ten tydzień zostanie usunięty. Na pewno?',
-      );
-  static String get requiredField =>
-      _p('Zorunlu', 'Required', 'Wymagane');
+    'Bu hafta silinecek. Emin misin?',
+    'This week will be deleted. Are you sure?',
+    'Ten tydzień zostanie usunięty. Na pewno?',
+  );
+  static String get requiredField => _p('Zorunlu', 'Required', 'Wymagane');
   static String get enterValidAmount => _p(
-        'Eksik veri: 0’dan büyük bir değer girin',
-        'Missing data: enter a value greater than 0',
-        'Brak danych: podaj wartość większą od 0',
-      );
+    'Eksik veri: 0’dan büyük bir değer girin',
+    'Missing data: enter a value greater than 0',
+    'Brak danych: podaj wartość większą od 0',
+  );
   static String get onlineTimeMissing => _p(
-        'Eksik veri: çevrimiçi süreyi girin',
-        'Missing data: enter online time',
-        'Brak danych: podaj czas online',
-      );
+    'Eksik veri: çevrimiçi süreyi girin',
+    'Missing data: enter online time',
+    'Brak danych: podaj czas online',
+  );
   static String get hoursShort => _p('sa', 'h', 'godz');
   static String get minutesShort => _p('dk', 'min', 'min');
   static String get widgetStart => _p('Başlat', 'Start', 'Uruchom');
@@ -538,34 +540,34 @@ class S {
 
   // Cross-check warnings (informational, never block saving)
   static String get warnHourlyRate => _p(
-        'Bu haftanın saatlik kazancı alışılmadık görünüyor, giriş hatası olabilir',
-        'This week’s hourly rate looks unusual — possible entry error',
-        'Stawka godzinowa w tym tygodniu wygląda nietypowo — możliwy błąd wpisu',
-      );
+    'Bu haftanın saatlik kazancı alışılmadık görünüyor, giriş hatası olabilir',
+    'This week’s hourly rate looks unusual — possible entry error',
+    'Stawka godzinowa w tym tygodniu wygląda nietypowo — możliwy błąd wpisu',
+  );
 
   // Trend chart titles
   static String get trendTitle =>
       _p('HAFTALIK TREND', 'WEEKLY TREND', 'TREND TYGODNIOWY');
   static String get monthlyTrendTitle => _p(
-        'AYLIK SAATLİK KAZANÇ TRENDİ',
-        'MONTHLY HOURLY RATE TREND',
-        'MIESIĘCZNY TREND STAWKI',
-      );
+    'AYLIK SAATLİK KAZANÇ TRENDİ',
+    'MONTHLY HOURLY RATE TREND',
+    'MIESIĘCZNY TREND STAWKI',
+  );
   static String get yearlyTrendTitle => _p(
-        'YILLIK SAATLİK KAZANÇ TRENDİ',
-        'YEARLY HOURLY RATE TREND',
-        'ROCZNY TREND STAWKI',
-      );
+    'YILLIK SAATLİK KAZANÇ TRENDİ',
+    'YEARLY HOURLY RATE TREND',
+    'ROCZNY TREND STAWKI',
+  );
   static String fourWeekAverage(String value) => _p(
-        'Son 4 hafta ortalaması: $value PLN/saat',
-        'Last 4 weeks average: $value PLN/hr',
-        'Średnia z 4 tygodni: $value PLN/godz',
-      );
+    'Son 4 hafta ortalaması: $value PLN/saat',
+    'Last 4 weeks average: $value PLN/hr',
+    'Średnia z 4 tygodni: $value PLN/godz',
+  );
   static String get trendNoData => _p(
-        'Trend için yeterli veri yok.',
-        'Not enough data for a trend yet.',
-        'Za mało danych na trend.',
-      );
+    'Trend için yeterli veri yok.',
+    'Not enough data for a trend yet.',
+    'Za mało danych na trend.',
+  );
 
   // View toggle: weekly / monthly / yearly
   static String get viewWeekly => _p('Haftalık', 'Weekly', 'Tygodniowo');
@@ -579,46 +581,35 @@ class S {
       _p('Ort. saatlik', 'Avg hourly', 'Śr. godzinowa');
   static String get totalOnlineHours =>
       _p('Toplam saat', 'Total hours', 'Suma godzin');
-  static String weekCountLabel(int n) => _p(
-        '$n hafta',
-        '$n weeks',
-        '$n tyg.',
-      );
-  static String get weekCountStat =>
-      _p('Hafta sayısı', 'Weeks', 'Tygodnie');
+  static String weekCountLabel(int n) => _p('$n hafta', '$n weeks', '$n tyg.');
+  static String get weekCountStat => _p('Hafta sayısı', 'Weeks', 'Tygodnie');
 
   // Records (rekorlar)
-  static String get bestWeek => _p('En İyi Hafta', 'Best Week', 'Najlepszy Tydzień');
+  static String get bestWeek =>
+      _p('En İyi Hafta', 'Best Week', 'Najlepszy Tydzień');
   static String get bestWeekEmpty => _p(
-        'Bu dönemde henüz kayıtlı hafta yok.',
-        'No recorded weeks in this period yet.',
-        'Brak zapisanych tygodni w tym okresie.',
-      );
+    'Bu dönemde henüz kayıtlı hafta yok.',
+    'No recorded weeks in this period yet.',
+    'Brak zapisanych tygodni w tym okresie.',
+  );
 
   // Break-even indicator
   static String breakEvenLabel(String value) => _p(
-        'Başabaş Noktası: bu hafta en az $value PLN net gelir etmen gerekiyor',
-        'Break-even: you need at least $value PLN net income this week',
-        'Próg rentowności: potrzebujesz min. $value PLN dochodu netto w tym tygodniu',
-      );
+    'Başabaş Noktası: bu hafta en az $value PLN net gelir etmen gerekiyor',
+    'Break-even: you need at least $value PLN net income this week',
+    'Próg rentowności: potrzebujesz min. $value PLN dochodu netto w tym tygodniu',
+  );
   static String get belowBreakEven => _p(
-        'Bu hafta başabaş noktasının altında',
-        'This week is below break-even',
-        'Ten tydzień jest poniżej progu rentowności',
-      );
-
+    'Bu hafta başabaş noktasının altında',
+    'This week is below break-even',
+    'Ten tydzień jest poniżej progu rentowności',
+  );
 
   // PDF export
-  static String get exportPdf => _p(
-        'PDF Olarak Dışa Aktar',
-        'Export as PDF',
-        'Eksportuj do PDF',
-      );
-  static String get exportPdfRangeTitle => _p(
-        'Tarih Aralığı Seç',
-        'Select Date Range',
-        'Wybierz zakres dat',
-      );
+  static String get exportPdf =>
+      _p('PDF Olarak Dışa Aktar', 'Export as PDF', 'Eksportuj do PDF');
+  static String get exportPdfRangeTitle =>
+      _p('Tarih Aralığı Seç', 'Select Date Range', 'Wybierz zakres dat');
   static String get rangeThisMonth => _p('Bu Ay', 'This Month', 'Ten miesiąc');
   static String get rangeSpecificMonth =>
       _p('Belirli Bir Ay', 'Specific Month', 'Konkretny miesiąc');
@@ -627,44 +618,37 @@ class S {
   static String get exportPickMonthTitle =>
       _p('Ay Seç', 'Select Month', 'Wybierz miesiąc');
   static String get exportNoData => _p(
-        'Seçilen aralıkta veri yok.',
-        'No data in the selected range.',
-        'Brak danych w wybranym zakresie.',
-      );
-  static String get exportShareText => _p(
-        'Kazanç raporu',
-        'Earnings report',
-        'Raport zarobków',
-      );
-  static String get exportPdfInProgress => _p(
-        'PDF hazırlanıyor…',
-        'Preparing PDF…',
-        'Przygotowywanie PDF…',
-      );
+    'Seçilen aralıkta veri yok.',
+    'No data in the selected range.',
+    'Brak danych w wybranym zakresie.',
+  );
+  static String get exportShareText =>
+      _p('Kazanç raporu', 'Earnings report', 'Raport zarobków');
+  static String get exportPdfInProgress =>
+      _p('PDF hazırlanıyor…', 'Preparing PDF…', 'Przygotowywanie PDF…');
   static String get exportFailed => _p(
-        'PDF oluşturulamadı. Tekrar deneyin.',
-        'Could not create the PDF. Try again.',
-        'Nie udało się utworzyć PDF. Spróbuj ponownie.',
-      );
+    'PDF oluşturulamadı. Tekrar deneyin.',
+    'Could not create the PDF. Try again.',
+    'Nie udało się utworzyć PDF. Spróbuj ponownie.',
+  );
 
   // PDF document content
-  static String get pdfTitle => _p(
-        'Kazanç Raporu',
-        'Earnings Report',
-        'Raport Zarobków',
-      );
+  static String get pdfTitle =>
+      _p('Kazanç Raporu', 'Earnings Report', 'Raport Zarobków');
   static String get pdfDriver => _p('Sürücü', 'Driver', 'Kierowca');
   static String get pdfDriverPlaceholder =>
       _p('__________________', '__________________', '__________________');
 
   // Driver name setup (PDF header)
   static String get driverNamePrompt => _p(
-        'PDF raporunda görünmesi için adını girer misin?',
-        'Enter your name so it appears on the PDF report',
-        'Podaj swoje imię i nazwisko, aby pojawiło się w raporcie PDF',
-      );
-  static String get driverNameLabel => _p('Ad Soyad', 'Full Name', 'Imię i nazwisko');
-  static String get driverNameContinue => _p('Devam Et', 'Continue', 'Kontynuuj');
+    'PDF raporunda görünmesi için adını girer misin?',
+    'Enter your name so it appears on the PDF report',
+    'Podaj swoje imię i nazwisko, aby pojawiło się w raporcie PDF',
+  );
+  static String get driverNameLabel =>
+      _p('Ad Soyad', 'Full Name', 'Imię i nazwisko');
+  static String get driverNameContinue =>
+      _p('Devam Et', 'Continue', 'Kontynuuj');
   static String get driverNameDefault => _p('Sürücü', 'Driver', 'Kierowca');
   static String get pdfDateRange =>
       _p('Tarih Aralığı', 'Date Range', 'Zakres dat');
@@ -676,166 +660,196 @@ class S {
   static String get pdfColRental => _p('Kira', 'Rental', 'Wynajem');
   static String get pdfColFuel => _p('Yakıt', 'Fuel', 'Paliwo');
   static String get pdfColVat => _p('VAT (%12)', 'VAT (12%)', 'VAT (12%)');
-  static String get pdfColSettlementFee => _p(
-        'Kesim Ücreti (%4.31)',
-        'Settlement (4.31%)',
-        'Rozliczenie (4.31%)',
-      );
+  static String get pdfColSettlementFee =>
+      _p('Kesim Ücreti (%4.31)', 'Settlement (4.31%)', 'Rozliczenie (4.31%)');
   static String get pdfColNetProfit =>
       _p('Net Kâr', 'Net Profit', 'Zysk netto');
   static String get pdfColHourly =>
       _p('Saatlik Kazanç', 'Hourly', 'Stawka godz.');
   static String get pdfTotals => _p('TOPLAM', 'TOTAL', 'RAZEM');
-  static String get pdfSummaryNetIncome => _p(
-        'Toplam Net Gelir',
-        'Total Net Income',
-        'Całkowity dochód netto',
-      );
+  static String get pdfSummaryNetIncome =>
+      _p('Toplam Net Gelir', 'Total Net Income', 'Całkowity dochód netto');
   static String get pdfSummaryVat => _p(
-        'Toplam Ödenen VAT (%12)',
-        'Total VAT Paid (12%)',
-        'Całkowity zapłacony VAT (12%)',
-      );
-  static String get pdfSummaryNetProfit => _p(
-        'Toplam Net Kâr',
-        'Total Net Profit',
-        'Całkowity zysk netto',
-      );
+    'Toplam Ödenen VAT (%12)',
+    'Total VAT Paid (12%)',
+    'Całkowity zapłacony VAT (12%)',
+  );
+  static String get pdfSummaryNetProfit =>
+      _p('Toplam Net Kâr', 'Total Net Profit', 'Całkowity zysk netto');
 
   static String updateAvailable(String latest) => _p(
-        'Yeni sürüm mevcut: $latest',
-        'New version available: $latest',
-        'Dostępna nowa wersja: $latest',
-      );
+    'Yeni sürüm mevcut: $latest',
+    'New version available: $latest',
+    'Dostępna nowa wersja: $latest',
+  );
   static String get updateDownload => _p('İndir', 'Download', 'Pobierz');
-  static String get updateCheckAction => _p(
-        'Güncellemeleri Denetle',
-        'Check for Updates',
-        'Sprawdź aktualizacje',
+  static String get updateCheckAction =>
+      _p('Güncellemeleri Denetle', 'Check for updates', 'Sprawdź aktualizacje');
+  static String updateLastCheckedLabel(DateTime? when) {
+    if (when == null) {
+      return _p(
+        'Henüz kontrol edilmedi',
+        'Not checked yet',
+        'Jeszcze nie sprawdzono',
       );
-  static String get updateChecking => _p(
-        'Denetleniyor…',
-        'Checking…',
-        'Sprawdzanie…',
-      );
+    }
+    final local = when.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    final stamp = '$day.$month $hour:$minute';
+    return _p(
+      'Son kontrol: $stamp',
+      'Last checked: $stamp',
+      'Ostatnie sprawdzenie: $stamp',
+    );
+  }
+
+  static String get autoUpdateCheck => _p(
+    'Otomatik güncelleme denetimi',
+    'Automatic update check',
+    'Automatyczne sprawdzanie aktualizacji',
+  );
+  static String get autoFetchEvents => _p(
+    'Etkinlikleri otomatik getir',
+    'Fetch events automatically',
+    'Pobieraj wydarzenia automatycznie',
+  );
+  static String get githubConsentBody => _p(
+    'Uygulama güncelleme ve etkinlikler için GitHub’a kendiliğinden baksın mı?',
+    'Allow the app to check GitHub for updates and events automatically?',
+    'Pozwolić aplikacji automatycznie sprawdzać GitHub pod kątem aktualizacji i wydarzeń?',
+  );
+  static String get githubConsentAllow => _p('İzin ver', 'Allow', 'Zezwól');
+  static String get githubConsentDeny => _p(
+    'Hayır, yalnız ben isteyince',
+    'No, only when I ask',
+    'Nie, tylko gdy poproszę',
+  );
+  static String get updateChecking =>
+      _p('Denetleniyor…', 'Checking…', 'Sprawdzanie…');
   static String get updateUpToDate => _p(
-        'En güncel sürümü kullanıyorsunuz',
-        'You are on the latest version',
-        'Masz najnowszą wersję',
-      );
+    'En güncel sürümü kullanıyorsunuz',
+    'You are on the latest version',
+    'Masz najnowszą wersję',
+  );
   static String get updateUnreachable => _p(
-        'Güncelleme sunucusuna ulaşılamadı',
-        'Could not reach the update server',
-        'Nie udało się połączyć z serwerem aktualizacji',
-      );
+    'Güncelleme sunucusuna ulaşılamadı',
+    'Could not reach the update server',
+    'Nie udało się połączyć z serwerem aktualizacji',
+  );
   static String get updateDisabled => _p(
-        'Güncelleme denetimi bu derlemede kapalı',
-        'Update checks are disabled in this build',
-        'Sprawdzanie aktualizacji jest wyłączone',
-      );
+    'Güncelleme denetimi bu derlemede kapalı',
+    'Update checks are disabled in this build',
+    'Sprawdzanie aktualizacji jest wyłączone',
+  );
   static String get updateLaunchFailed => _p(
-        'İndirme başlatılamadı',
-        'Could not start the download',
-        'Nie udało się rozpocząć pobierania',
-      );
-  static String get updateAvailableTitle => _p(
-        'Yeni Sürüm Hazır',
-        'New Version Ready',
-        'Nowa wersja gotowa',
-      );
-  static String get updateMandatoryTitle => _p(
-        'Zorunlu Güncelleme',
-        'Required Update',
-        'Wymagana aktualizacja',
-      );
-  static String get updateNow => _p(
-        'Şimdi Güncelle',
-        'Update Now',
-        'Aktualizuj teraz',
-      );
+    'İndirme başlatılamadı',
+    'Could not start the download',
+    'Nie udało się rozpocząć pobierania',
+  );
+  static String get updateAvailableTitle =>
+      _p('Yeni Sürüm Hazır', 'New Version Ready', 'Nowa wersja gotowa');
+  static String get updateMandatoryTitle =>
+      _p('Zorunlu Güncelleme', 'Required Update', 'Wymagana aktualizacja');
+  static String get updateNow =>
+      _p('Şimdi Güncelle', 'Update Now', 'Aktualizuj teraz');
   static String get updateLater => _p('Daha Sonra', 'Later', 'Później');
-  static String get updateSkipVersion => _p(
-        'Bu sürümü atla',
-        'Skip this version',
-        'Pomiń tę wersję',
-      );
+  static String get updateSkipVersion =>
+      _p('Bu sürümü atla', 'Skip this version', 'Pomiń tę wersję');
   static String get updateInstallHint => _p(
-        'Güncelleme uygulama içinde indirilir, ardından Android kurulum ekranı açılır.',
-        'The update downloads inside the app, then Android opens its installer.',
-        'Aktualizacja pobiera się w aplikacji, następnie Android otworzy instalator.',
-      );
-  static String get updateDownloadingLabel => _p(
-        'İndiriliyor',
-        'Downloading',
-        'Pobieranie',
-      );
+    'Güncelleme uygulama içinde indirilir, ardından Android kurulum ekranı açılır.',
+    'The update downloads inside the app, then Android opens its installer.',
+    'Aktualizacja pobiera się w aplikacji, następnie Android otworzy instalator.',
+  );
+  static String get updateDownloadingLabel =>
+      _p('İndiriliyor', 'Downloading', 'Pobieranie');
   static String get updateInstallingLabel => _p(
-        'Kurulum ekranı açılıyor',
-        'Opening the installer',
-        'Otwieranie instalatora',
-      );
+    'Kurulum ekranı açılıyor',
+    'Opening the installer',
+    'Otwieranie instalatora',
+  );
   static String updateProgressMb(String received, String total) => _p(
-        '$received / $total MB',
-        '$received / $total MB',
-        '$received / $total MB',
-      );
+    '$received / $total MB',
+    '$received / $total MB',
+    '$received / $total MB',
+  );
   static String get updateCancel => _p('İptal', 'Cancel', 'Anuluj');
   static String get updatePermissionTitle => _p(
-        'Kurulum İzni Gerekli',
-        'Install Permission Needed',
-        'Potrzebne pozwolenie',
-      );
+    'Kurulum İzni Gerekli',
+    'Install Permission Needed',
+    'Potrzebne pozwolenie',
+  );
   static String get updatePermissionBody => _p(
-        'Android, güncellemeyi kurabilmek için RateHelper\'a izin vermenizi istiyor. '
-            'Açılan ekranda izni açın, sonra geri dönüp tekrar deneyin.',
-        'Android needs you to allow RateHelper to install updates. '
-            'Turn the permission on, then come back and try again.',
-        'Android wymaga zezwolenia dla RateHelper na instalację aktualizacji. '
-            'Włącz pozwolenie, a następnie wróć i spróbuj ponownie.',
-      );
-  static String get updateGrantPermission => _p(
-        'İzni Aç',
-        'Open Permission',
-        'Otwórz ustawienia',
-      );
+    'Android, güncellemeyi kurabilmek için RateHelper\'a izin vermenizi istiyor. '
+        'Açılan ekranda izni açın, sonra geri dönüp tekrar deneyin.',
+    'Android needs you to allow RateHelper to install updates. '
+        'Turn the permission on, then come back and try again.',
+    'Android wymaga zezwolenia dla RateHelper na instalację aktualizacji. '
+        'Włącz pozwolenie, a następnie wróć i spróbuj ponownie.',
+  );
+  static String get updateGrantPermission =>
+      _p('İzni Aç', 'Open Permission', 'Otwórz ustawienia');
+  static String get updateSignatureMismatch => _p(
+    'Güncelleme imzası uyuşmuyor, kurulum durduruldu',
+    'Update signature does not match, installation stopped',
+    'Podpis aktualizacji się nie zgadza, instalacja zatrzymana',
+  );
+  static String get updateInstallBlocked => _p(
+    'Güncelleme doğrulanamadı, kurulum durduruldu',
+    'The update could not be verified, installation stopped',
+    'Nie udało się zweryfikować aktualizacji, instalacja zatrzymana',
+  );
   static String get updateFellBackToBrowser => _p(
-        'Uygulama içi indirme olmadı, tarayıcıda açılıyor',
-        'In-app download failed, opening your browser',
-        'Pobieranie w aplikacji nie udało się, otwieram przeglądarkę',
-      );
-  static String get updateInstalledLabel => _p('Yüklü', 'Installed', 'Zainstalowana');
+    'Uygulama içi indirme olmadı, tarayıcıda açılıyor',
+    'In-app download failed, opening your browser',
+    'Pobieranie w aplikacji nie udało się, otwieram przeglądarkę',
+  );
+  static String get updateInstalledLabel =>
+      _p('Yüklü', 'Installed', 'Zainstalowana');
   static String get updateLatestLabel => _p('Yeni', 'Latest', 'Najnowsza');
 
   static String get add => _p('Ekle', 'Add', 'Dodaj');
-  static String get quickAddFuel => _p('Yakıt Ekle', 'Add Fuel', 'Dodaj paliwo');
-  static String get quickAddFuelTitle => _p('Hızlı Yakıt Ekle', 'Quick Add Fuel', 'Szybkie dodawanie paliwa');
+  static String get quickAddFuel =>
+      _p('Yakıt Ekle', 'Add Fuel', 'Dodaj paliwo');
+  static String get quickAddFuelTitle =>
+      _p('Hızlı Yakıt Ekle', 'Quick Add Fuel', 'Szybkie dodawanie paliwa');
   static String fuelAddedConfirmation(String amount, int count) => _p(
-        'Yakıt eklendi: $amount PLN (Bu haftaki $count. alım)',
-        'Fuel added: $amount PLN ($count. purchase this week)',
-        'Dodano paliwo: $amount PLN ($count. zakup w tym tygodniu)',
-      );
+    'Yakıt eklendi: $amount PLN (Bu haftaki $count. alım)',
+    'Fuel added: $amount PLN ($count. purchase this week)',
+    'Dodano paliwo: $amount PLN ($count. zakup w tym tygodniu)',
+  );
   static String get undo => _p('Geri Al', 'Undo', 'Cofnij');
   static String get receiptDeleted => _p('silindi', 'deleted', 'usunięto');
   static String get today => _p('Bugün', 'Today', 'Dzisiaj');
   static String get tomorrow => _p('Yarın', 'Tomorrow', 'Jutro');
-  static String get fuelReceiptsTitle => _p('Yakıt Alımları', 'Fuel Purchases', 'Zakupy paliwa');
-  static String get addReceipt => _p('+ Alım Ekle', '+ Add Receipt', '+ Dodaj zakup');
+  static String get fuelReceiptsTitle =>
+      _p('Yakıt Alımları', 'Fuel Purchases', 'Zakupy paliwa');
+  static String get addReceipt =>
+      _p('+ Alım Ekle', '+ Add Receipt', '+ Dodaj zakup');
   static String get noFuelReceipts => _p(
-        'Bu hafta henüz yakıt alımı eklenmedi.',
-        'No fuel receipts added for this week yet.',
-        'Nie dodano jeszcze zakupów paliwa w tym tygodniu.',
-      );
-  static String get totalPumpPaid => _p('Toplam (Pompada):', 'Total (At Pump):', 'Razem (na stacji):');
-  static String get totalFuelDiscounted => _p('Toplam (%10 İndirimli):', 'Total (10% Discounted):', 'Razem (10% zniżki):');
-  static String get amountPaidLabel => _p('Ödenen Tutar', 'Amount Paid', 'Zapłacona kwota');
+    'Bu hafta henüz yakıt alımı eklenmedi.',
+    'No fuel receipts added for this week yet.',
+    'Nie dodano jeszcze zakupów paliwa w tym tygodniu.',
+  );
+  static String get totalPumpPaid =>
+      _p('Toplam (Pompada):', 'Total (At Pump):', 'Razem (na stacji):');
+  static String get totalFuelDiscounted => _p(
+    'Toplam (%10 İndirimli):',
+    'Total (10% Discounted):',
+    'Razem (10% zniżki):',
+  );
+  static String get amountPaidLabel =>
+      _p('Ödenen Tutar', 'Amount Paid', 'Zapłacona kwota');
   static String get fuelSplitToggle => _p('Paylaş', 'Split', 'Podziel');
   static String get fuelSplitPeopleLabel =>
       _p('Kaç kişi?', 'How many people?', 'Ile osób?');
   static String fuelSplitYourShare(String amount) => _p(
-        'Senin payın: $amount PLN',
-        'Your share: $amount PLN',
-        'Twój udział: $amount PLN',
-      );
+    'Senin payın: $amount PLN',
+    'Your share: $amount PLN',
+    'Twój udział: $amount PLN',
+  );
   static String get fuelSplitUse => _p('Kullan', 'Use', 'Użyj');
   static String formatReceiptTimestamp(DateTime dt) {
     final weekdaysTr = ['Pzt', 'Sal', 'Çrş', 'Prş', 'Cum', 'Cmt', 'Paz'];
@@ -852,65 +866,167 @@ class S {
 
   // --- Fix 2: Lifetime trip counter reset / edit ---
   static String get resetLifetimeTrips => _p('Sıfırla', 'Reset', 'Resetuj');
-  static String get resetLifetimeTripsTitle => _p('Yolculuk Sayacını Sıfırla', 'Reset Trip Counter', 'Zresetuj licznik przejazdów');
+  static String get resetLifetimeTripsTitle => _p(
+    'Yolculuk Sayacını Sıfırla',
+    'Reset Trip Counter',
+    'Zresetuj licznik przejazdów',
+  );
   static String get resetLifetimeTripsConfirm => _p(
-        'Yolculuk sayacını sıfırlamak istediğine emin misin?',
-        'Are you sure you want to reset the trip counter?',
-        'Czy na pewno chcesz zresetować licznik przejazdów?',
-      );
-  static String get editLifetimeTripsTitle => _p('Yolculuk Sayısını Düzenle', 'Edit Trip Count', 'Edytuj liczbę przejazdów');
+    'Yolculuk sayacını sıfırlamak istediğine emin misin?',
+    'Are you sure you want to reset the trip counter?',
+    'Czy na pewno chcesz zresetować licznik przejazdów?',
+  );
+  static String get editLifetimeTripsTitle => _p(
+    'Yolculuk Sayısını Düzenle',
+    'Edit Trip Count',
+    'Edytuj liczbę przejazdów',
+  );
   static String get editLifetimeTripsDesc => _p(
-        'ERES takibi ile eşitlemek için mevcut toplam yolculuk sayısını girin.',
-        'Enter current total trip count to sync with ERES tracking.',
-        'Wprowadź aktualną całkowitą liczbę przejazdów, aby zsynchronizować z ERES.',
-      );
-  static String get editLifetimeTripsLabel => _p('Toplam yolculuk sayısı', 'Total trip count', 'Całkowita liczba przejazdów');
+    'ERES takibi ile eşitlemek için mevcut toplam yolculuk sayısını girin.',
+    'Enter current total trip count to sync with ERES tracking.',
+    'Wprowadź aktualną całkowitą liczbę przejazdów, aby zsynchronizować z ERES.',
+  );
+  static String get editLifetimeTripsLabel => _p(
+    'Toplam yolculuk sayısı',
+    'Total trip count',
+    'Całkowita liczba przejazdów',
+  );
 
   // --- Fix 3: Events module localization ---
-  static String get eventRadarTitle => _p('ETKİNLİK RADARI', 'EVENT RADAR', 'RADAR WYDARZEŃ');
+  static String get eventRadarTitle =>
+      _p('ETKİNLİK RADARI', 'EVENT RADAR', 'RADAR WYDARZEŃ');
   static String get refresh => _p('Yenile', 'Refresh', 'Odśwież');
   static String get eventsReadError => _p(
-        'Etkinlik verileri şu an okunamıyor.',
-        'Event data cannot be loaded at the moment.',
-        'Dane o wydarzeniach są obecnie niedostępne.',
-      );
+    'Etkinlik verileri şu an okunamıyor.',
+    'Event data cannot be loaded at the moment.',
+    'Dane o wydarzeniach są obecnie niedostępne.',
+  );
   static String get eventsEmptyDesc => _p(
-        'Yaklaşan büyük bir etkinlik bulunamadı.',
-        'No upcoming major events found.',
-        'Nie znaleziono nadchodzących dużych wydarzeń.',
-      );
-  static String get radarDemandTitle => _p('Kraków • Talep Yoğunluğu', 'Kraków • Demand Intensity', 'Kraków • Nasilenie popytu');
+    'Yaklaşan büyük bir etkinlik bulunamadı.',
+    'No upcoming major events found.',
+    'Nie znaleziono nadchodzących dużych wydarzeń.',
+  );
+  static String get radarDemandTitle => _p(
+    'Kraków • Talep Yoğunluğu',
+    'Kraków • Demand Intensity',
+    'Kraków • Nasilenie popytu',
+  );
   static String radarDemandSubtitle(int count) => _p(
-        'Önümüzdeki günlerde planlanan $count büyük etkinlik yolcu taleplerini ve çarpanları artıracaktır.',
-        '$count major scheduled events in the upcoming days will increase passenger demand and surge.',
-        'Zaplanowane na najbliższe dni $count duże wydarzenia zwiększą popyt pasażerów i mnożniki.',
+    'Önümüzdeki günlerde planlanan $count büyük etkinlik yolcu taleplerini ve çarpanları artıracaktır.',
+    '$count major scheduled events in the upcoming days will increase passenger demand and surge.',
+    'Zaplanowane na najbliższe dni $count duże wydarzenia zwiększą popyt pasażerów i mnożniki.',
+  );
+  static String get surgeHigh =>
+      _p('Yüksek Yoğunluk', 'High Intensity', 'Wysokie nasilenie');
+  static String get surgeMedium =>
+      _p('Orta Yoğunluk', 'Medium Intensity', 'Średnie nasilenie');
+  static String get surgeLow =>
+      _p('Düşük Yoğunluk', 'Low Intensity', 'Niskie nasilenie');
+  static String get eventsEmptyTitle =>
+      _p('Etkinlik Bulunamadı', 'No Events Found', 'Nie znaleziono wydarzeń');
+  static String get loadEvents =>
+      _p('Etkinlikleri yükle', 'Load events', 'Wczytaj wydarzenia');
+  static String get eventsNotLoadedTitle => _p(
+    'Etkinlikler hazır değil',
+    'Events not loaded',
+    'Wydarzenia niepobrane',
+  );
+  static String get eventsNotLoadedBody => _p(
+    'Otomatik getirme kapalı. Listeyi şimdi GitHub’dan alabilirsin.',
+    'Automatic fetch is off. You can load the list from GitHub now.',
+    'Automatyczne pobieranie jest wyłączone. Możesz teraz wczytać listę z GitHuba.',
+  );
+  static String eventsCacheAge(Duration age) {
+    if (age.isNegative || age.inMinutes < 1) {
+      return _p(
+        'Az önce yüklendi',
+        'Loaded just now',
+        'Załadowano przed chwilą',
       );
-  static String get surgeHigh => _p('Yüksek Yoğunluk', 'High Intensity', 'Wysokie nasilenie');
-  static String get surgeMedium => _p('Orta Yoğunluk', 'Medium Intensity', 'Średnie nasilenie');
-  static String get surgeLow => _p('Düşük Yoğunluk', 'Low Intensity', 'Niskie nasilenie');
-  static String get eventsEmptyTitle => _p('Etkinlik Bulunamadı', 'No Events Found', 'Nie znaleziono wydarzeń');
-  static String get tryAgain => _p('Tekrar Deneyin', 'Try Again', 'Spróbuj ponownie');
-  static String get connectionError => _p('Bağlantı Hatası', 'Connection Error', 'Błąd połączenia');
+    }
+    if (age.inHours < 1) {
+      final n = age.inMinutes;
+      return _p(
+        '$n dk önce yüklendi',
+        'Loaded $n min ago',
+        'Załadowano $n min temu',
+      );
+    }
+    if (age.inDays < 1) {
+      final n = age.inHours;
+      return _p(
+        n == 1 ? '1 saat önce yüklendi' : '$n saat önce yüklendi',
+        n == 1 ? 'Loaded 1 hour ago' : 'Loaded $n hours ago',
+        n == 1 ? 'Załadowano 1 godz. temu' : 'Załadowano $n godz. temu',
+      );
+    }
+    final n = age.inDays;
+    return _p(
+      n == 1 ? '1 gün önce yüklendi' : '$n gün önce yüklendi',
+      n == 1 ? 'Loaded 1 day ago' : 'Loaded $n days ago',
+      n == 1 ? 'Załadowano 1 dzień temu' : 'Załadowano $n dni temu',
+    );
+  }
+
+  static String get tryAgain =>
+      _p('Tekrar Deneyin', 'Try Again', 'Spróbuj ponownie');
+  static String get connectionError =>
+      _p('Bağlantı Hatası', 'Connection Error', 'Błąd połączenia');
   static String get reload => _p('Yeniden Yükle', 'Reload', 'Załaduj ponownie');
-  static String get unknownEvent => _p('Bilinmeyen Etkinlik', 'Unknown Event', 'Nieznane wydarzenie');
-  static String get unknownVenue => _p('Bilinmeyen Mekan', 'Unknown Venue', 'Nieznane miejsce');
+  static String get unknownEvent =>
+      _p('Bilinmeyen Etkinlik', 'Unknown Event', 'Nieznane wydarzenie');
+  static String get unknownVenue =>
+      _p('Bilinmeyen Mekan', 'Unknown Venue', 'Nieznane miejsce');
 
   static List<String> get months {
     switch (_lang) {
       case AppLang.tr:
         return [
-          '', 'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz',
-          'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara',
+          '',
+          'Oca',
+          'Şub',
+          'Mar',
+          'Nis',
+          'May',
+          'Haz',
+          'Tem',
+          'Ağu',
+          'Eyl',
+          'Eki',
+          'Kas',
+          'Ara',
         ];
       case AppLang.en:
         return [
-          '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+          '',
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec',
         ];
       case AppLang.pl:
         return [
-          '', 'Sty', 'Lut', 'Mar', 'Kwi', 'Maj', 'Cze',
-          'Lip', 'Sie', 'Wrz', 'Paź', 'Lis', 'Gru',
+          '',
+          'Sty',
+          'Lut',
+          'Mar',
+          'Kwi',
+          'Maj',
+          'Cze',
+          'Lip',
+          'Sie',
+          'Wrz',
+          'Paź',
+          'Lis',
+          'Gru',
         ];
     }
   }
@@ -919,18 +1035,51 @@ class S {
     switch (_lang) {
       case AppLang.tr:
         return [
-          '', 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-          'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
+          '',
+          'Ocak',
+          'Şubat',
+          'Mart',
+          'Nisan',
+          'Mayıs',
+          'Haziran',
+          'Temmuz',
+          'Ağustos',
+          'Eylül',
+          'Ekim',
+          'Kasım',
+          'Aralık',
         ];
       case AppLang.en:
         return [
-          '', 'January', 'February', 'March', 'April', 'May', 'June',
-          'July', 'August', 'September', 'October', 'November', 'December',
+          '',
+          'January',
+          'February',
+          'March',
+          'April',
+          'May',
+          'June',
+          'July',
+          'August',
+          'September',
+          'October',
+          'November',
+          'December',
         ];
       case AppLang.pl:
         return [
-          '', 'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
-          'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień',
+          '',
+          'Styczeń',
+          'Luty',
+          'Marzec',
+          'Kwiecień',
+          'Maj',
+          'Czerwiec',
+          'Lipiec',
+          'Sierpień',
+          'Wrzesień',
+          'Październik',
+          'Listopad',
+          'Grudzień',
         ];
     }
   }

@@ -88,7 +88,7 @@ abstract final class AppTextStyles {
         color: color,
       );
 
-  /// STRICT tabular monospace: ONLY for aligned PLN breakdown tables and KK4181R signature.
+  /// STRICT tabular monospace: ONLY for aligned PLN breakdown tables and KK383CT signature.
   static TextStyle tabularMonospace({
     double fontSize = body,
     FontWeight fontWeight = FontWeight.w700,
@@ -156,6 +156,15 @@ abstract final class T {
     fontWeight: FontWeight.w900,
     color: Colors.white,
     fontFeatures: [FontFeature.tabularFigures()],
+    height: 1,
+  );
+
+  /// The white "R" on the collapsed overlay bubble.
+  static const overlayBubbleLetter = TextStyle(
+    fontFamily: AppFonts.dmSans,
+    fontSize: AppTextStyles.sectionTitle,
+    fontWeight: FontWeight.w800,
+    color: Colors.white,
     height: 1,
   );
 

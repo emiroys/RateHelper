@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -21,11 +20,13 @@ import 'earnings_models.dart';
 import 'earnings_screen.dart';
 import 'env.dart';
 import 'models/weekly_archive_entry.dart';
+import 'weekly_archive_card.dart';
 import 'l10n.dart';
 import 'log.dart';
-import 'onboarding_screen.dart';
 import 'overlay_sync.dart';
+import 'settings_screen.dart';
 import 'services/event_service.dart';
+import 'services/github_access.dart';
 import 'services/update_service.dart';
 import 'overlay_widget.dart';
 import 'radar_screen.dart';
@@ -78,10 +79,10 @@ enum TripGoal {
   final double? requiredAcceptRate;
 
   int get minTrips => switch (activeDriverMode) {
-        DriverMode.paired => pairedMinTrips,
-        DriverMode.trio => trioMinTrips,
-        DriverMode.solo => soloMinTrips,
-      };
+    DriverMode.paired => pairedMinTrips,
+    DriverMode.trio => trioMinTrips,
+    DriverMode.solo => soloMinTrips,
+  };
 }
 
 // ignore: constant_identifier_names
@@ -110,7 +111,7 @@ int? calculateNeededForRecovery({
 int? maxAdditionalCancellations({
   required int completedTrips,
   required int currentCancellations,
-  double ceiling = 5.0,
+  double ceiling = kWeeklyCancelCeiling,
 }) {
   // No trips means no data, not an exhausted budget. Returning 0 here made
   // every post-reset Monday open with a false amber "0 cancellations left"
@@ -182,9 +183,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   SharedPreferences? _prefs;
   AppLang _currentLang = AppLang.tr;
 
-  /// Read from the installed APK, so the footer badge and the update check can
-  /// never disagree about which build is running.
+  /// Read from the installed APK, so the home version badge and the settings
+  /// update tile can never disagree about which build is running.
   String? _appVersion;
+
+  /// Settings UI reads this. Home remains the writer so a toggle still hits
+  /// wakelock, the overlay, and the accept-path auto-complete flag at once.
+  final ValueNotifier<SettingsSnapshot> _settings = ValueNotifier(
+    SettingsSnapshot.initial,
+  );
+  bool _settingsClosed = false;
+  late final SettingsBindings _settingsBindings = SettingsBindings(
+    snapshot: _settings,
+    versionLabel: () => _appVersion,
+    setAutoComplete: _setAutoCompleteTrips,
+    setSteeringWheel: _setSteeringWheelCounter,
+    setKeepScreenOn: _setKeepScreenOn,
+    setAutoUpdate: _setAutoUpdate,
+    setAutoEvents: _setAutoEvents,
+    setPillOrientation: _setPillOrientation,
+    setOverlayCancel: _setOverlayShowCancelButton,
+    setLanguage: _setLanguage,
+    onDriverModeChanged: () {
+      if (mounted) setState(() {});
+    },
+  );
   final _accepted = ValueNotifier<int>(0);
   final _rejected = ValueNotifier<int>(0);
   final _completed = ValueNotifier<int>(0);
@@ -208,6 +231,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _autoCompleteTrips = false;
   bool _steeringWheelEnabled = false;
   bool _keepScreenOn = false;
+  bool _autoUpdate = false;
+  bool _autoEvents = false;
   PillOrientation _pillOrientation = PillOrientation.horizontal;
   bool _showOverlayCancelButton = false;
   TripGoal _selectedGoal = TripGoal.tier1;
@@ -254,6 +279,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _overlayToggleBusy = false;
   StreamSubscription<dynamic>? _overlayListenerSub;
 
+  /// One apply per frame when the pill sends a burst of counter pings.
+  final OverlayCounterBurst _overlayBurst = OverlayCounterBurst();
+
   bool get _canUndo => _prevAccepted != null;
 
   int get totalRequests => acceptedRequests + rejectedRequests;
@@ -293,22 +321,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    try {
-      _overlayListenerSub = FlutterOverlayWindow.overlayListener.listen((
-        event,
-      ) {
-        if (OverlaySync.shouldReloadCounters(event)) {
-          unawaited(_applyOverlayCounters(event));
-        }
-      });
-    } catch (e, s) {
-      loge(
-        'overlayListener listen failed in home screen',
-        name: 'home',
-        error: e,
-        stack: s,
-      );
-    }
+    _bindOverlayListener();
     _kSysChannel.setMethodCallHandler((call) async {
       if (call.method == 'onMediaKeyIncrement') {
         _drainPendingTaps();
@@ -344,6 +357,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       S.setLang(lang);
       if (mounted) setState(() => _currentLang = lang);
+      _publishSettings();
     } catch (e, s) {
       loge('language init failed', name: 'home', error: e, stack: s);
     }
@@ -431,11 +445,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return false;
   }
 
-  /// Startup check: never blocks boot, never reports failures. An offline
-  /// driver just sees nothing, and the 12-hour cooldown plus per-version skip
-  /// live in [UpdateService.checkOnStartup].
+  /// Startup check: never blocks boot, never reports failures. It waits until
+  /// the one-time GitHub question is answered, then does nothing unless
+  /// automatic update check is on. The APK itself is downloaded only after
+  /// the driver taps the update action in the dialog.
   Future<void> _checkForUpdate() async {
     try {
+      await GithubAccess.promptSettled;
+      if (!mounted) return;
+      final prefs = await _getPrefs();
+      final autoUpdate = GithubAccess.autoUpdate(prefs);
+      final autoEvents = GithubAccess.autoEvents(prefs);
+      if (autoUpdate != _autoUpdate || autoEvents != _autoEvents) {
+        setState(() {
+          _autoUpdate = autoUpdate;
+          _autoEvents = autoEvents;
+        });
+        _publishSettings();
+      }
+      if (!autoUpdate) return;
       final result = await UpdateService.instance.checkOnStartup(
         languageCode: S.lang.name,
       );
@@ -454,6 +482,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (HomeScreen._interactionSink == _onUserInteraction) {
       HomeScreen._interactionSink = null;
     }
+    _settingsClosed = true;
+    _settings.dispose();
     _overlayListenerSub?.cancel();
     _saveDebounce?.cancel();
     _wakelockIdleTimer?.cancel();
@@ -493,7 +523,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await WakelockPlus.disable();
       }
       _wakelockHeld = on;
-    } catch (_) {/* leave _wakelockHeld alone so the next call retries */}
+    } catch (_) {
+      /* leave _wakelockHeld alone so the next call retries */
+    }
   }
 
   void _armWakelockIdleTimer() {
@@ -522,13 +554,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!_wakelockHeld) unawaited(_setWakelock(true));
   }
 
-  Future<void> _applyOverlayCounters(Object? event) async {
+  /// Home listens for the pill's whole lifetime. The stream is broadcast, so
+  /// calling this again after the pill is closed and reopened only reinstalls
+  /// the channel handler — the existing subscription keeps receiving.
+  void _bindOverlayListener() {
+    try {
+      final stream = FlutterOverlayWindow.overlayListener;
+      assert(stream.isBroadcast);
+      _overlayListenerSub ??= stream.listen(_onOverlayMessage);
+    } catch (e, s) {
+      loge(
+        'overlayListener listen failed in home screen',
+        name: 'home',
+        error: e,
+        stack: s,
+      );
+    }
+  }
+
+  void _onOverlayMessage(Object? event) {
+    OverlaySync.deliver(
+      event,
+      onCounters: (counters) {
+        _overlayBurst.add(counters, (latest) {
+          unawaited(_applyOverlayCounters(latest));
+        });
+      },
+      onCountersReloadFromStore: () {
+        _overlayBurst.add(null, (latest) {
+          unawaited(_applyOverlayCounters(latest));
+        });
+      },
+    );
+  }
+
+  /// Applies a pill snapshot onto the counter notifiers. Those notifiers
+  /// rebuild the rows, the two percentages, and the warning cards. The
+  /// counters live in the shift file, not SharedPreferences, so this does
+  /// not `prefs.reload()` — a reload on the tap path is the old freeze.
+  Future<void> _applyOverlayCounters(OverlayCounters? counters) async {
     if (_saveDebounce?.isActive ?? false) {
       _saveDebounce!.cancel();
       await _saveDataNow();
       return;
     }
-    final counters = OverlaySync.countersFromEvent(event);
     if (counters == null) {
       await _applyStoredCounters();
       return;
@@ -602,7 +671,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _refreshOverlayState() async {
     try {
       final active = await FlutterOverlayWindow.isActive();
-      if (!mounted || active == _overlayActive) return;
+      if (!mounted) return;
+      // Pill close destroys its engine. Reopening needs the handler installed
+      // again; the home subscription itself stays for the screen lifetime.
+      if (active) _bindOverlayListener();
+      if (active == _overlayActive) return;
       setState(() => _overlayActive = active);
     } catch (e, s) {
       // Called via unawaited(), so an unguarded channel error here would
@@ -676,18 +749,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       activeDriverMode = DriverMode.parse(prefs.getString(DriverMode.key));
 
+      _autoUpdate = GithubAccess.autoUpdate(prefs);
+      _autoEvents = GithubAccess.autoEvents(prefs);
+      GithubAccess.publishLastCheck(GithubAccess.readLastCheck(prefs));
+
       if (prefs.getBool(DriverMode.askedKey) != true) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && prefs.getBool(DriverMode.askedKey) != true) {
-            showDriverModeDialog(context, prefs, () {
-              if (mounted) setState(() {});
-            });
-          }
-        });
+        unawaited(() async {
+          await GithubAccess.promptSettled;
+          if (!mounted || prefs.getBool(DriverMode.askedKey) == true) return;
+          showDriverModeDialog(context, prefs, () {
+            if (mounted) setState(() {});
+          });
+        }());
       }
 
       if (lastReset.isBefore(resetBoundary)) {
-        await _performReset(prefs, resetBoundary, stored);
+        // Pass the loaded tier: _selectedGoal is still the default until the
+        // setState below, and the archived week must remember the real goal.
+        await _performReset(prefs, resetBoundary, stored, loadedGoal);
         if (mounted) {
           setState(() {
             _selectedGoal = loadedGoal;
@@ -696,6 +775,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _showOverlayCancelButton =
                 prefs.getBool(OverlayWidget.cancelButtonPrefsKey) ?? false;
           });
+          _publishSettings();
         }
       } else {
         if (!mounted) return;
@@ -713,6 +793,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               prefs.getBool(OverlayWidget.cancelButtonPrefsKey) ?? false;
           _syncBaseline();
         });
+        _publishSettings();
         unawaited(
           OverlaySync.notifyCountersChanged(
             accepted: acceptedRequests,
@@ -733,6 +814,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         setState(() => _initialLoadDone = true);
       }
     }
+  }
+
+  void _publishSettings() {
+    if (_settingsClosed) return;
+    final next = SettingsSnapshot(
+      autoComplete: _autoCompleteTrips,
+      steeringWheel: _steeringWheelEnabled,
+      keepScreenOn: _keepScreenOn,
+      autoUpdate: _autoUpdate,
+      autoEvents: _autoEvents,
+      pillOrientation: _pillOrientation,
+      showOverlayCancel: _showOverlayCancelButton,
+      lang: _currentLang,
+    );
+    if (_settings.value == next) return;
+    _settings.value = next;
   }
 
   /// Pushes the pill-relevant settings to a running overlay. The overlay
@@ -766,6 +863,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     SharedPreferences prefs, [
     tz.TZDateTime? boundary,
     ShiftCounters? snapshot,
+    TripGoal? goalTier,
   ]) async {
     // Settle debounced in-app taps first. Both the archive snapshot and the
     // zeroing below read from disk, so taps still inside the 300 ms window
@@ -777,14 +875,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       counts = null; // the caller's snapshot predates the flush
     }
     counts ??= await ShiftCounterStore.instance.read();
-    final snap = _buildArchiveEntry(counts, boundary);
+    final snap = _buildArchiveEntry(
+      counts,
+      boundary,
+      goalTier ?? _selectedGoal,
+    );
     if (snap != null) {
-      var archive = prefs.getStringList(_keyArchive) ?? [];
-      archive.add(snap);
-      if (archive.length > _maxArchiveEntries) {
-        archive = archive.sublist(archive.length - _maxArchiveEntries);
+      final archive = prefs.getStringList(_keyArchive) ?? [];
+      // A second reset in the same Monday–Sunday week updates that row
+      // instead of appending another card with the same date range.
+      var collapsed = collapseWeeklyArchive([...archive, snap]);
+      if (collapsed.length > _maxArchiveEntries) {
+        collapsed = collapsed.sublist(collapsed.length - _maxArchiveEntries);
       }
-      await prefs.setStringList(_keyArchive, archive);
+      await prefs.setStringList(_keyArchive, collapsed);
     }
 
     await ShiftCounterStore.instance.write(const ShiftCounters());
@@ -804,7 +908,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  String? _buildArchiveEntry(ShiftCounters counts, tz.TZDateTime? boundary) {
+  String? _buildArchiveEntry(
+    ShiftCounters counts,
+    tz.TZDateTime? boundary,
+    TripGoal goal,
+  ) {
     final accepted = counts.accepted;
     final rejected = counts.rejected;
     final completed = counts.completed;
@@ -837,6 +945,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       acceptedCount: accepted,
       rejectedCount: rejected,
       completedTrips: completed,
+      canceledTrips: canceled,
+      canceledTripsStored: true,
+      goalTier: goal.name,
+      targetAcceptRate: goal.requiredAcceptRate,
+      targetAcceptRateStored: true,
+      maxCancelRate: kWeeklyCancelCeiling,
     );
     return entry.encode();
   }
@@ -866,14 +980,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) {
       // Fold in anything tapped while the write was running.
       acceptedRequests =
-          (saved.accepted + (acceptedRequests - _baselineAccepted))
-              .clamp(0, 99999);
+          (saved.accepted + (acceptedRequests - _baselineAccepted)).clamp(
+            0,
+            99999,
+          );
       rejectedRequests =
-          (saved.rejected + (rejectedRequests - _baselineRejected))
-              .clamp(0, 99999);
-      completedTrips =
-          (saved.completed + (completedTrips - _baselineCompleted))
-              .clamp(0, 99999);
+          (saved.rejected + (rejectedRequests - _baselineRejected)).clamp(
+            0,
+            99999,
+          );
+      completedTrips = (saved.completed + (completedTrips - _baselineCompleted))
+          .clamp(0, 99999);
       canceledTrips = (saved.canceled + (canceledTrips - _baselineCanceled))
           .clamp(0, 99999);
       _syncBaseline();
@@ -950,6 +1067,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _setAutoCompleteTrips(bool enabled) async {
     setState(() => _autoCompleteTrips = enabled);
+    _publishSettings();
     final prefs = await _getPrefs();
     await prefs.setBool(_keyAutoComplete, enabled);
     _notifyOverlaySettings();
@@ -957,14 +1075,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _setKeepScreenOn(bool enabled) async {
     setState(() => _keepScreenOn = enabled);
+    _publishSettings();
     final prefs = await _getPrefs();
     await prefs.setBool(_keyKeepScreenOn, enabled);
     _applyWakelockPolicy();
   }
 
+  Future<void> _setAutoUpdate(bool enabled) async {
+    setState(() => _autoUpdate = enabled);
+    _publishSettings();
+    final prefs = await _getPrefs();
+    await GithubAccess.setAutoUpdate(prefs, enabled);
+  }
+
+  Future<void> _setAutoEvents(bool enabled) async {
+    setState(() => _autoEvents = enabled);
+    _publishSettings();
+    final prefs = await _getPrefs();
+    await GithubAccess.setAutoEvents(prefs, enabled);
+  }
+
   Future<void> _setPillOrientation(PillOrientation orientation) async {
     if (_pillOrientation == orientation) return;
     setState(() => _pillOrientation = orientation);
+    _publishSettings();
     final prefs = await _getPrefs();
     await prefs.setString(PillOrientation.prefsKey, orientation.name);
     if (prefs.containsKey(PillOrientation.legacyBoolKey)) {
@@ -980,6 +1114,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _setOverlayShowCancelButton(bool enabled) async {
     if (_showOverlayCancelButton == enabled) return;
     setState(() => _showOverlayCancelButton = enabled);
+    _publishSettings();
     final prefs = await _getPrefs();
     await prefs.setBool(OverlayWidget.cancelButtonPrefsKey, enabled);
     if (!_overlayActive || _overlayToggleBusy) return;
@@ -1066,64 +1201,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Rebuild cached chrome (bottom bar + version footer) immediately so a
     // language switch cannot leave last-frame Turkish labels on screen.
     setState(() => _currentLang = lang);
+    _publishSettings();
     final prefs = await _getPrefs();
     await prefs.setString(_keyLang, lang.name);
     _notifyOverlaySettings();
-  }
-
-  Future<void> _showLanguageSelector() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.sheet,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.only(top: 12, bottom: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _LangOption(
-              flag: '🇹🇷',
-              name: 'Türkçe',
-              selected: _currentLang == AppLang.tr,
-              onTap: () {
-                _setLanguage(AppLang.tr);
-                Navigator.of(ctx).pop();
-              },
-            ),
-            _LangOption(
-              flag: '🇬🇧',
-              name: 'English',
-              selected: _currentLang == AppLang.en,
-              onTap: () {
-                _setLanguage(AppLang.en);
-                Navigator.of(ctx).pop();
-              },
-            ),
-            _LangOption(
-              flag: '🇵🇱',
-              name: 'Polski',
-              selected: _currentLang == AppLang.pl,
-              onTap: () {
-                _setLanguage(AppLang.pl);
-                Navigator.of(ctx).pop();
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
   }
 
   static const _defaultOverlayStart = OverlayPosition(0, 60);
@@ -1197,6 +1278,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await OverlaySync.notifyCountersChanged();
 
     if (!mounted) return;
+    _bindOverlayListener();
     setState(() => _overlayActive = true);
   }
 
@@ -1236,7 +1318,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _showHistory() async {
     final prefs = await _getPrefs();
     await TapHistoryStore.instance.migrateFromPrefs(prefs);
-    final archive = (prefs.getStringList(_keyArchive) ?? []).reversed.toList();
+    final stored = prefs.getStringList(_keyArchive) ?? [];
+    final collapsed = collapseWeeklyArchive(stored);
+    if (!listEquals(stored, collapsed)) {
+      await prefs.setStringList(_keyArchive, collapsed);
+    }
+    final archive = collapsed.reversed.toList();
     final taps = await TapHistoryStore.instance.readNewestFirst();
 
     if (!mounted) return;
@@ -1250,139 +1337,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       builder: (ctx) => _HistorySheet(
         archive: archive,
+        currentGoal: _selectedGoal,
         taps: taps,
         formatTapDate: _formatTapDate,
-      ),
-    );
-  }
-
-  Future<void> _showCrashLog() async {
-    String body = '';
-    final f = await CrashLogger.currentLogFile();
-    if (f != null) {
-      try {
-        final content = await f.readAsString();
-        if (content.trim().isNotEmpty) {
-          body = content;
-        }
-      } on FileSystemException {
-        // Stay with the empty-state placeholder.
-      }
-    }
-    final isEmpty = body.trim().isEmpty;
-
-    if (!mounted) return;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.sheet,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                S.crashLogTitle,
-                style: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 2,
-                  color: AppColors.labelText,
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (isEmpty)
-                AppEmptyState(
-                  compact: true,
-                  icon: Icons.verified_rounded,
-                  title: S.crashLogEmptyTitle,
-                  description: S.crashLogEmpty,
-                )
-              else ...[
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(ctx).size.height * 0.5,
-                  ),
-                  child: SingleChildScrollView(
-                    child: SelectableText(
-                      body,
-                      style: const TextStyle(
-                        fontFamily: AppFonts.jetBrainsMono,
-                        color: Colors.white,
-                        fontSize: 11,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextButton(
-                        style: TextButton.styleFrom(
-                          minimumSize: const Size(0, kMinTouchTarget),
-                        ),
-                        onPressed: () async {
-                          await Clipboard.setData(ClipboardData(text: body));
-                          if (!ctx.mounted) return;
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(
-                              content: Text(S.crashLogCopied),
-                              duration: const Duration(seconds: 1),
-                              backgroundColor: AppColors.card,
-                            ),
-                          );
-                        },
-                        child: Text(
-                          S.crashLogCopy,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: AppFonts.dmSans,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: TextButton(
-                        style: TextButton.styleFrom(
-                          minimumSize: const Size(0, kMinTouchTarget),
-                        ),
-                        onPressed: () async {
-                          await CrashLogger.clear();
-                          if (!ctx.mounted) return;
-                          Navigator.of(ctx).pop();
-                        },
-                        child: Text(
-                          S.crashLogClear,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: AppFonts.dmSans,
-                            color: _crimson,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -1442,8 +1399,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final logoCachePx =
-        (28 * MediaQuery.devicePixelRatioOf(context)).round();
+    final logoCachePx = (28 * MediaQuery.devicePixelRatioOf(context)).round();
     // Covers home's own surface. The root listener in main.dart adds the
     // pushed routes this one cannot see; both feeds are idempotent, and
     // keeping this one means HomeScreen still manages its own wakelock when
@@ -1472,10 +1428,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0x33FFFFFF),
-                    width: 1,
-                  ),
+                  border: Border.all(color: const Color(0x33FFFFFF), width: 1),
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(7),
@@ -1533,83 +1486,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ],
           ),
           actions: [
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
-              color: AppColors.card,
-              onSelected: (v) {
-                if (v == 'setup') {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const SetupGuideScreen(),
-                    ),
-                  );
-                } else if (v == 'crash') {
-                  _showCrashLog();
-                } else if (v == 'driver_mode') {
-                  _getPrefs().then((p) {
-                    if (!context.mounted) return;
-                    showDriverModeDialog(context, p, () {
-                      if (mounted) setState(() {});
-                    });
-                  });
-                } else if (v == 'lang') {
-                  _showLanguageSelector();
-                }
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                  value: 'setup',
-                  child: Text(
-                    S.setupGuide,
-                    style: const TextStyle(
-                      fontFamily: AppFonts.dmSans,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'crash',
-                  child: Text(
-                    S.crashLogTitle,
-                    style: const TextStyle(
-                      fontFamily: AppFonts.dmSans,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'driver_mode',
-                  child: Text(
-                    S.driverModeLabel(activeDriverMode),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: AppFonts.dmSans,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'lang',
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.language_rounded,
-                        size: 20,
-                        color: Colors.white70,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        S.navLang,
-                        style: const TextStyle(
-                          fontFamily: AppFonts.dmSans,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            IconButton(
+              tooltip: S.settingsTitle,
+              onPressed: () => unawaited(_openSettings()),
+              icon: const Icon(Icons.settings_outlined, color: Colors.white),
             ),
           ],
         ),
@@ -1624,7 +1504,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   20,
                   4,
                   20,
-                  120 + MediaQuery.paddingOf(context).bottom,
+                  MediaQuery.paddingOf(context).bottom,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1647,7 +1527,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             ),
                           );
                         }
-                        final cancelColor = cancellationRate >= 5.0
+                        final cancelColor =
+                            cancellationRate >= kWeeklyCancelCeiling
                             ? _crimson
                             : _emerald;
                         final recovery = neededForRecovery;
@@ -1808,19 +1689,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                     const SizedBox(height: 28),
 
-                    _sectionHeader(S.settings),
-                    const SizedBox(height: 12),
-                    _buildAutoCompleteSwitch(),
-                    const SizedBox(height: 10),
-                    _buildSteeringWheelSwitch(),
-                    const SizedBox(height: 10),
-                    _buildKeepScreenOnSwitch(),
-                    const SizedBox(height: 10),
-                    _buildPillOrientationRow(),
-                    const SizedBox(height: 10),
-                    _buildOverlayCancelButtonSwitch(),
-
-                    const SizedBox(height: AppSpacing.xl),
                     SizedBox(
                       width: double.infinity,
                       child: AppDangerButton(
@@ -1835,15 +1703,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       key: ValueKey('footer-$_currentLang'),
                       child: Column(
                         children: [
-                          UpdateCheckTile(versionLabel: _appVersion),
-                          const SizedBox(height: 20),
                           Center(child: _buildDesignerSignature()),
                           const SizedBox(height: 12),
                           Center(child: _buildReleaseInfoRow()),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    // Clears the floating dock (bar + its 24dp bottom margin).
+                    const SizedBox(height: 110),
                   ],
                 ),
               ),
@@ -1939,6 +1806,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _openRadar() => unawaited(_pushGuarded(() => const RadarScreen()));
+
+  Future<void> _openSettings() async {
+    _publishSettings();
+    await _pushGuarded(() => SettingsScreen(bindings: _settingsBindings));
+    if (mounted) setState(() {});
+  }
 
   Future<void> _openEarnings() async {
     await _pushGuarded(() => const EarningsScreen());
@@ -2092,8 +1965,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       nextEntries.insert(
         0,
         WeekEarning(
-          id:
-              '${currentMonday.millisecondsSinceEpoch}_${currentSunday.millisecondsSinceEpoch}',
+          id: '${currentMonday.millisecondsSinceEpoch}_${currentSunday.millisecondsSinceEpoch}',
           weekStart: currentMonday,
           weekEnd: currentSunday,
           driverMode: driverMode,
@@ -2134,7 +2006,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'KK4181R',
+            'KK383CT',
             style: TextStyle(
               fontFamily: AppFonts.jetBrainsMono,
               fontSize: 12,
@@ -2145,11 +2017,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
           const SizedBox(height: 5),
-          Container(
-            width: 28,
-            height: 1,
-            color: gold.withValues(alpha: 0.18),
-          ),
+          Container(width: 28, height: 1, color: gold.withValues(alpha: 0.18)),
           const SizedBox(height: 5),
           Text(
             S.designer.toUpperCase(),
@@ -2345,10 +2213,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
-                child: Text(
-                  value,
-                  style: T.rateFor(color),
-                ),
+                child: Text(value, style: T.rateFor(color)),
               ),
             ),
           ),
@@ -2373,10 +2238,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              width: 5,
-              color: color,
-            ),
+            Container(width: 5, color: color),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(
@@ -2419,220 +2281,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildAutoCompleteSwitch() {
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardColor,
-        border: _cardBorder,
-        borderRadius: _cardRadius,
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.sm,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              S.autoCompleteTrips,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.mutedText,
-              ),
-            ),
-          ),
-          Switch(
-            value: _autoCompleteTrips,
-            onChanged: _setAutoCompleteTrips,
-            activeThumbColor: _emerald,
-            activeTrackColor: _emerald.withValues(alpha: 0.45),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSteeringWheelSwitch() {
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardColor,
-        border: _cardBorder,
-        borderRadius: _cardRadius,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              S.steeringWheelCounter,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.mutedText,
-              ),
-            ),
-          ),
-          Switch(
-            value: _steeringWheelEnabled,
-            onChanged: _setSteeringWheelCounter,
-            activeThumbColor: _emerald,
-            activeTrackColor: _emerald.withValues(alpha: 0.45),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildKeepScreenOnSwitch() {
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardColor,
-        border: _cardBorder,
-        borderRadius: _cardRadius,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              S.keepScreenOn,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.mutedText,
-              ),
-            ),
-          ),
-          Switch(
-            value: _keepScreenOn,
-            onChanged: _setKeepScreenOn,
-            activeThumbColor: _emerald,
-            activeTrackColor: _emerald.withValues(alpha: 0.45),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOverlayCancelButtonSwitch() {
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardColor,
-        border: _cardBorder,
-        borderRadius: _cardRadius,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              S.overlayShowCancelButton,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.mutedText,
-              ),
-            ),
-          ),
-          Switch(
-            value: _showOverlayCancelButton,
-            onChanged: (enabled) =>
-                unawaited(_setOverlayShowCancelButton(enabled)),
-            activeThumbColor: _emerald,
-            activeTrackColor: _emerald.withValues(alpha: 0.45),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPillOrientationRow() {
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardColor,
-        border: _cardBorder,
-        borderRadius: _cardRadius,
-      ),
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        AppSpacing.sm,
-        AppSpacing.sm,
-        AppSpacing.sm,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(
-              left: AppSpacing.xs,
-              top: AppSpacing.xs,
-              bottom: AppSpacing.sm,
-            ),
-            child: Text(
-              S.overlayPillOrientation,
-              style: const TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: AppTextStyles.body,
-                fontWeight: FontWeight.w600,
-                color: AppColors.mutedText,
-              ),
-            ),
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: _pillOrientationChip(
-                  PillOrientation.horizontal,
-                  S.overlayPillHorizontal,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: _pillOrientationChip(
-                  PillOrientation.vertical,
-                  S.overlayPillVertical,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _pillOrientationChip(PillOrientation value, String label) {
-    final selected = _pillOrientation == value;
-    return Material(
-      color: selected ? _emerald.withValues(alpha: 0.22) : AppColors.inset,
-      borderRadius: AppRadius.smBorder,
-      child: InkWell(
-        onTap: () => unawaited(_setPillOrientation(value)),
-        borderRadius: AppRadius.smBorder,
-        child: SizedBox(
-          height: kMinTouchTarget + 8,
-          child: Center(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontFamily: AppFonts.dmSans,
-                fontSize: AppTextStyles.body,
-                fontWeight: FontWeight.w800,
-                color: selected ? _emerald : AppColors.mutedText,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   /// The OS can switch the accessibility service off behind our back — OEM
   /// battery policies kill it, and the user can revoke it in system settings.
   /// Turn the toggle off rather than advertise a feature that is dead; one tap
@@ -2657,6 +2305,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (active != true || !mounted) return;
       _pendingSteeringWheelEnable = false;
       setState(() => _steeringWheelEnabled = true);
+      _publishSettings();
       final prefs = await _getPrefs();
       await prefs.setBool(_keySteeringWheel, true);
       return;
@@ -2666,6 +2315,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // must not disable a working counter.
     if (active != false || !mounted) return;
     setState(() => _steeringWheelEnabled = false);
+    _publishSettings();
     final prefs = await _getPrefs();
     await prefs.setBool(_keySteeringWheel, false);
   }
@@ -2760,6 +2410,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     _pendingSteeringWheelEnable = false;
     setState(() => _steeringWheelEnabled = enabled);
+    _publishSettings();
     final prefs = await _getPrefs();
     await prefs.setBool(_keySteeringWheel, enabled);
   }
@@ -3022,7 +2673,9 @@ class _BottomBarWidgetToggle extends StatelessWidget {
                           height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
                           ),
                         ),
                       )
@@ -3065,11 +2718,13 @@ class _BottomBarWidgetToggle extends StatelessWidget {
 class _HistorySheet extends StatefulWidget {
   const _HistorySheet({
     required this.archive,
+    required this.currentGoal,
     required this.taps,
     required this.formatTapDate,
   });
 
   final List<String> archive;
+  final TripGoal currentGoal;
   final List<Map<String, dynamic>> taps;
   final String Function(DateTime dt) formatTapDate;
 
@@ -3085,8 +2740,9 @@ class _HistorySheetState extends State<_HistorySheet>
 
   late final TabController _tabController;
   late final List<({Map<String, dynamic> raw, DateTime? local})> _parsedTaps;
-  /// Parsed once here rather than in `_ArchiveCard.build`, which re-decoded
-  /// its JSON on every scroll frame and every sheet rebuild.
+
+  /// Parsed once here rather than in [WeeklyArchiveCard.build], which would
+  /// re-decode its JSON on every scroll frame and every sheet rebuild.
   late List<WeeklyArchiveEntry> _archive;
   int _lastTabIndex = 0;
   bool _todayOnly = true;
@@ -3486,10 +3142,27 @@ class _HistorySheetState extends State<_HistorySheet>
       );
     }
 
+    final floors = [
+      for (final goal in TripGoal.values)
+        WeeklyGoalFloor(
+          name: goal.name,
+          minTrips: goal.minTrips,
+          acceptRate: goal.requiredAcceptRate,
+        ),
+    ];
     return ListView.separated(
       itemCount: _archive.length,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemBuilder: (_, i) => _ArchiveCard(entry: _archive[i]),
+      itemBuilder: (_, i) {
+        final entry = _archive[i];
+        return WeeklyArchiveCard(
+          key: ValueKey('${weeklyArchiveKey(entry) ?? 'week'}-$i'),
+          entry: entry,
+          floors: floors,
+          fallbackTier: widget.currentGoal.name,
+          fallbackAcceptRate: widget.currentGoal.requiredAcceptRate,
+        );
+      },
     );
   }
 }
@@ -3507,95 +3180,6 @@ class _OverflowSafeTab extends StatelessWidget {
       child: FittedBox(
         fit: BoxFit.scaleDown,
         child: Text(label, maxLines: 1, softWrap: false),
-      ),
-    );
-  }
-}
-
-class _ArchiveCard extends StatelessWidget {
-  const _ArchiveCard({required this.entry});
-
-  static const _emerald = AppColors.emerald;
-  static const _crimson = AppColors.crimson;
-
-  final WeeklyArchiveEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        border: Border.all(color: AppColors.cardBorderColor),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            entry.getFormattedDateRange(),
-            style: const TextStyle(
-              fontFamily: AppFonts.dmSans,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 10),
-          // Wrap, not Row: the Polish chip labels ("Akceptacja"/"Anulowanie")
-          // are long enough to overflow side by side on a narrow sheet.
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildStatChip(
-                label:
-                    '%${entry.acceptRate.toStringAsFixed(0)} ${S.archiveAccept}',
-                color: entry.acceptRate >= 80 ? _emerald : _crimson,
-              ),
-              _buildStatChip(
-                label:
-                    '%${entry.cancelRate.toStringAsFixed(0)} ${S.archiveCancel}',
-                color: entry.cancelRate <= 5 ? _emerald : _crimson,
-              ),
-            ],
-          ),
-          if (!entry.isLegacy) ...[
-            const SizedBox(height: 10),
-            Text(
-              '${S.accepted}: ${entry.acceptedCount} · ${S.rejected}: ${entry.rejectedCount}',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontFamily: AppFonts.jetBrainsMono,
-                fontSize: 12,
-                color: AppColors.mutedText,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatChip({required String label, required Color color}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontFamily: AppFonts.dmSans,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: color,
-        ),
       ),
     );
   }
@@ -3650,63 +3234,6 @@ class _FilterChip extends StatelessWidget {
                   color: AppColors.labelText,
                   letterSpacing: 0.5,
                 ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LangOption extends StatelessWidget {
-  const _LangOption({
-    required this.flag,
-    required this.name,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String flag;
-  final String name;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          child: Row(
-            children: [
-              Text(flag, style: const TextStyle(fontSize: 26)),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  name,
-                  style: selected
-                      ? const TextStyle(
-                          fontFamily: AppFonts.dmSans,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        )
-                      : const TextStyle(
-                          fontFamily: AppFonts.dmSans,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w400,
-                          color: AppColors.mutedText,
-                        ),
-                ),
-              ),
-              if (selected)
-                const Icon(
-                  Icons.check_rounded,
-                  color: AppColors.emerald,
-                  size: 22,
-                ),
-            ],
-          ),
         ),
       ),
     );

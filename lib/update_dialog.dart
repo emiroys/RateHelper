@@ -6,6 +6,7 @@ import 'app_text_styles.dart';
 import 'app_widgets.dart';
 import 'fonts.dart';
 import 'l10n.dart';
+import 'services/github_access.dart';
 import 'services/update_service.dart';
 
 /// Shows the update prompt and starts the cooldown, so a dismissed dialog
@@ -98,7 +99,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       _cancelRequested = false;
     });
 
-    final file = await service.downloadApk(
+    final downloaded = await service.downloadApk(
       widget.info,
       onProgress: (received, total) {
         if (!mounted) return;
@@ -120,24 +121,26 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       setState(() => _phase = _UpdatePhase.idle);
       return;
     }
-    if (file == null) {
+    if (downloaded == null) {
       await _fallBackToBrowser(messenger, navigator);
       return;
     }
 
     setState(() => _phase = _UpdatePhase.installing);
-    final started = await service.installApk(file);
+    final outcome = await service.verifyAndInstall(downloaded, widget.info);
     if (!mounted) return;
 
-    if (!started) {
-      await _fallBackToBrowser(messenger, navigator);
-      return;
-    }
-
-    // Android's installer is in front of us now. A mandatory release keeps the
-    // dialog up so a cancelled install lands back on the same prompt.
     setState(() => _phase = _UpdatePhase.idle);
-    if (!widget.info.mandatory) navigator.pop();
+    switch (outcome) {
+      case UpdateInstallResult.launched:
+        // Android's installer is in front of us now. A mandatory release
+        // keeps the dialog up so a cancelled install lands back here.
+        if (!widget.info.mandatory) navigator.pop();
+      case UpdateInstallResult.signatureMismatch:
+        _showUpdateSnack(messenger, S.updateSignatureMismatch);
+      case UpdateInstallResult.rejected:
+        _showUpdateSnack(messenger, S.updateInstallBlocked);
+    }
   }
 
   Future<void> _fallBackToBrowser(
@@ -212,8 +215,8 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                       needsPermission
                           ? S.updatePermissionTitle
                           : info.mandatory
-                              ? S.updateMandatoryTitle
-                              : S.updateAvailableTitle,
+                          ? S.updateMandatoryTitle
+                          : S.updateAvailableTitle,
                       style: AppTextStyles.sectionTitleStyle,
                     ),
                   ),
@@ -351,9 +354,7 @@ class _DownloadProgress extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                installing
-                    ? S.updateInstallingLabel
-                    : S.updateDownloadingLabel,
+                installing ? S.updateInstallingLabel : S.updateDownloadingLabel,
                 style: AppTextStyles.captionStyle,
               ),
             ),
@@ -425,8 +426,9 @@ class _VersionDelta extends StatelessWidget {
     bool alignEnd = false,
   }) {
     return Column(
-      crossAxisAlignment:
-          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment: alignEnd
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
       children: [
         Text(
           label.toUpperCase(),
@@ -447,8 +449,35 @@ class _VersionDelta extends StatelessWidget {
   }
 }
 
-/// Footer tile next to the version badge: manual check with its own spinner,
-/// bypassing the startup cooldown and any skipped version.
+/// Manual check from the settings tile. Always hits the network.
+/// The APK download stays inside the dialog the driver opens from here, and
+/// only after they tap the update action.
+Future<void> presentManualUpdateCheck(
+  BuildContext context, {
+  bool announceChecking = false,
+}) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (announceChecking) {
+    _showUpdateSnack(messenger, S.updateChecking);
+  }
+  final result = await UpdateService.instance.check(languageCode: S.lang.name);
+  if (!context.mounted) return;
+
+  switch (result.status) {
+    case UpdateStatus.available:
+      await showUpdatePrompt(context, result);
+    case UpdateStatus.upToDate:
+      _showUpdateSnack(messenger, S.updateUpToDate);
+    case UpdateStatus.unreachable:
+      _showUpdateSnack(messenger, S.updateUnreachable);
+    case UpdateStatus.disabled:
+      _showUpdateSnack(messenger, S.updateDisabled);
+  }
+}
+
+/// Settings tile: manual check with its own spinner, the installed version,
+/// and the last-check time on one row. Bypasses the startup cooldown and
+/// any skipped version.
 class UpdateCheckTile extends StatefulWidget {
   const UpdateCheckTile({super.key, this.versionLabel});
 
@@ -465,24 +494,9 @@ class _UpdateCheckTileState extends State<UpdateCheckTile> {
   Future<void> _check() async {
     if (_checking) return;
     setState(() => _checking = true);
-
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    final result =
-        await UpdateService.instance.check(languageCode: S.lang.name);
-
+    await presentManualUpdateCheck(context);
     if (!mounted) return;
     setState(() => _checking = false);
-
-    switch (result.status) {
-      case UpdateStatus.available:
-        await showUpdatePrompt(context, result);
-      case UpdateStatus.upToDate:
-        _showUpdateSnack(messenger, S.updateUpToDate);
-      case UpdateStatus.unreachable:
-        _showUpdateSnack(messenger, S.updateUnreachable);
-      case UpdateStatus.disabled:
-        _showUpdateSnack(messenger, S.updateDisabled);
-    }
   }
 
   @override
@@ -515,14 +529,38 @@ class _UpdateCheckTileState extends State<UpdateCheckTile> {
               ),
               const SizedBox(width: AppSpacing.sm + 4),
               Expanded(
-                child: Text(
-                  _checking ? S.updateChecking : S.updateCheckAction,
-                  style: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    fontSize: AppTextStyles.body,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.mutedText,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _checking ? S.updateChecking : S.updateCheckAction,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: AppFonts.dmSans,
+                        fontSize: AppTextStyles.body,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.mutedText,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    ListenableBuilder(
+                      listenable: GithubAccess.lastUpdateCheck,
+                      builder: (context, _) => Text(
+                        S.updateLastCheckedLabel(
+                          GithubAccess.lastUpdateCheck.value,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: AppFonts.dmSans,
+                          color: AppColors.labelText,
+                          fontSize: AppTextStyles.caption,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (_checking)
@@ -534,7 +572,8 @@ class _UpdateCheckTileState extends State<UpdateCheckTile> {
                     color: AppColors.emerald,
                   ),
                 )
-              else if (versionLabel != null)
+              else if (versionLabel != null) ...[
+                const SizedBox(width: AppSpacing.sm),
                 Text(
                   'v$versionLabel',
                   style: AppTextStyles.tabularMonospace(
@@ -543,6 +582,7 @@ class _UpdateCheckTileState extends State<UpdateCheckTile> {
                     color: AppColors.disabledText,
                   ),
                 ),
+              ],
             ],
           ),
         ),

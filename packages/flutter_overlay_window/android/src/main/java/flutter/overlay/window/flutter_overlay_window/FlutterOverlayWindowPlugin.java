@@ -42,6 +42,8 @@ public class FlutterOverlayWindowPlugin implements
     private Context context;
     private Activity mActivity;
     private BasicMessageChannel<Object> messenger;
+    /// True only for the main-engine plugin, which owns [WindowSetup.messenger].
+    private boolean ownsWindowMessenger = false;
     private Result pendingResult;
     final int REQUEST_CODE_FOR_OVERLAY_PERMISSION = 1248;
 
@@ -55,8 +57,14 @@ public class FlutterOverlayWindowPlugin implements
                 JSONMessageCodec.INSTANCE);
         messenger.setMessageHandler(this);
 
-        WindowSetup.messenger = messenger;
-        WindowSetup.messenger.setMessageHandler(this);
+        // The overlay engine registers this same plugin. It must not replace
+        // the main engine's messenger: OverlayService forwards pill taps to
+        // WindowSetup.messenger, and a stolen reference loops them back into
+        // the overlay isolate. Home then updates only on the next resume.
+        if (!WindowSetup.suppressMessengerClaim) {
+            WindowSetup.messenger = messenger;
+            ownsWindowMessenger = true;
+        }
     }
 
     @RequiresApi(api = Build.VERSION_CODES.N)
@@ -138,8 +146,21 @@ public class FlutterOverlayWindowPlugin implements
 
     @Override
     public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
-        channel.setMethodCallHandler(null);
-        WindowSetup.messenger.setMessageHandler(null);
+        if (channel != null) {
+            channel.setMethodCallHandler(null);
+            channel = null;
+        }
+        if (messenger != null) {
+            messenger.setMessageHandler(null);
+            messenger = null;
+        }
+        // The overlay engine is destroyed on pill close. Only the main
+        // engine's plugin may drop the shared messenger; otherwise the next
+        // pill open has no path back to a still-living home isolate.
+        if (ownsWindowMessenger) {
+            WindowSetup.messenger = null;
+            ownsWindowMessenger = false;
+        }
     }
 
     @Override

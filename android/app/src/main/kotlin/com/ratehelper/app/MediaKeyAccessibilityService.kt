@@ -109,15 +109,15 @@ class MediaKeyAccessibilityService : AccessibilityService() {
                           keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
                           keyCode == KeyEvent.KEYCODE_MEDIA_PREVIOUS
         if (!isTargetKey) {
-            return super.onKeyEvent(event)
+            return false
         }
 
         if (isInjecting) {
-            return super.onKeyEvent(event)
+            return false
         }
 
         if (!steeringWheelEnabled) {
-            return super.onKeyEvent(event)
+            return false
         }
 
         if (event.action == KeyEvent.ACTION_DOWN) {
@@ -147,7 +147,7 @@ class MediaKeyAccessibilityService : AccessibilityService() {
             }
         }
 
-        return super.onKeyEvent(event)
+        return false
     }
 
     private fun injectShortPress(keyCode: Int) {

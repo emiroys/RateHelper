@@ -6,7 +6,7 @@ Ten przewodnik krok po kroku wyjaśnia, **jakie uprawnienia Androida** trzeba w�
 > **Szacowany czas konfiguracji:** 2–3 minuty  
 > **Wersja turecka:** [`SETUP_GUIDE_TR.md`](SETUP_GUIDE_TR.md)
 
-> **Przewodnik konfiguracji w aplikacji** (menu **⋮**) pokazuje tylko **dwa kroki uprawnień** (nakładka + bateria). Ten plik to **pełna instrukcja obsługi**.
+> **Przewodnik konfiguracji w aplikacji** (**Ustawienia** → ikona **koła zębatego**) pokazuje tylko **dwa kroki uprawnień** (nakładka + bateria). Ten plik to **pełna instrukcja obsługi**.
 
 ---
 
@@ -16,8 +16,9 @@ Ten przewodnik krok po kroku wyjaśnia, **jakie uprawnienia Androida** trzeba w�
    Nazwa pliku to zwykle `app-arm64-v8a-release.apk` lub `ratehelper.apk`.
 2. Dotknij pliku. Jeśli telefon poprosi o **„Instalację z nieznanych źródeł”** → **Zezwól** → wróć do APK → **Zainstaluj**.
 3. Przy pierwszym uruchomieniu aplikacja automatycznie otworzy ekran **Konfiguracja RateHelper**.
+4. Po konfiguracji (albo po pierwszej aktualizacji do tej wersji) **raz** zapyta o GitHub: automatyczne aktualizacje i wydarzenia w Krakowie. **Nie** = brak sieci przy starcie; dane jazdy zostają w telefonie — włączysz później w **Ustawieniach**.
 
-> Aby ponownie przeczytać instrukcję: ekran główny → menu **⋮** (prawy górny róg) → **Przewodnik konfiguracji**.
+> Instrukcję ponownie: ekran główny → **koło zębate (Ustawienia)** → **Przewodnik konfiguracji**.
 
 ---
 
@@ -72,6 +73,8 @@ Gdy oba kroki są gotowe, naciśnij **ZAKOŃCZ** na dole ekranu. Przejdziesz do 
 
 ## 3) Ekran główny — liczniki
 
+Ikona **koła zębatego** u góry otwiera **Ustawienia** (tryb jazdy, dymek, język, GitHub, aktualizacja, dziennik awarii). Na ekranie głównym zostają: cel tygodniowy, liczniki, **RESETUJ TYDZIEŃ**, odznaka **KK383CT** i wersja.
+
 Na ekranie głównym są cztery duże liczniki:
 
 | Licznik | Znaczenie |
@@ -97,7 +100,7 @@ Kolor karty akceptacji zależy od wybranego **Tygodniowego Celu Przejazdów**:
 
 Dotknij chipu celu u góry → wybierz **Tygodniowy Cel Przejazdów**. Każdy próg odpowiada minimalnej liczbie przejazdów i akceptacji wymaganej przez ERES do zniżki czynszu (np. 100–149 przejazdów, min. 80% akceptacji). Opcja **Brak Wymag.** służy tylko do liczenia.
 
-> Progi zależą od trybu **Jeden kierowca** / **Dwóch kierowców (Dzielony)** (zmiana w menu **⋮**).
+> Progi zależą od trybu **Jeden / Dwóch / Trzech kierowców** (**Ustawienia → Tryb jazdy**).
 
 ### Karta budżetu anulowań
 
@@ -113,7 +116,7 @@ Pomyłka w liczbie? **Dotknij** lub **przytrzymaj** wartość licznika → wpisz
 
 ### Automatyczne ukończenie
 
-Włącz przełącznik **„Automatyczne ukończenie”** — przy każdym **+1** na akceptacji licznik ukończonych przejazdów też rośnie.
+W **Ustawienia → Automatyczne ukończenie** — przy każdym **+1** na akceptacji licznik ukończonych przejazdów też rośnie.
 
 ### Reset tygodnia
 
@@ -123,13 +126,18 @@ Po zakończeniu tygodnia naciśnij **RESETUJ TYDZIEŃ**. Podsumowanie tygodnia t
 
 ---
 
-## 3b) Menu górne (⋮)
+## 3b) Ekran ustawień (koło zębate)
 
-| Pozycja | Funkcja |
+Ekran główny → **koło zębate** u góry. Sekcje:
+
+| Sekcja | Zawartość |
 | --- | --- |
-| **Przewodnik konfiguracji** | Ponownie pokazuje dwa kroki uprawnień (nakładka + bateria) |
-| **Dziennik awarii** | Kopiuj / wyczyść log błędów |
-| **Jeden kierowca / Dwóch kierowców** | Zmiana trybu (tabele czynszu + progi celu) |
+| **Jazda i liczniki** | **Tryb jazdy** (1 / 2 / 3 kierowców), **Automatyczne ukończenie**, **Licznik z kierownicy (Beta)**, **Utrzymuj ekran włączony** |
+| **Dymek** | **Kierunek dymka** (poziomy / pionowy), **Przycisk anulowania na dymku** (opcjonalnie) |
+| **Preferencje** | **Język**, **Automatyczne sprawdzanie aktualizacji**, **Automatyczne pobieranie wydarzeń** |
+| **System i wsparcie** | **Sprawdź aktualizacje** (czas ostatniego sprawdzenia + wersja), **Przewodnik konfiguracji**, **Dziennik awarii** |
+
+> Język można też zmienić ikoną 🌐 w dolnym menu — to ten sam wybór.
 
 ---
 
@@ -150,9 +158,16 @@ W dolnym menu naciśnij duży środkowy przycisk:
 | --- | --- |
 | **Zielony ➕** | Zaakceptowane zlecenie (+1) |
 | **Czerwony ➖** | Odrzucone zlecenie (+1) |
-| **% na środku** | Aktualny wskaźnik akceptacji |
+| **% na środku** | Aktualny wskaźnik akceptacji. **Dotknij** → widget zwija się do małego dymka **R** |
+| **Dymek R** | **Dotknij** → widget rozwija się z powrotem |
 
-Widget możesz **przeciągać** w dowolne miejsce ekranu. Jest mały (276×80 dp), żeby nie zasłaniać dotyku w Uberze.
+Widget możesz **przeciągać** w dowolne miejsce ekranu. Poziomo ok. **276×80 dp**; pionowo: **Ustawienia → Kierunek dymka → Pionowy** (~74×194 dp).
+
+Dotknij **%**, by zwolnić miejsce: dymek **R** (48 dp); dotknięcia obok trafiają do Ubera. Dotknij **R**, by wrócić do pełnego dymka. Dymek też można przeciągać. +/−, zapis i kierownica działają w stanie zwiniętym. Stan jest zapamiętywany.
+
+**Ustawienia → Przycisk anulowania na dymku** — opcjonalny pomarańczowy przycisk obok czerwonego **−**.
+
+Liczniki na ekranie głównym **od razu** odzwierciedlają zmiany z dymka (bez minimalizowania aplikacji).
 
 > Gdy widget jest wyłączony, wróć na ekran główny i używaj dużych przycisków **+ / −**.
 
@@ -180,7 +195,7 @@ Lista każdego naciśnięcia **+ / −** z godziną. Filtr **Dziś** / **Wszystk
 
 ### Archiwum tygodniowe
 
-Przy każdym **RESETUJ TYDZIEŃ** zapisywane są wskaźniki akceptacji i anulowań z tego tygodnia. Starsze wpisy też można przeglądać.
+Przy każdym **RESETUJ TYDZIEŃ** podsumowanie trafia tutaj jako **karta**. Stuknij kartę → szczegóły (ukończone / zaakceptowane / odrzucone, cel tygodnia). Widać **Cel osiągnięty** lub **Cel nieosiągnięty** względem progów akceptacji i anulowań z tamtego tygodnia. Drugi reset w tym samym tygodniu scala liczniki w jedną kartę.
 
 ---
 
@@ -190,7 +205,7 @@ Ekran **Zarobki** liczy tygodniowy przychód z Ubera, paliwo, czynsz, podatki i 
 
 ### Pierwsze uruchomienie
 
-1. Wybierz **Jeden kierowca** albo **Dwóch kierowców (Dzielony)** — tabele czynszu zależą od tego wyboru.
+1. Wybierz **Jeden / Dwóch / Trzech kierowców** (**Ustawienia → Tryb jazdy** lub pierwsza konfiguracja w Zarobkach) — tabele czynszu zależą od tego.
 2. Wypełnij formularz tygodniowy: **Dochód netto**, **Otrzymana gotówka**, **Czas online**, **Liczba przejazdów**, paragony za paliwo itd.
 
 ### Widoki
@@ -211,9 +226,11 @@ Po **2000 przejazdach** zdobywasz prawo do zniżki czynszu. Ten licznik **nigdy 
 
 Lista koncertów, meczów i dużych imprez w **Krakowie**. Pomaga przewidzieć dni ze wzmożonym popytem (surge).
 
-- Lista **aktualizuje się z internetu** (tylko publiczne dane o wydarzeniach — bez wysyłania Twoich finansów).
-- Pociągnij w dół, aby **Odświeżyć**.
-- Dane są w pamięci podręcznej przez 1 godzinę.
+- Automatyczne pobieranie jest na starcie **wyłączone**. Przy wyłączonym przełączniku lista nie schodzi sama.
+- Jeśli jest zapisana kopia, wydarzenia widać razem z **wiekiem tej kopii**. Gdy kopii nie ma, jest przycisk **Wczytaj wydarzenia**.
+- Przycisk odświeżania u góry albo pociągnięcie w dół pobiera listę z GitHuba.
+- Wychodzi tylko adres IP i zwykłe nagłówki żądania. Przejazdy i zarobki nie wychodzą.
+- Adres: `raw.githubusercontent.com` (publiczna lista wydarzeń w Krakowie).
 
 ---
 
@@ -221,7 +238,7 @@ Lista koncertów, meczów i dużych imprez w **Krakowie**. Pomaga przewidzieć d
 
 Jeśli chcesz liczyć bez odrywania rąk od kierownicy:
 
-1. Na ekranie głównym włącz **„Licznik z kierownicy (Beta)”**.
+1. **Ustawienia → Licznik z kierownicy (Beta)** — włącz.
 2. Gdy poprosi o **uprawnienie dostępności** → **OTWÓRZ USTAWIENIA** → włącz usługę RateHelper.
 3. Obsługa:
    - **Przytrzymaj 800 ms** przycisk **następnego utworu / play-pause** → +1 zaakceptowane
@@ -234,11 +251,11 @@ Jeśli chcesz liczyć bez odrywania rąk od kierownicy:
 
 ## 10) Zmiana trybu kierowcy
 
-Jeździsz autem na zmiany z drugą osobą?
+Auto na zmiany w dwie lub trzy osoby?
 
-Menu **⋮** (prawy górny róg) → wybierz **Jeden kierowca** lub **Dwóch kierowców (Dzielony)**.
+Ekran główny → **koło zębate (Ustawienia)** → **Tryb jazdy** → **Jeden kierowca**, **Dwóch kierowców (Dzielony)** lub **Trzech kierowców (Dzielony)**.
 
-> Tryb zapisany w starych tygodniach **się nie zmienia** — nowy tryb dotyczy tylko nowych wpisów.
+> Tryb zapisany w starych tygodniach **się nie zmienia** — nowy tryb dotyczy tylko nowych wpisów. Przy 2–3 kierowcach **łączna liczba przejazdów auta** może wpływać na próg czynszu (formularz Zarobków).
 
 ---
 
@@ -246,13 +263,13 @@ Menu **⋮** (prawy górny róg) → wybierz **Jeden kierowca** lub **Dwóch kie
 
 ### Aplikacja się zamyka lub widget znika
 
-1. Przeczytaj ponownie **Przewodnik konfiguracji** (menu **⋮**) — sprawdź nakładkę i optymalizację baterii.
+1. **Ustawienia → Przewodnik konfiguracji** — sprawdź nakładkę i optymalizację baterii.
 2. **Zatrzymaj** widget → **Uruchom** ponownie.
 3. Na Samsungu **zablokuj** kartę RateHelper w ostatnich aplikacjach.
 
 ### Wysyłanie dziennika awarii
 
-1. Menu **⋮** → **Dziennik awarii**
+1. **Ustawienia → Dziennik awarii**
 2. Naciśnij **KOPIUJ**
 3. Wklej i wyślij przez WhatsApp do developera
 
@@ -260,7 +277,16 @@ Menu **⋮** (prawy górny róg) → wybierz **Jeden kierowca** lub **Dwóch kie
 
 ### Aktualizacja (OTA)
 
-Gdy pojawi się nowa wersja, na dole ekranu zobaczysz powiadomienie. **Pobierz** instaluje APK z GitHuba. Musi być ta sama sygnatura co poprzednia instalacja — nie używaj nieoficjalnych źródeł.
+Przy pierwszym uruchomieniu (i raz po aktualizacji do tej wersji) aplikacja pyta, czy sama sprawdzać GitHuba pod kątem aktualizacji i wydarzeń. **Zezwól** włącza oba przełączniki. **Nie, tylko gdy poproszę** zostawia oba wyłączone. Przełączniki da się zmienić w ustawieniach w każdej chwili.
+
+Przy wyłączonych nic nie wychodzi w sieć przy starcie. **Ustawienia → Sprawdź aktualizacje** (na tym samym wierszu: ostatnie sprawdzenie i wersja). APK schodzi dopiero po stuknięciu aktualizacji w dialogu — samo sprawdzenie go nie pobiera. Pakiet przechodzi kontrolę podpisu i wersji; wymagany **ten sam podpis** co przy poprzedniej instalacji. Przełączniki auto-aktualizacji i wydarzeń są w sekcji **Preferencje** w Ustawieniach.
+
+W tych żądaniach wychodzi adres IP i standardowe nagłówki. Twoje dane nie wychodzą.
+
+- `gist.githubusercontent.com` — manifest wersji
+- `api.github.com` — zapas, gdy manifest się nie wczyta
+- `github.com` — APK (dopiero gdy stukniesz aktualizację)
+- `raw.githubusercontent.com` — lista wydarzeń
 
 ---
 
@@ -279,7 +305,7 @@ flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbo
 - `--split-debug-info` → symbole poza projektem (zachowaj do debugowania).
 - `--split-per-abi` → APK ~8 MB na architekturę.
 
-Jeśli istnieje `android/key.properties`, podpisywanie jest automatyczne. Bez niego używany jest klucz debug — użytkownik **nie zaktualizuje** aplikacji (niezgodność podpisu). Używaj tego samego keystore w każdej wersji.
+`key.properties` musi leżeć w katalogu głównym projektu (nie w `android/`) i być czytelny. Brak albo błąd odczytu **przerywa build release** (`GradleException`) — klucz debug nie jest używany. Build debug działa bez tego pliku. Każda wersja tym samym keystore.
 
 Architektura: [`README.md`](README.md) · Notatki agenta: [`agent-learnings.md`](agent-learnings.md) · Przewodnik turecki: [`SETUP_GUIDE_TR.md`](SETUP_GUIDE_TR.md)
 

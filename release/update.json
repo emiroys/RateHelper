@@ -1,9 +1,9 @@
 {
-  "latest": "5.0.3",
-  "build": 8,
-  "apk_url": "https://github.com/emiroys/ratehelper/releases/download/v5.0.3/app-arm64-v8a-release.apk",
+  "latest": "5.0.4",
+  "build": 9,
+  "apk_url": "https://github.com/emiroys/ratehelper/releases/download/v5.0.4/app-arm64-v8a-release.apk",
   "mandatory": false,
-  "notes_tr": "Üç sürücü modu; yakıt fişinde Paylaş (kişi başı pay); baloncukta isteğe bağlı iptal düğmesi.",
-  "notes_pl": "Tryb 3 kierowców; Podziel paliwo na paragonie; opcjonalny przycisk anulowania na dymku.",
-  "notes_en": "Three-driver mode; Split fuel on receipts; optional cancel button on the overlay pill."
+  "notes_tr": "Ayarlar ekranı (dişli); haftalık kayıt kartları; baloncuk %→R küçültme; ana ekran anlık senkron; GitHub opt-in; güncelleme Ayarlar'da; KK383CT rozeti; güvenli APK kurulumu.",
+  "notes_pl": "Ekran ustawień (koło zębate); karty archiwum tygodni; dymek %→R; liczniki na żywo; zgoda GitHub; aktualizacja w Ustawieniach; tabliczka KK383CT; bezpieczna instalacja APK.",
+  "notes_en": "Settings screen (gear); weekly archive cards; pill %→R collapse; live home sync; GitHub opt-in; update check in Settings; KK383CT badge; safer APK install gate."
 }

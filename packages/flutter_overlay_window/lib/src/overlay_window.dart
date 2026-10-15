@@ -119,18 +119,26 @@ class FlutterOverlayWindow {
     return _res;
   }
 
-  /// Update the overlay size in the screen
+  /// Resize the native overlay window (dp). Overlay isolate only — the
+  /// handler lives on the overlay engine's channel, so calling this from the
+  /// main isolate throws [MissingPluginException].
+  ///
+  /// The window's top-left corner stays anchored and the rect is clamped
+  /// on screen. Omit [enableDrag] to keep the current drag setting.
+  ///
+  /// `return` true when the window was resized, false when the overlay is
+  /// not showing or the native update failed.
   static Future<bool?> resizeOverlay(
     int width,
-    int height,
-    bool enableDrag,
-  ) async {
+    int height, [
+    bool? enableDrag,
+  ]) async {
     final bool? _res = await _overlayChannel.invokeMethod<bool?>(
       'resizeOverlay',
       {
         'width': width,
         'height': height,
-        'enableDrag': enableDrag,
+        if (enableDrag != null) 'enableDrag': enableDrag,
       },
     );
     return _res;

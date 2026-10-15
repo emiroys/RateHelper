@@ -3,7 +3,7 @@
 > **Identyfikator aplikacji:** `com.ratehelper.app`  
 > **Platforma docelowa:** Android (arm64-v8a, zoptymalizowane pod flagowce typu Samsung Galaxy S24 Ultra)  
 > **Framework:** Flutter (Dart) + Natywny Kotlin/Java (Android OS Layer)  
-> **Wersja bieżąca:** `5.0.3+8` (versionName `5.0.3`, pubspec build `8`, arm64 versionCode `2008`)
+> **Wersja bieżąca:** `5.0.4+9` (versionName `5.0.4`, pubspec build `9`, arm64 versionCode `2009`)
 
 ---
 
@@ -27,7 +27,7 @@
 
 ## 1. Tożsamość i cel aplikacji
 
-**RateHelper** to zaawansowany, całkowicie lokalny asystent kierowcy rideshare (Uber/Bolt) operującego w **Krakowie** w ramach partnerstwa flotowego **ERES Partner**. Aplikacja łączy w jednym, zoptymalizowanym pod kątem jazdy środowisku:
+**RateHelper** to asystent kierowcy rideshare (Uber/Bolt) w **Krakowie**, we flocie **ERES Partner**. Przejazdy, paragony i zarobki zostają na telefonie. Aplikacja łączy się z GitHubem tylko wtedy, gdy kierowca na to pozwoli albo sam o to poprosi. W jednym, zoptymalizowanym pod kątem jazdy środowisku:
 - Pływający widget nakładki (Floating Pill Overlay) zawieszony bezpośrednio nad aplikacją kierowcy,
 - Kalkulator wskaźnika akceptacji (Acceptance Rate) z dynamicznym systemem ostrzegania i celem tygodniowym,
 - Precyzyjny moduł księgowo-rozliczeniowy wyliczający realny zysk netto po odliczeniu podatku ryczałtowego VAT, prowizji partnera, progów najmu i rabatów paliwowych,
@@ -36,7 +36,11 @@
 - Pełne wsparcie trójjęzyczne: Turecki (domyślny), Polski oraz Angielski.
 
 ### Główne zasady projektowe
-- **100% Local Finance:** Wszystkie dane finansowe, paragony paliwowe i statystyki pozostają wyłącznie na urządzeniu kierowcy. Brak zewnętrznych baz danych, brak telemetrii, brak kont użytkowników.
+- **Dane kierowcy zostają na telefonie:** Przejazdy, paragony, zarobki i statystyki nie opuszczają urządzenia. Nie ma konta ani zewnętrznej bazy tych danych. Automatyczne sprawdzanie aktualizacji i automatyczne pobieranie wydarzeń są domyślnie wyłączone. Włączenie ich albo ręczne „Sprawdź aktualizacje” / „Wczytaj wydarzenia” wysyła tylko adres IP i zwykłe nagłówki żądania — bez danych użytkownika.
+  - `gist.githubusercontent.com` — manifest aktualizacji
+  - `api.github.com` — zapasowy odczyt ostatniego wydania, tylko gdy manifest się nie wczyta podczas sprawdzenia, które już trwa
+  - `github.com` oraz przekierowania na `*.githubusercontent.com` — plik APK, dopiero po stuknięciu akcji aktualizacji
+  - `raw.githubusercontent.com` — publiczny JSON wydarzeń w Krakowie
 - **Driving-First UI:** Ekstremalny ciemny motyw OLED, dotykowe punkty interakcji spełniające normy bezpieczeństwa (minimum 48–68 dp) oraz selektywna haptyka dostosowana do obsługi w uchwycie samochodowym.
 - **Kompaktowość i płynność:** Niski narzut na baterię i pamięć RAM podczas 12-godzinnych zmian roboczych.
 
@@ -46,16 +50,18 @@
 
 | Moduł | Opis Funkcjonalny | Mechanizm Implementacji |
 | :--- | :--- | :--- |
-| **Pływająca Nakładka (Pill Overlay)** | Widget **276×80 dp** (Yatay / poziomo) lub **74×194 dp** (Dikey / pionowo) wiszący nad aplikacją Uber/Bolt Driver. Natychmiastowe zliczanie zleceń (+/−) bez opuszczania ekranu mapy. Kierunek: ustawienie **Baloncuk Yönü**. | Osobny, odchudzony izolat Fluttera (`packages/flutter_overlay_window`), natywny `WindowManager.updateViewLayout()`, okno natywne = widoczny stadion (brak martwego pola dotyku). Zmiana orientacji zamyka i otwiera nakładkę na nowo — **bez** `resizeOverlay` z izolatu głównego. |
+| **Pływająca Nakładka (Pill Overlay)** | Widget **276×80 dp** (Yatay / poziomo) lub **74×194 dp** (Dikey / pionowo) nad aplikacją Uber/Bolt. Stuknięcie **% akceptacji** zwija pigułkę do okrągłej bańki **R** (**48 dp**) — mniej zasłania mapę; stuknięcie **R** przywraca pełną pigułkę. +/− bez opuszczania mapy. Kierunek: **Ayarlar → Baloncuk Yönü**. | Osobny izolat (`packages/flutter_overlay_window`); okno natywne = widoczny stadion. `resizeOverlay` **tylko** w izolacie nakładki (zwijanie/rozwijanie). Zmiana orientacji: zamknij + otwórz ponownie — **nie** z głównego izolatu. |
+| **Ekran ustawień** | Wszystkie przełączniki (tryb jazdy, balon, język, GitHub auto, kierownica, wakelock), **Sprawdź aktualizacje**, **Kurulum Rehberi**, wersja. | `lib/settings_screen.dart` — ikona **koła zębatego** na pasku ekranu głównego; `SettingsSnapshot` synchronizuje stan z home. |
 | **Pulpit Akceptacji (AR) i Odzyskiwania** | Precyzyjny licznik zleceń (Zaakceptowane, Odrzucone, Ukończone, Anulowane). Dynamiczny bufor ostrzegawczy (2.0% wokół progu celu) oraz kalkulator liczby kursów potrzebnych do odzyskania bezpiecznego wskaźnika. | `home_screen.dart`, wzór odzyskiwania $X = \max(1, \lfloor \frac{r \cdot R - (1-r) \cdot A}{1-r} \rfloor + 1)$, reaktywne notifiery `ValueNotifier`. |
+| **Archiwum tygodni (Logi)** | Po resecie tygodnia zapis v2 JSON z celem (`goalTier`, progi akceptacji/iptal); karty `WeeklyArchiveCard` z **Hedef Tuttu / Tutmadı**; scalanie duplikatów tego samego tygodnia. | `weekly_archive_entry.dart`, `weekly_archive_card.dart`, `collapseWeeklyArchive`, prefs `weekly_archive`. |
 | **Śledzenie Zarobków i Podatków** | Tygodniowy arkusz rozliczeniowy: VAT 12%, opłata ERES 4.3125%, paliwo −10%, najem progowy. Trend 4-tygodniowy i karty miesiąc/rok używają **`blendedHourlyRate`** (zysk ÷ godziny). Tydzień-placeholder paliwa (`isUnreported`) nie dolicza najmu. | `earnings_screen.dart`, `earnings_models.dart`, podgląd live. |
 | **Paragony Paliwowe (Multi-Receipt)** | Rejestracja wielu paragonów paliwowych w danym tygodniu z pełnym formatowaniem walutowym, usuwaniem gestem z opcją cofnięcia (Undo SnackBar) i limitem FIFO (max 100). | `_buildFuelReceiptsSection`, `PolishCurrencyInputFormatter`, formatowanie walutowe zgodne z polskim standardem (`1 250,50 PLN`). |
 | **Tryby Najmu: Solo, Paired, Trio** | Dynamiczne dopasowanie kosztu najmu auta dla 1, 2 lub 3 kierowców na jednym pojeździe. | `DriverMode.solo` / `.paired` / `.trio`, odrębne tabele progowe, bezwzględna niezmienność historyczna zapisanych wpisów. |
 | **Rozdział Liczników Kursów** | Kursy osobiste kierowcy zliczają postęp do darmowego tygodnia (próg 2000), podczas gdy suma kursów auta w trybie współdzielonym decyduje o progu zniżki najmu. | `driverTripCount` (odometer) oraz `carTripCountOverride` (tier lookup). |
-| **Radar Wydarzeń (Kraków)** | Asynchroniczny kalendarz imprez masowych w Krakowie prognozujący godziny szczytów i skoków mnożników stawek. | `radar_screen.dart`, pobieranie `krakow_events.json` z GitHub z godzinnym buforowaniem pamięci RAM, etykiety względne (Dziś/Jutro). |
+| **Radar Wydarzeń (Kraków)** | Kalendarz imprez masowych w Krakowie prognozujący godziny szczytów i skoków mnożników stawek. | `radar_screen.dart`. JSON z `raw.githubusercontent.com` tylko gdy automatyczne pobieranie jest włączone albo kierowca stuknie odświeżenie / „Wczytaj wydarzenia”. Ostatnia lista zostaje na dysku i pokazuje swój wiek. |
 | **Integracja z Przyciskami na Kierownicy** | Rejestracja zleceń za pomocą bezprzewodowego pilota multimedialnego Bluetooth na kierownicy bez odrywania rąk. | `MediaKeyAccessibilityService.kt`: długie przytrzymanie >800 ms; ACK nakładki 1200 ms + `recordPendingTap`; `drainPendingTaps` odejmuje (nie czyści); `_drainPendingTaps` dopiero po `await _loadAndCheckReset()`. |
 | **Raporty PDF do Księgowości** | Generowanie miesięcznych lub rocznych zestawień przychodów i kosztów z podziałem ryczałtowym gotowych do przekazania księgowej. | `earnings_pdf_export.dart`, formatowanie `pdf`, czcionki DM Sans ładowane lokalnie z assetów. |
-| **Sprawdzanie i instalacja aktualizacji (OTA)** | Sprawdzenie przy starcie (nieblokujące) + ręczny kafel **Sprawdź aktualizacje** w stopce ustawień. Pobieranie APK w aplikacji (~21 MB), pasek postępu, uruchomienie natywnego instalatora Androida; przeglądarka tylko jako zapas. | `lib/services/update_service.dart`, `lib/update_dialog.dart`, manifest Gist (`Env.gistUrl`) + zapas GitHub Releases API, `FileProvider`, `REQUEST_INSTALL_PACKAGES`, omijanie cache CDN Gist (`?_=` timestamp). |
+| **Sprawdzanie i instalacja aktualizacji (OTA)** | Jednorazowe pytanie o GitHub (auto-aktualizacja + wydarzenia); domyślnie wyłączone. Ręcznie: **Ayarlar → Güncellemeleri denetle** (czas ostatniego sprawdzenia + wersja na tym samym wierszu). APK (~21 MB) dopiero po stuknięciu aktualizacji w dialogu; weryfikacja podpisu i `versionCode` przed instalatorem; przeglądarka tylko gdy pobranie w aplikacji się nie uda. | `lib/services/update_service.dart`, `lib/update_dialog.dart`, `lib/github_consent_dialog.dart`, `lib/services/github_access.dart`, manifest Gist (`Env.gistUrl`) + zapas GitHub Releases API, `FileProvider`, `REQUEST_INSTALL_PACKAGES`, opcjonalne `apk_sha256`, cache-bust Gist (`?_=`). |
 
 ---
 
@@ -91,8 +97,9 @@ RateHelper działa w oparciu o dwa w pełni rozdzielone izolaty maszyny wirtualn
 ### Kluczowe decyzje architektoniczne nakładki:
 1. **Chudy silnik nakładki (Lean Engine):** Izolat nakładki ma wyłączone automatyczne ładowanie pluginów (`setAutomaticallyRegisterPlugins(false)`). Zarejestrowane są jedynie wtyczki niezbędne (`SharedPreferencesPlugin`, IPC okna oraz JNI/path_provider). Wtyczki ciężkie (URL launcher, share, wakelock) nie są dołączane do pamięci nakładki.
 2. **Rozmiar okna zoptymalizowany pod dotyk:** Okno natywne ma dokładnie rozmiar widocznego stadionu — **276×80 dp** poziomo albo **74×194 dp** pionowo (68 dp przycisk + 3 dp ramka; wysokość = 2×68 + 2×8 odstęp + 36 slot procentu + 2×3). Żaden niewidoczny obszar nie blokuje Uber/Bolt. Pion **nie** jest naiwną zamianą 80×276 — to zostawiało puste końce kapsuły.
-3. **Synchronizacja stanów bez blokowania wątku:** Liczniki bieżącej zmiany zapisywane są do lekkiego pliku `shift_counters.json` (`ShiftCounterStore`), a dziennik kliknięć do dopisywanego pliku `tap_history.jsonl` (`TapHistoryStore`, max 500 wpisów). Komunikacja między izolatami przesyła wartości bezpośrednio w ładunku wiadomości IPC — eliminuje to kosztowne przeładowania pliku SharedPreferences XML (`prefs.reload()`) przy każdym tapnięciu. `prefs.reload()` wyłącznie przy starcie izolatu nakładki.
-4. **Slop przeciągania 20 dp (nie 20 px):** Na S24 Ultra (~3×) 20 pikseli fizycznych ≈ 7 dp i kradnie tapnięcia. Po przekroczeniu progu natywny `onTouch` wysyła do Fluttera `ACTION_CANCEL`, potem konsumuje MOVE/UP. Silnik nakładki jest niszczony w `OverlayService.onDestroy` (prawdziwy restart izolatu).
+3. **Synchronizacja stanów bez blokowania wątku:** Liczniki bieżącej zmiany zapisywane są do lekkiego pliku `shift_counters.json` (`ShiftCounterStore`), a dziennik kliknięć do dopisywanego pliku `tap_history.jsonl` (`TapHistoryStore`, max 500 wpisów). Komunikacja między izolatami przesyła wartości bezpośrednio w ładunku wiadomości IPC — eliminuje to kosztowne przeładowania pliku SharedPreferences XML (`prefs.reload()`) przy każdym tapnięciu. `prefs.reload()` wyłącznie przy starcie izolatu nakładki. Stuknięcia na pigułce wysyłają `OverlaySync.pingCountersChanged` do ekranu głównego (współbieżne odświeżenie liczników bez minimalizacji aplikacji).
+4. **Zwijanie pigułki:** Pref `overlay_pill_collapsed` (tylko izolat nakładki). Kolejność: zwinięcie = narysuj bańkę **R** → `endOfFrame` → `resizeOverlay`; rozwinięcie = powiększ okno → `didChangeMetrics` → pełna pigułka. Treść w `OverflowBox`, żeby układ Row/Column nie pękał w oknie 48 dp.
+5. **Slop przeciągania 20 dp (nie 20 px):** Na S24 Ultra (~3×) 20 pikseli fizycznych ≈ 7 dp i kradnie tapnięcia. Po przekroczeniu progu natywny `onTouch` wysyła do Fluttera `ACTION_CANCEL`, potem konsumuje MOVE/UP. Silnik nakładki jest niszczony w `OverlayService.onDestroy` (prawdziwy restart izolatu).
 
 ---
 
@@ -127,11 +134,11 @@ Aplikacja posiada rygorystyczny, scentralizowany system tokenów projektowych. *
 | **Standardowa powierzchnia karty** | `#161616` / `#181818` | `AppColors.surface` | `0xFF161616` (Karty bazowe) |
 | **Powierzchnia wyniesiona** | `#1E1E1E` / `#222222` | `AppColors.surfaceElevated` | `0xFF1E1E1E` (Nakładka, dialogi, arkusze) |
 | **Złoto rekordów i kamieni milowych** | `#F59E0B` / `#FFC107` | `AppColors.recordGold` | `0xFFFFD54A` (Kamienie milowe, 2000 kursów) |
-| **Złoto sygnatury KK4181R** | Szary chip 11 px | `AppColors.designerGold` | `0xFFD4AF37` (plakietka metaliczna, `ShaderMask`, halo) |
+| **Złoto sygnatury KK383CT** | Cichy pill na `surfaceElevated` | `AppColors.designerGold` | `0xFFD4AF37` (obramowanie ~22% alpha, JetBrains Mono 12 — **bez** `ShaderMask` / poświaty) |
 | **Błękit interakcji i akcji** | Złoto / Morski | `AppColors.actionAccent` | `0xFF38BDF8` (Dodawanie paragonów, przyciski akcji) |
 
 ### Zasady typografii i ikonografii
-- **Monospace wyłącznie do tabel walutowych i plakietki KK4181R:** Czcionka `JetBrains Mono` jest zarezerwowana **wyłącznie** dla wyrównanych w kolumnach kwot walutowych PLN oraz złotej sygnatury projektanta (`KK4181R`) na stopce ekranu głównego.
+- **Monospace wyłącznie do tabel walutowych i plakietki KK383CT:** Czcionka `JetBrains Mono` jest zarezerwowana **wyłącznie** dla wyrównanych w kolumnach kwot walutowych PLN oraz złotej sygnatury projektanta (`KK383CT`) na stopce ekranu głównego.
 - **Wszystkie pozostałe liczby:** Liczniki kursów, wskaźniki procentowe oraz daty używają kroju `DM Sans` z włączoną funkcją `FontFeature.tabularFigures()`, co całkowicie zapobiega poziomemu drganiu (jitter) tekstu przy zmianie cyfr.
 - **Standaryzacja ikon Material Rounded:** Interfejs stosuje zaokrąglone warianty ikon Material (`Icons.*_rounded`). Funkcjonalne emoji interfejsowe (🟢, 🔴, 🏆, ⛽) zostały zastąpione ikonami wektorowymi. Flagi wyboru języka (`🇹🇷`, `🇬🇧`, `🇵🇱`) pozostają w formie natywnej.
 
@@ -203,10 +210,15 @@ $$\text{Break-Even} = \frac{\text{Koszty Stałe (Paliwo po rabacie + Koszt najmu
 
 ## 6. Bezpieczeństwo, Prywatność i Integralność Danych
 
-- **Lokalna piaskownica (Zero Cloud):** Księgowość i historia w `SharedPreferences`, pliki binarne i JSON w dedykowanym katalogu aplikacji. Wyłączona kopia zapasowa w chmurze (`android:allowBackup="false"`).
-- **Zaciemnianie sekretów w kodzie:** Adres URL manifestu aktualizacji Gist oraz oczekiwana sygnatura certyfikatu APK są zaciemniane w procesie kompilacji za pomocą biblioteki `envied` (tablice XOR zamiast jawnego tekstu).
-- **Samoweryfikacja sygnatury APK (Signature Self-Verification):** Przy starcie w trybie release aplikacja odczytuje hash certyfikatu za pomocą `package_info_plus` i porównuje go ze skrótem weryfikacyjnym. W razie wykrycia modyfikacji lub przepakowania APK przez osoby trzecie wyświetlane jest ostrzeżenie o naruszeniu integralności.
-- **Ścisłe wymuszenie TLS (Global TLS Hardening):** Klasa `StrictSecurityHttpOverrides` globalnie odrzuca nieprawidłowe certyfikaty, połączenia nieszyfrowane oraz próby ataków typu Man-in-the-Middle na wszystkich żądaniach `HttpClient`.
+- **Dane na urządzeniu:** Księgowość i historia w `SharedPreferences`, liczniki zmiany i dziennik stuknięć w plikach aplikacji. Kopia zapasowa w chmurze wyłączona (`android:allowBackup="false"`). Te dane nie są wysyłane.
+- **GitHub tylko za zgodą albo na żądanie:** Przy pierwszym uruchomieniu tej wersji (także u kogoś, kto aktualizuje starszą) pada jedno pytanie. „Zezwól” włącza oba przełączniki, „Nie, tylko gdy poproszę” zostawia je wyłączone. Da się je zmienić w ustawieniach. Dopóki oba są wyłączone i kierowca nic nie stuknie, aplikacja nie otwiera połączenia. Wychodzą wtedy wyłącznie adres IP i standardowe nagłówki (między innymi `Accept` i `User-Agent: RateHelper-Updater` przy sprawdzeniu aktualizacji) — bez przejazdów, zarobków ani identyfikatora konta.
+  - `gist.githubusercontent.com` — manifest aktualizacji
+  - `api.github.com` — zapas, tylko gdy manifest podczas tego samego sprawdzenia się nie wczyta
+  - `github.com` i przekierowania `*.githubusercontent.com` — APK po stuknięciu aktualizacji
+  - `raw.githubusercontent.com` — JSON wydarzeń
+- **Zaciemnianie `envied` (to nie sekret):** Adres URL manifestu Gist i oczekiwany skrót certyfikatu APK trafiają do wygenerowanego `env.g.dart` jako tablice XOR. Utrudnia to odczyt ciągu w pliku binarnym. Nie szyfruje wartości i nie ukrywa ich przed kimś, kto uruchomi albo zdekompiluje aplikację — zaciemnienie nie jest tajemnicą.
+- **Ostrzeżenie o naruszeniu sygnatury (to nie granica bezpieczeństwa):** W buildzie release aplikacja porównuje skrót certyfikatu z `package_info_plus` z wartością z `.env`. Przy rozbieżności kierowca widzi ostrzeżenie, po czym aplikacja się zamyka. To sygnał o możliwej podmianie APK. Przepakowany pakiet może ten kod usunąć. Granicą instalacji pozostaje podpis Androida (keystore z `key.properties`; brak `key.properties` → build release kończy się błędem Gradle, bez cichego podpisu debug).
+- **Brama instalacji OTA:** Przed `startActivity` instalatora Kotlin weryfikuje pakiet `com.ratehelper.app`, wyższy `versionCode`, ten sam SHA-256 certyfikatu co zainstalowana aplikacja oraz (opcjonalnie) `apk_sha256` z manifestu Gist. Pobranie tylko z przycisku aktualizacji; strumieniowy SHA-256, limit 100 MB, magic ZIP `PK`.
 - **Odporność na błędy formatowania:** Filtry `LengthLimitingTextInputFormatter(7)` oraz rygorystyczna obsługa separatorów dziesiętnych zapobiegają błędom przepełnienia bufora i błędnemu parsowaniu kwot.
 
 ---
@@ -216,13 +228,19 @@ $$\text{Break-Even} = \frac{\text{Koszty Stałe (Paliwo po rabacie + Koszt najmu
 Aplikacja **nie jest i nie będzie publikowana w sklepie Google Play**. Dystrybucja odbywa się w modelu bezpośrednim (**Sideloaded APK**):
 
 1. **Ryzyko weryfikacji uprawnień nakładki:** Google Play nakłada drastyczne ograniczenia na uprawnienie `SYSTEM_ALERT_WINDOW` (rysowanie na wierzchu) oraz usługi ułatwień dostępu (`AccessibilityService`), regularnie odrzucając aplikacje narzędziowe stworzone dla kierowców.
-2. **Zero zależności od zewnętrznych serwerów:** Aplikacja w 100% działa lokalnie. Publikacja wydań binarnych na GitHub Releases w połączeniu ze sprawdzaniem pliku manifestu w GitHub Gist zapewnia pełną niezależność, bezpłatną infrastrukturę i natychmiastowe wdrażanie poprawek bez oczekiwania na review Google.
+2. **Bez sklepu i bez własnego serwera:** Wydania leżą na GitHub Releases, manifest na Gist. Nie ma konta ani backendu z danymi kierowcy. Kontakt z GitHubem następuje tylko po zgodzie na automatyczne sprawdzenia albo po ręcznym żądaniu. To daje niezależność od review Google bez udawania, że aplikacja w ogóle nie korzysta z sieci.
 3. **Optymalizacja pod architekturę kierowców:** Budowanie paczek `split-per-abi` zmniejsza rozmiar pobieranego pliku APK z ~60 MB do zaledwie ~21 MB dla urządzeń `arm64-v8a` (np. Samsung Galaxy S24 Ultra).
 
 ### Przepływ OTA (v5)
 
 ```
-Cold start / ręczne „Sprawdź aktualizacje”
+Jednorazowa zgoda GitHub (github_network_prompt_answered)
+        │
+        ├─► auto wyłączone → brak sieci przy starcie
+        │
+        ▼
+Cold start: checkOnStartup() tylko gdy włączone auto-aktualizacje
+Ręcznie: Ayarlar → Güncellemeleri denetle → UpdateService.check()
         │
         ▼
 UpdateService.check() / checkOnStartup()
@@ -253,8 +271,9 @@ AppVersion.parse + porównanie numeryczne (semver + build)
 |---|---|
 | [`release/YAYIN_TR.md`](release/YAYIN_TR.md) | Publikacja krok po kroku (TR) |
 | [`release/GITHUB_RELEASE_CHECKLIST.md`](release/GITHUB_RELEASE_CHECKLIST.md) | Checklist EN + smoke test |
-| [`release/CHANGELOG_v5.0.3.md`](release/CHANGELOG_v5.0.3.md) | v5.0.3 — zmiany techniczne |
-| [`release/RELEASE_NOTES_v5.0.3_TR.md`](release/RELEASE_NOTES_v5.0.3_TR.md) / [`_PL.md`](release/RELEASE_NOTES_v5.0.3_PL.md) | Notatki dla kierowców (GitHub Release body) |
+| [`release/update.json`](release/update.json) | OTA manifest (Gist şablonu) + `notes_*` (GitHub Release metni) |
+| [`release/RELEASE_NOTES_v5.0.4_*.md`](release/RELEASE_NOTES_v5.0.4_TR.md) | Pełne notatki dla kierowcy (TR / PL / EN) |
+| [`release/CHANGELOG_v5.0.4.md`](release/CHANGELOG_v5.0.4.md) | Lista zmian dla maintainerów |
 
 **Offset versionCode przy `--split-per-abi`:** arm64 build `7` → `versionCode` **2007** (`2×1000+7`). `UpdateService.pubspecBuildNumber()` redukuje `% 1000` przed porównaniem z polem `"build"` w manifeście.
 
@@ -272,6 +291,8 @@ storePassword=haslo_keystore
 keyAlias=RateHelper
 keyPassword=haslo_klucza
 ```
+
+Release (`flutter build apk --release` i zadania `*Release`) **przerywa się `GradleException`**, gdy plik nie istnieje albo nie daje się go odczytać. Nie ma cichego podpisu kluczem debug. Build debug działa bez tego pliku.
 
 ### 2. Generowanie kodu zaciemniającego
 Przed kompilacją należy wygenerować klasy `envied` na podstawie lokalnego pliku `.env`:
@@ -297,9 +318,12 @@ Wygenerowany plik produkcyjny dla nowoczesnych smartfonów:
 
 ```
 lib/
-├── main.dart                  # Wstępna konfiguracja, StrictSecurityHttpOverrides, inicjalizacja wątków
-├── home_screen.dart           # Główny kokpit, liczniki ValueNotifier, Baloncuk Yönü, plakietka KK4181R
-├── update_dialog.dart         # Dialog aktualizacji OTA + kafel „Sprawdź aktualizacje”
+├── main.dart                  # Wstępna konfiguracja, inicjalizacja wątków
+├── home_screen.dart           # Główny kokpit, liczniki ValueNotifier, reset tygodnia, plakietka KK383CT
+├── settings_screen.dart       # Wszystkie ustawienia, UpdateCheckTile, przewodnik konfiguracji
+├── github_consent_dialog.dart # Jednorazowa zgoda na połączenia GitHub
+├── weekly_archive_card.dart   # Rozwijalne karty archiwum tygodni (zakładka Logi)
+├── update_dialog.dart         # Dialog aktualizacji OTA + UpdateCheckTile (używany w Settings)
 ├── app_spacing.dart           # [DESIGN SYSTEM] Tokeny odstępów (AppSpacing) i zaokrągleń (AppRadius)
 ├── app_text_styles.dart       # [DESIGN SYSTEM] Skala typograficzna (AppTextStyles) i cyfry tabelaryczne
 ├── app_colors.dart            # [DESIGN SYSTEM] 3-tonowe tła OLED, recordGold, designerGold, actionAccent
@@ -315,13 +339,15 @@ lib/
 ├── onboarding_screen.dart     # Asystent przyznawania uprawnień systemowych (Nakładka + Bateria)
 ├── fonts.dart                 # Deklaracje lokalnych rodzin czcionek (DM Sans, JetBrains Mono)
 ├── l10n.dart                  # Wielojęzyczność (TR / EN / PL) oraz lokalne formatowanie walutowe
-├── secure_http.dart           # Rygorystyczny certyfikat TLS (StrictSecurityHttpOverrides)
 ├── crash_logger.dart          # Lokalny bufor dziennika awarii i błędów (crash.log)
 ├── models/
 │   ├── event_model.dart       # Struktura danych wydarzenia masowego (Radar)
 │   └── weekly_archive_entry.dart # Model archiwalny podsumowań tygodniowych (v2 JSON)
 └── services/
     ├── event_service.dart     # Pobieranie i buforowanie danych krakow_events.json
+    ├── github_access.dart     # Przełączniki auto-update / auto-events, promptSettled
+    ├── github_http.dart       # HttpClient z allowlistą hostów GitHub
+    ├── apk_install_check.dart # Wspólna brama podpisu/wersji przed instalacją
     └── update_service.dart    # Manifest Gist, semver, pobieranie APK, instalacja natywna
 
 android/
@@ -335,4 +361,4 @@ android/
 
 ---
 
-> **RateHelper v5.0.3** — Bezkompromisowe narzędzie stworzone z perspektywy fotela kierowcy. Realna kontrola zysków na krakowskich drogach.
+> **RateHelper v5.0.4** — Bezkompromisowe narzędzie stworzone z perspektywy fotela kierowcy. Realna kontrola zysków na krakowskich drogach.

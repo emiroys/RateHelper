@@ -23,26 +23,32 @@ class RadarScreen extends StatefulWidget {
 }
 
 class _RadarScreenState extends State<RadarScreen> {
-  late Future<List<EventModel>> _eventsFuture;
+  bool _loading = true;
+  EventFetchResult _result = const EventFetchResult.notLoaded();
 
   @override
   void initState() {
     super.initState();
-    _loadEvents();
+    _load(userAsked: false);
   }
 
-  void _loadEvents() {
+  /// [userAsked] is the refresh button, pull-to-refresh, or Load events.
+  /// Opening the screen passes false, so a disabled automatic fetch stays offline.
+  Future<void> _load({required bool userAsked}) async {
+    // The first call runs from initState, where _loading is already true and
+    // setState is illegal. Later taps (refresh, Load events) do need a frame.
+    if (!_loading && mounted) {
+      setState(() => _loading = true);
+    }
+    final result = await EventService.loadForDisplay(userAsked: userAsked);
+    if (!mounted) return;
     setState(() {
-      _eventsFuture = EventService.fetchUpcomingEvents();
+      _loading = false;
+      _result = result;
     });
   }
 
-  Future<void> _handleRefresh() async {
-    // Clear in-memory cache to force network re-fetch on manual pull-to-refresh
-    EventService.clearCache();
-    _loadEvents();
-    await _eventsFuture;
-  }
+  Future<void> _handleRefresh() => _load(userAsked: true);
 
   @override
   Widget build(BuildContext context) {
@@ -84,56 +90,53 @@ class _RadarScreenState extends State<RadarScreen> {
           IconButton(
             tooltip: S.refresh,
             icon: const Icon(Icons.refresh_rounded, color: AppColors.mutedText),
-            onPressed: () {
-              EventService.clearCache();
-              _loadEvents();
-            },
+            onPressed: () => _load(userAsked: true),
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _handleRefresh,
-        color: _emerald,
-        backgroundColor: _cardColor,
-        child: FutureBuilder<List<EventModel>>(
-          future: _eventsFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return _buildShimmerList();
-            }
+      body: _buildBody(),
+    );
+  }
 
-            if (snapshot.hasError) {
-              return _buildErrorState(S.eventsReadError);
-            }
+  Widget _buildBody() {
+    final events = _result.events;
+    if (_loading && events == null) {
+      return _buildShimmerList();
+    }
+    if (events == null && _result.error != null) {
+      return _buildErrorState(S.eventsReadError);
+    }
+    if (events == null) {
+      return _buildNotLoadedState();
+    }
+    if (events.isEmpty) {
+      return _buildEmptyState(S.eventsEmptyDesc);
+    }
 
-            final events = snapshot.data ?? [];
-            if (events.isEmpty) {
-              return _buildEmptyState(S.eventsEmptyDesc);
-            }
-
-            return ListView.separated(
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
-              padding: const EdgeInsets.all(16),
-              itemCount: events.length + 1, // +1 for the top info header
-              separatorBuilder: (context, index) => const SizedBox(height: 16),
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return _buildRadarHeader(events.length);
-                }
-                final event = events[index - 1];
-                return _buildFullWidthEventCard(event);
-              },
-            );
-          },
+    return RefreshIndicator(
+      onRefresh: _handleRefresh,
+      color: _emerald,
+      backgroundColor: _cardColor,
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
         ),
+        padding: const EdgeInsets.all(16),
+        itemCount: events.length + 1, // +1 for the top info header
+        separatorBuilder: (context, index) => const SizedBox(height: 16),
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return _buildRadarHeader(events.length, _result.fetchedAt);
+          }
+          final event = events[index - 1];
+          return _buildFullWidthEventCard(event);
+        },
       ),
     );
   }
 
-  Widget _buildRadarHeader(int count) {
+  Widget _buildRadarHeader(int count, DateTime? fetchedAt) {
     return Container(
       padding: AppSpacing.cardPadding,
       decoration: BoxDecoration(
@@ -186,6 +189,19 @@ class _RadarScreenState extends State<RadarScreen> {
                     height: 1.3,
                   ),
                 ),
+                if (fetchedAt != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    S.eventsCacheAge(DateTime.now().difference(fetchedAt)),
+                    style: const TextStyle(
+                      fontFamily: AppFonts.dmSans,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.labelText,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -372,16 +388,23 @@ class _RadarScreenState extends State<RadarScreen> {
     );
   }
 
+  Widget _buildNotLoadedState() {
+    return AppEmptyState(
+      icon: Icons.cloud_download_rounded,
+      title: S.eventsNotLoadedTitle,
+      description: S.eventsNotLoadedBody,
+      actionLabel: S.loadEvents,
+      onAction: () => _load(userAsked: true),
+    );
+  }
+
   Widget _buildEmptyState(String message) {
     return AppEmptyState(
       icon: Icons.event_busy_rounded,
       title: S.eventsEmptyTitle,
       description: message,
-      actionLabel: S.tryAgain,
-      onAction: () {
-        EventService.clearCache();
-        _loadEvents();
-      },
+      actionLabel: S.refresh,
+      onAction: () => _load(userAsked: true),
     );
   }
 
@@ -392,10 +415,7 @@ class _RadarScreenState extends State<RadarScreen> {
       description: message,
       accent: _crimson,
       actionLabel: S.reload,
-      onAction: () {
-        EventService.clearCache();
-        _loadEvents();
-      },
+      onAction: () => _load(userAsked: true),
     );
   }
 }

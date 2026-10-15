@@ -21,7 +21,7 @@ abstract final class AppColors {
   /// Backwards-compatible alias for recordGold.
   static const gold = recordGold;
 
-  /// Signature gold for KK4181R badge.
+  /// Signature gold for KK383CT badge.
   static const designerGold = Color(0xFFD4AF37);
 
   // Consolidated 3-Tone Dark Surface Architecture:

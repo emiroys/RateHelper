@@ -15,6 +15,12 @@ public abstract class WindowSetup {
     static int flag = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
     static int gravity = Gravity.CENTER;
     static BasicMessageChannel<Object> messenger = null;
+
+    /// Set while the overlay engine is registering plugins. That engine hosts
+    /// its own [FlutterOverlayWindowPlugin]; if that instance claimed
+    /// [messenger], overlay taps would be forwarded back into the overlay
+    /// isolate and the main app would never see them.
+    static boolean suppressMessengerClaim = false;
     static String overlayTitle = "Overlay is activated";
     static String overlayContent = "Tap to edit settings or disable";
     static String positionGravity = "none";

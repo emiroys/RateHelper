@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:developer' as developer;
-import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -14,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // parsed synchronously before runApp.
 import 'package:timezone/data/latest_10y.dart' as tz;
 
+import 'github_consent_dialog.dart';
 import 'home_screen.dart';
 import 'crash_logger.dart';
 import 'fonts.dart';
@@ -21,12 +21,12 @@ import 'l10n.dart';
 import 'log.dart';
 import 'onboarding_screen.dart';
 import 'overlay_widget.dart';
-import 'secure_http.dart';
+import 'services/github_access.dart';
+
 const _kKeyOnboardingComplete = 'onboardingComplete';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  HttpOverrides.global = StrictSecurityHttpOverrides();
 
   // Parallelize independent boot work: timezone DB load, prefs warmup,  // and crash-logger file probe all hit different I/O queues.
   // Each boot task is independent and non-fatal: timezone falls back to
@@ -72,9 +72,8 @@ void overlayMain() {
   }
 
   runZonedGuarded<void>(
-    () {
+    () async {
       WidgetsFlutterBinding.ensureInitialized();
-      HttpOverrides.global = StrictSecurityHttpOverrides();
       DartPluginRegistrant.ensureInitialized();
       // Each isolate has its own statics: without this, CrashLogger._file
       // is null here and every overlay error is silently dropped in release.
@@ -98,6 +97,18 @@ void overlayMain() {
         );
         return true;
       };
+
+      // Fresh isolate per overlay open, so getInstance() reads disk — no
+      // reload needed. Capped so a slow read cannot hold the first frame.
+      var startCollapsed = false;
+      try {
+        final prefs = await SharedPreferences.getInstance()
+            .timeout(const Duration(milliseconds: 400));
+        startCollapsed =
+            prefs.getBool(OverlayWidget.collapsedPrefsKey) ?? false;
+      } catch (e) {
+        logd('overlay collapsed pref read skipped: $e', name: 'overlay');
+      }
 
       runApp(
         MaterialApp(
@@ -125,7 +136,7 @@ void overlayMain() {
               ),
             );
           },
-          home: const OverlayWidget(),
+          home: OverlayWidget(initialCollapsed: startCollapsed),
         ),
       );
     },
@@ -158,6 +169,46 @@ class RateHelperApp extends StatefulWidget {
 
 class _RateHelperAppState extends State<RateHelperApp> {
   late bool _needsOnboarding = widget.showOnboarding;
+  final _navigatorKey = GlobalKey<NavigatorState>();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_askGithubOnce());
+    });
+  }
+
+  /// One question, before any GitHub read. Existing installs see it once
+  /// because the answered flag is missing until this version writes it.
+  /// A failure to read prefs leaves both switches off and still releases
+  /// the gate, so startup cannot sit on a socket.
+  Future<void> _askGithubOnce() async {
+    final generation = GithubAccess.generation;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      GithubAccess.publishLastCheck(GithubAccess.readLastCheck(prefs));
+      if (GithubAccess.promptAnswered(prefs)) return;
+      if (!mounted || generation != GithubAccess.generation) return;
+      final navContext = _navigatorKey.currentContext;
+      if (navContext == null || !navContext.mounted) return;
+      final allow = await showDialog<bool>(
+        context: navContext,
+        barrierDismissible: false,
+        builder: (_) => const GithubConsentDialog(),
+      );
+      if (!mounted || allow == null || generation != GithubAccess.generation) {
+        return;
+      }
+      await GithubAccess.applyChoice(prefs, allow: allow);
+    } catch (e, s) {
+      loge('github consent failed', name: 'home', error: e, stack: s);
+    } finally {
+      if (generation == GithubAccess.generation) {
+        GithubAccess.markPromptSettled();
+      }
+    }
+  }
 
   Future<void> _completeOnboarding() async {
     final prefs = await SharedPreferences.getInstance();
@@ -169,6 +220,7 @@ class _RateHelperAppState extends State<RateHelperApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'RateHelper',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

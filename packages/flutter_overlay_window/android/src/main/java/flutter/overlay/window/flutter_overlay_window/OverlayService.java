@@ -16,6 +16,7 @@ import android.graphics.Point;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
@@ -72,6 +73,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
 
     private Handler mAnimationHandler = new Handler();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private float lastX, lastY;
     private int lastYPosition;
     private boolean dragging;
@@ -178,14 +180,32 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 int y = call.<Integer>argument("y");
                 moveOverlay(x, y, result);
             } else if (call.method.equals("resizeOverlay")) {
-                int width = call.argument("width");
-                int height = call.argument("height");
-                boolean enableDrag = call.argument("enableDrag");
+                Integer width = call.argument("width");
+                Integer height = call.argument("height");
+                Boolean enableDrag = call.argument("enableDrag");
+                if (width == null || height == null) {
+                    result.error("ARGS", "resizeOverlay needs width and height", null);
+                    return;
+                }
                 resizeOverlay(width, height, enableDrag, result);
+            } else {
+                // Without a reply the Dart Future never completes.
+                result.notImplemented();
             }
         });
+        // Pill → home. WindowSetup.messenger is the main engine's channel
+        // (the overlay plugin must not claim it). Reply immediately: the
+        // Dart send is fire-and-forget, and a missing reply hangs the Future.
         overlayMessageChannel.setMessageHandler((message, reply) -> {
-            WindowSetup.messenger.send(message);
+            try {
+                BasicMessageChannel<Object> mainMessenger = WindowSetup.messenger;
+                if (mainMessenger != null) {
+                    mainMessenger.send(message);
+                }
+            } catch (Exception e) {
+                Log.e("OverLay", "forward to main failed", e);
+            }
+            reply.reply(null);
         });
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
@@ -284,17 +304,78 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
 
-    private void resizeOverlay(int width, int height, boolean enableDrag, MethodChannel.Result result) {
-        if (windowManager != null) {
+    /// Resizes the window itself (not just the drawn widget) so the area the
+    /// pill no longer covers passes touches through. The top-left corner stays
+    /// put, then the rect is clamped so a pill expanded from a bubble parked
+    /// at the right/bottom edge stays fully on screen. `enableDrag` null keeps
+    /// the current drag setting.
+    private void resizeOverlay(int widthDp, int heightDp, @Nullable Boolean enableDrag, MethodChannel.Result result) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(() -> resizeOverlay(widthDp, heightDp, enableDrag, result));
+            return;
+        }
+        if (windowManager == null || flutterView == null) {
+            result.success(false);
+            return;
+        }
+        try {
             WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
-            params.width = resolveOverlayWidth(width);
-            params.height = resolveOverlayHeight(height);
-            WindowSetup.enableDrag = enableDrag;
+            int oldWidth = params.width >= 0 ? params.width : flutterView.getWidth();
+            int oldHeight = params.height >= 0 ? params.height : flutterView.getHeight();
+            int newWidth = resolveOverlayWidth(widthDp);
+            int newHeight = resolveOverlayHeight(heightDp);
+
+            DisplayMetrics dm = new DisplayMetrics();
+            windowManager.getDefaultDisplay().getRealMetrics(dm);
+            int hGravity = WindowSetup.gravity & Gravity.HORIZONTAL_GRAVITY_MASK;
+            int vGravity = WindowSetup.gravity & Gravity.VERTICAL_GRAVITY_MASK;
+
+            // MATCH_PARENT (-1) has no corner to anchor; leave that axis alone.
+            if (newWidth >= 0 && oldWidth >= 0) {
+                int screenW = dm.widthPixels;
+                int left = leadingEdge(hGravity, Gravity.LEFT, Gravity.RIGHT, params.x, oldWidth, screenW);
+                left = clamp(left, 0, Math.max(0, screenW - newWidth));
+                params.x = offsetForLeadingEdge(hGravity, Gravity.LEFT, Gravity.RIGHT, left, newWidth, screenW);
+            }
+            if (newHeight >= 0 && oldHeight >= 0) {
+                int screenH = dm.heightPixels;
+                int top = leadingEdge(vGravity, Gravity.TOP, Gravity.BOTTOM, params.y, oldHeight, screenH);
+                top = clamp(top, 0, Math.max(0, screenH - newHeight));
+                params.y = offsetForLeadingEdge(vGravity, Gravity.TOP, Gravity.BOTTOM, top, newHeight, screenH);
+            }
+
+            params.width = newWidth;
+            params.height = newHeight;
+            if (enableDrag != null) {
+                WindowSetup.enableDrag = enableDrag;
+            }
             windowManager.updateViewLayout(flutterView, params);
+            debugLog(this, "OverLay", "resize " + newWidth + "x" + newHeight + " at " + params.x + "," + params.y);
             result.success(true);
-        } else {
+        } catch (Exception e) {
+            Log.e("OverLay", "resizeOverlay failed", e);
             result.success(false);
         }
+    }
+
+    /// Screen coordinate of the window's left (or top) edge for one axis.
+    /// `x`/`y` in LayoutParams are offsets from the gravity edge, not from 0.
+    private static int leadingEdge(int axisGravity, int startGravity, int endGravity,
+                                   int offset, int size, int screen) {
+        if (axisGravity == startGravity) return offset;
+        if (axisGravity == endGravity) return screen - offset - size;
+        return (screen - size) / 2 + offset;
+    }
+
+    private static int offsetForLeadingEdge(int axisGravity, int startGravity, int endGravity,
+                                            int edge, int size, int screen) {
+        if (axisGravity == startGravity) return edge;
+        if (axisGravity == endGravity) return screen - edge - size;
+        return edge - (screen - size) / 2;
+    }
+
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private void moveOverlay(int x, int y, MethodChannel.Result result) {
@@ -404,21 +485,28 @@ public class OverlayService extends Service implements View.OnTouchListener {
     // path_provider_android is JNI-backed (no FlutterPlugin class), so we
     // register JniPlugin + JniFlutterPlugin instead of PathProviderPlugin.
     private static void registerOverlayPlugins(FlutterEngine engine) {
-        String[] pluginClasses = new String[] {
-            "flutter.overlay.window.flutter_overlay_window.FlutterOverlayWindowPlugin",
-            "io.flutter.plugins.sharedpreferences.SharedPreferencesPlugin",
-            "com.github.dart_lang.jni.JniPlugin",
-            "com.github.dart_lang.jni_flutter.JniFlutterPlugin",
-        };
-        for (int i = 0; i < pluginClasses.length; i++) {
-            String className = pluginClasses[i];
-            try {
-                Class<?> clazz = Class.forName(className);
-                Object plugin = clazz.getDeclaredConstructor().newInstance();
-                engine.getPlugins().add((FlutterPlugin) plugin);
-            } catch (Exception e) {
-                Log.e("OverlayService", "Failed to register overlay plugin " + className, e);
+        // Keep WindowSetup.messenger pointing at the main engine. This
+        // plugin's onAttachedToEngine would otherwise steal it.
+        WindowSetup.suppressMessengerClaim = true;
+        try {
+            String[] pluginClasses = new String[] {
+                "flutter.overlay.window.flutter_overlay_window.FlutterOverlayWindowPlugin",
+                "io.flutter.plugins.sharedpreferences.SharedPreferencesPlugin",
+                "com.github.dart_lang.jni.JniPlugin",
+                "com.github.dart_lang.jni_flutter.JniFlutterPlugin",
+            };
+            for (int i = 0; i < pluginClasses.length; i++) {
+                String className = pluginClasses[i];
+                try {
+                    Class<?> clazz = Class.forName(className);
+                    Object plugin = clazz.getDeclaredConstructor().newInstance();
+                    engine.getPlugins().add((FlutterPlugin) plugin);
+                } catch (Exception e) {
+                    Log.e("OverlayService", "Failed to register overlay plugin " + className, e);
+                }
             }
+        } finally {
+            WindowSetup.suppressMessengerClaim = false;
         }
     }
 

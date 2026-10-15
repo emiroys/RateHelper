@@ -17,6 +17,9 @@ plugins {
 // means future APK updates cannot be installed over the existing one because
 // Android verifies the signing certificate matches on every install.
 //
+// A release build with a missing or unreadable file throws GradleException.
+// It must not fall back to the debug keystore. Debug builds do not require it.
+//
 // Minimum contents of key.properties:
 //   storeFile=<absolute path to .jks>
 //   storePassword=<keystore password>
@@ -25,10 +28,19 @@ plugins {
 // ---------------------------------------------------------------------------
 val keystorePropertiesFile = rootProject.file("../key.properties")
 val keystoreProperties = Properties()
-val hasReleaseKeystore = keystorePropertiesFile.canRead()
-if (hasReleaseKeystore) {
-    keystoreProperties.load(keystorePropertiesFile.inputStream())
+val releaseKeystoreError: String? = if (!keystorePropertiesFile.exists()) {
+    "key.properties is missing at ${keystorePropertiesFile.absolutePath}"
+} else if (!keystorePropertiesFile.canRead()) {
+    "key.properties is unreadable at ${keystorePropertiesFile.absolutePath}"
+} else {
+    try {
+        keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+        null
+    } catch (e: Exception) {
+        "key.properties could not be read at ${keystorePropertiesFile.absolutePath} (${e.message})"
+    }
 }
+val hasReleaseKeystore = releaseKeystoreError == null
 
 android {
     // Application package identity (com.ratehelper.app). Android treats a changed
@@ -67,14 +79,11 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (hasReleaseKeystore) {
-                signingConfigs.getByName("release")
-            } else {
-                // Fallback: debug key keeps CI working when key.properties
-                // is absent. Never ship this APK to real users — they will
-                // be unable to install future production-signed updates.
-                signingConfigs.getByName("debug")
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
             }
+            // No debug-keystore fallback. Release tasks throw below when
+            // key.properties is missing or unreadable.
 
             isMinifyEnabled   = true
             isShrinkResources = true
@@ -129,6 +138,24 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// Fail before any release task action runs. Debug task graphs never include
+// a *Release task, so `flutter run` / assembleDebug still work without the file.
+val signingFailure = releaseKeystoreError
+if (signingFailure != null) {
+    tasks.configureEach {
+        if (!name.contains("Release")) return@configureEach
+        doFirst {
+            throw GradleException(
+                "Release build refused: $signingFailure. " +
+                    "Refusing to sign a release build with the debug key. " +
+                    "Add a readable key.properties at the Flutter project root " +
+                    "(storeFile, storePassword, keyAlias, keyPassword). " +
+                    "Debug builds do not need this file."
+            )
+        }
+    }
 }
 
 dependencies {

@@ -6,7 +6,7 @@ Bu rehber, RateHelper’i telefonuna kurduktan sonra **doğru çalışması içi
 > **Tahmini kurulum süresi:** 2–3 dakika  
 > **Lehçe sürüm:** [`SETUP_GUIDE_PL.md`](SETUP_GUIDE_PL.md)
 
-> **Uygulama içi “Kurulum Rehberi”** (⋮ menü) yalnızca **iki izin adımını** (overlay + pil) gösterir. Bu dosya **tam kullanım kılavuzudur**.
+> **Uygulama içi “Kurulum Rehberi”** (**Ayarlar** → dişli ikonu) yalnızca **iki izin adımını** (overlay + pil) gösterir. Bu dosya **tam kullanım kılavuzudur**.
 
 ---
 
@@ -16,8 +16,9 @@ Bu rehber, RateHelper’i telefonuna kurduktan sonra **doğru çalışması içi
    Dosya adı genelde `app-arm64-v8a-release.apk` veya `ratehelper.apk` olur.
 2. Dosyaya dokun. Telefon **“Bilinmeyen kaynaklardan yükleme”** izni isterse → **İzin Ver** → tekrar APK’ya dön → **Yükle**.
 3. İlk açılışta uygulama seni otomatik olarak **RateHelper Kurulumu** ekranına götürür.
+4. Kurulum bittikten sonra (veya bu sürüme ilk kez güncellediğinde) **bir kez** sorulur: GitHub üzerinden otomatik güncelleme ve Kraków etkinlikleri çekilsin mi? İstemezsen **Hayır** de — verilerin yine telefonda kalır; istersen sonra **Ayarlar**’dan açarsın.
 
-> Kurulum ekranını daha sonra tekrar okumak için: ana ekranda sağ üst **⋮ menü** → **Kurulum Rehberi**.
+> Kurulum ekranını tekrar okumak için: ana ekran → sağ üst **dişli (Ayarlar)** → **Kurulum Rehberi**.
 
 ---
 
@@ -72,6 +73,8 @@ Her iki adım tamamsa alttaki **BİTİR** butonuna bas. Ana ekrana geçersin.
 
 ## 3) Ana ekran — sayaçlar
 
+Sağ üstteki **dişli** ikonu **Ayarlar** ekranını açar (sürüş modu, baloncuk, dil, GitHub, güncelleme, çökme kayıtları). Haftalık hedef çipi, sayaçlar, **HAFTAYI SIFIRLA**, alttaki **KK383CT** rozeti ve sürüm satırı ana ekranda kalır.
+
 Ana ekranda dört büyük sayaç vardır:
 
 | Sayaç | Anlamı |
@@ -97,7 +100,7 @@ Kabul oranı kartının rengi seçtiğin **Haftalık Yolculuk Hedefi**’ne gör
 
 Üstteki hedef çipine dokun → **Haftalık Yolculuk Hedefi** seç. Her kademe, ERES kira indirimi için gereken minimum yolculuk sayısı ve kabul oranını temsil eder (ör. 100–149 yolculuk, min. %80 kabul). **Gereksinim Yok** seçeneği yalnızca sayaç tutmak içindir.
 
-> Hedef, **Tek Sürücü** / **İki Sürücü** moduna göre farklı eşikler kullanır (⋮ menüden değiştirilir).
+> Hedef, **Tek / İki / Üç Sürücü** moduna göre farklı eşikler kullanır (**Ayarlar → Sürüş modu**).
 
 ### İptal hakkı kartı
 
@@ -113,7 +116,7 @@ Yanlış sayı mı girdin? Sayaç değerine **dokun** veya **uzun bas** → aç�
 
 ### Otomatik tamamla
 
-**“Otomatik tamamla”** anahtarını açarsan, kabul sayısına her **+1** eklediğinde tamamlanan yolculuk sayısı da otomatik artar.
+**Ayarlar → Otomatik tamamla** açıksa, kabul sayısına her **+1** eklediğinde tamamlanan yolculuk sayısı da otomatik artar.
 
 ### Haftayı sıfırla
 
@@ -123,13 +126,18 @@ Hafta bittiğinde **HAFTAYI SIFIRLA** butonuna bas. Sayacı sıfırlamadan önce
 
 ---
 
-## 3b) Üst menü (⋮)
+## 3b) Ayarlar ekranı (dişli)
 
-| Menü | İşlev |
+Ana ekran → sağ üst **dişli**. Bölümler:
+
+| Bölüm | Ne var? |
 | --- | --- |
-| **Kurulum Rehberi** | İki izin adımını tekrar gösterir (overlay + pil) |
-| **Çökme Kayıtları** | Hata günlüğünü kopyala / temizle |
-| **Tek Sürücü / İki Sürücü** | Sürücü modunu değiştir (kira tabloları + hedef eşikleri) |
+| **Sürüş ve sayaçlar** | **Sürüş modu** (Tek / İki / Üç sürücü), **Otomatik tamamla**, **Direksiyon tuşu (Beta)**, **Ekranı açık tut** |
+| **Baloncuk** | **Baloncuk yönü** (Yatay / Dikey), **Baloncukta iptal düğmesi** (isteğe bağlı) |
+| **Tercihler** | **Dil**, **Otomatik güncelleme denetimi**, **Etkinlikleri otomatik getir** |
+| **Sistem ve destek** | **Güncellemeleri denetle** (son kontrol saati + sürüm), **Kurulum Rehberi**, **Çökme Kayıtları** |
+
+> Dil de alt menüdeki 🌐 ile değişir; ikisi aynı ayarı kullanır.
 
 ---
 
@@ -150,9 +158,16 @@ Ekranın altındaki menüde ortadaki büyük butona bas:
 | --- | --- |
 | **Yeşil ➕** | Kabul edilen istek (+1) |
 | **Kırmızı ➖** | Reddedilen istek (+1) |
-| **Ortadaki %** | Anlık kabul oranın |
+| **Ortadaki %** | Anlık kabul oranın. **Dokun** → widget küçük bir **R** baloncuğuna küçülür |
+| **R baloncuğu** | **Dokun** → widget tekrar açılır |
 
-Widget’ı **sürükleyerek** ekranda istediğin yere taşıyabilirsin. Uber’in dokunmatik alanlarını kapatmaması için küçük tutulmuştur (276×80 dp).
+Widget’ı **sürükleyerek** ekranda istediğin yere taşıyabilirsin. Yatay boyut yaklaşık **276×80 dp**; dikey mod **Ayarlar → Baloncuk yönü → Dikey** ile seçilir (~74×194 dp).
+
+Ekranda yer açmak için **%**’ye dokun: widget 48 dp’lik bir **R** baloncuğuna küçülür; baloncuğun dışındaki dokunuşlar Uber’e gider. **R**’ye dokununca tam baloncuk geri gelir. Baloncuk da sürüklenebilir. Küçükken +/−, sayaç kaydı ve direksiyon tuşu çalışmaya devam eder. Uygulama küçük/açık durumunu hatırlar.
+
+**Ayarlar → Baloncukta iptal düğmesi** açıksa, kırmızı **−** yanında turuncu **iptal** düğmesi de görünür.
+
+Ana ekrandaki sayaçlar, baloncuktan yaptığın değişiklikleri **anında** yansıtır (uygulamayı kapat-aç gerekmez).
 
 > Widget kapalıyken sayaç tutmak için ana ekrana dönüp büyük **+ / −** butonlarını kullan.
 
@@ -180,7 +195,7 @@ Her **+ / −** basımının saati listelenir. **Bugün** / **Tümü** filtresi 
 
 ### Haftalık arşiv
 
-Her **HAFTAYI SIFIRLA** işleminde o haftanın kabul/iptal oranları buraya kaydedilir. Eski kayıtlar da okunabilir.
+Her **HAFTAYI SIFIRLA** işleminde o haftanın özeti buraya **kart** olarak kaydedilir. Karta dokun → detay açılır (tamamlanan / kabul / red sayıları, o haftanın hedefi). **Hedef Tuttu** veya **Hedef Tutmadı** satırı, o hafta seçtiğin kademeye göre kabul ve iptal sınırına bakar. Aynı hafta içinde ikinci kez resetlersen sayılar tek kartta birleşir.
 
 ---
 
@@ -190,7 +205,7 @@ Her **HAFTAYI SIFIRLA** işleminde o haftanın kabul/iptal oranları buraya kayd
 
 ### İlk açılış
 
-1. **Tek Sürücü** mi yoksa **İki Sürücü (Paylaşımlı)** mı kullandığını seç — kira tabloları buna göre değişir.
+1. **Tek / İki / Üç Sürücü** modundan hangisini kullandığını seç (**Ayarlar → Sürüş modu** veya Kazanç ekranındaki ilk kurulum) — kira tabloları buna göre değişir.
 2. Haftalık formu doldur: **Net Gelir**, **Alınan Nakit**, **Çevrimiçi Süre**, **Yolculuk Sayısı**, yakıt fişleri vb.
 
 ### Görünümler
@@ -211,9 +226,11 @@ Sağ üstteki paylaş ikonundan **PDF Olarak Dışa Aktar** → tarih aralığı
 
 Kraków’da konser, maç ve büyük etkinlikleri listeler. Yoğun talep (surge) beklentisi olan günleri önceden görmen için.
 
-- Liste **internetten** güncellenir (yalnızca public etkinlik verisi; finansal verin gönderilmez).
-- Aşağı çekerek **Yenile** yapabilirsin.
-- Veri bir saat boyunca önbellekte tutulur.
+- Otomatik getirme **kapalı** başlar. Açık değilse liste kendiliğinden inmez.
+- Önbellek varsa etkinlikler **ne zaman yüklendiğiyle** gösterilir. Önbellek yoksa **Etkinlikleri yükle** düğmesi çıkar.
+- Üstteki yenile düğmesi veya aşağı çekmek listeyi GitHub’dan ister.
+- Giden tek şey IP adresin ve standart istek başlıklarıdır. Yolculuk ve kazanç verin gitmez.
+- Adres: `raw.githubusercontent.com` (herkese açık Kraków etkinlik listesi).
 
 ---
 
@@ -221,7 +238,7 @@ Kraków’da konser, maç ve büyük etkinlikleri listeler. Yoğun talep (surge)
 
 Ellerini direksiyondan ayırmadan sayaç tutmak istersen:
 
-1. Ana ekranda **“Direksiyon Tuşu ile Sayma (Beta)”** anahtarını **AÇ**.
+1. **Ayarlar → Direksiyon tuşu ile sayma (Beta)** anahtarını **AÇ**.
 2. **Erişilebilirlik izni** istenirse → **AYARLARA GİT** → RateHelper servisini **AÇ**.
 3. Kullanım:
    - **Sonraki şarkı / oynat-dur** tuşuna **800 ms basılı tut** → kabul sayacı +1
@@ -234,11 +251,11 @@ Ellerini direksiyondan ayırmadan sayaç tutmak istersen:
 
 ## 10) Sürücü modu değiştirme
 
-Araba paylaşımlı mı kullanıyorsun?
+Araba paylaşımlı mı, üç kişi mi biniyorsunuz?
 
-Ana ekranda sağ üst **⋮ menü** → **Tek Sürücü** veya **İki Sürücü (Paylaşımlı)** seç.
+Ana ekran → **dişli (Ayarlar)** → **Sürüş modu** → **Tek Sürücü**, **İki Sürücü (Paylaşımlı)** veya **Üç Sürücü (Paylaşımlı)**.
 
-> Geçmiş haftaların kayıtlı modu değişmez; yalnızca yeni kayıtlar yeni moda göre hesaplanır.
+> Geçmiş haftaların kayıtlı modu değişmez; yalnızca yeni kayıtlar yeni moda göre hesaplanır. İki ve üç sürücüde **araç toplam yolculuk sayısı** kira kademesi için ayrı girilebilir (Kazanç formu).
 
 ---
 
@@ -246,13 +263,13 @@ Ana ekranda sağ üst **⋮ menü** → **Tek Sürücü** veya **İki Sürücü 
 
 ### Uygulama kapanıyor veya widget kayboluyor
 
-1. **Kurulum Rehberi**’ni tekrar oku (⋮ menü) — pil optimizasyonu ve overlay izni hâlâ açık mı kontrol et.
+1. **Ayarlar → Kurulum Rehberi**’ni tekrar oku — pil optimizasyonu ve overlay izni hâlâ açık mı kontrol et.
 2. Widget’ı **Durdur** → tekrar **Başlat**.
 3. Samsung’da Recents’te RateHelper kartını **kilitle**.
 
 ### Çökme kaydı gönderme
 
-1. Ana ekranda sağ üst **⋮ menü** → **Çökme Kayıtları**
+1. **Ayarlar → Çökme Kayıtları**
 2. **KOPYALA** butonuna bas
 3. Yapıştırdığını WhatsApp üzerinden geliştiriciye gönder
 
@@ -260,7 +277,16 @@ Ana ekranda sağ üst **⋮ menü** → **Tek Sürücü** veya **İki Sürücü 
 
 ### Güncelleme (OTA)
 
-Uygulama yeni sürüm olduğunda alttan bildirim çıkar. **İndir** dediğinde GitHub’dan APK iner. Aynı imzayla yüklenmiş olması gerekir — resmi APK dışında kaynak kullanma.
+İlk açılışta (bu sürüme güncellediğinde de bir kez) uygulama sorar: GitHub’a güncelleme ve etkinlik için kendiliğinden baksın mı? **İzin ver** iki anahtarı da açar. **Hayır, yalnız ben isteyince** ikisini de kapalı bırakır. **Ayarlar → Otomatik güncelleme denetimi** ve **Etkinlikleri otomatik getir** ile sonra değiştirirsin.
+
+Kapalıyken açılışta ağ yoktur. Yeni sürüm için **Ayarlar → Güncellemeleri denetle** (aynı satırda son kontrol saati ve kurulu sürüm yazar). APK, ancak güncelleme düğmesine basınca iner — denetlemek indirmez. İndirilen paket imza ve sürüm kontrolünden geçmeden kurulmaz; önceki kurulumla **aynı imza** gerekir.
+
+Bu isteklerde giden: IP adresi ve standart başlıklar. Verin gitmez.
+
+- `gist.githubusercontent.com` — sürüm listesi
+- `api.github.com` — liste okunamazsa yedek sorgu
+- `github.com` — APK (yalnızca sen indir deyince)
+- `raw.githubusercontent.com` — etkinlik listesi
 
 ---
 
@@ -279,7 +305,7 @@ flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbo
 - `--split-debug-info` → sembolleri proje dışında tutar (geri izleme için sakla).
 - `--split-per-abi` → APK boyutunu ~8 MB / mimari seviyesine düşürür.
 
-`android/key.properties` mevcutsa imzalama otomatiktir. Yoksa debug anahtarı kullanılır ve kullanıcı **güncelleme yükleyemez** (imza uyuşmazlığı). Her sürümde aynı keystore kullan.
+`key.properties` proje kökünde durmalı ve okunabilir olmalı (`android/key.properties` değil). Yoksa veya okunamazsa release derlemesi `GradleException` ile durur — debug anahtarına düşmez. Debug derlemesi bu dosya olmadan çalışır. Her sürümde aynı keystore kullan.
 
 Detaylı mimari: [`README.md`](README.md) · Agent notları: [`agent-learnings.md`](agent-learnings.md) · Lehçe rehber: [`SETUP_GUIDE_PL.md`](SETUP_GUIDE_PL.md)
 
