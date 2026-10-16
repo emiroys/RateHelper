@@ -62,15 +62,37 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private Resources mResources;
 
     public static final String INTENT_EXTRA_IS_CLOSE_WINDOW = "IsCloseWindow";
+    public static final String INTENT_EXTRA_HIDDEN = "hidden";
+
+    /// Lets the host app restyle the foreground notification (channel,
+    /// actions, text) without this library knowing the app's classes.
+    public interface NotificationDecorator {
+        /// Main thread. [args] is the last map the overlay isolate sent with
+        /// `updateNotification`, never null here.
+        void decorate(Context context, NotificationCompat.Builder builder, Map<String, Object> args);
+    }
+
+    public static volatile NotificationDecorator notificationDecorator;
 
     private static OverlayService instance;
     public static boolean isRunning = false;
+    @Nullable
+    private Map<String, Object> notificationArgs;
     private WindowManager windowManager = null;
     private FlutterView flutterView;
     private MethodChannel flutterChannel;
     private BasicMessageChannel<Object> overlayMessageChannel;
     private int clickableFlag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
+
+    /// Hidden = the window stays attached (the engine keeps rendering and the
+    /// foreground notification stays put) but is 1x1px, fully transparent and
+    /// untouchable. The visible size/flags/alpha are parked here meanwhile.
+    private boolean windowHidden = false;
+    private int visibleWidth;
+    private int visibleHeight;
+    private int visibleFlags;
+    private float visibleAlpha = 1f;
 
     private Handler mAnimationHandler = new Handler();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -188,6 +210,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     return;
                 }
                 resizeOverlay(width, height, enableDrag, result);
+            } else if (call.method.equals("updateNotification")) {
+                Object args = call.arguments();
+                updateNotification(args instanceof Map ? (Map<String, Object>) args : null, result);
+            } else if (call.method.equals("setWindowHidden")) {
+                Boolean hidden = call.argument("hidden");
+                if (hidden == null) {
+                    result.error("ARGS", "setWindowHidden needs hidden", null);
+                    return;
+                }
+                setWindowHidden(hidden, result);
             } else {
                 // Without a reply the Dart Future never completes.
                 result.notImplemented();
@@ -238,6 +270,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
             params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
         }
         params.gravity = WindowSetup.gravity;
+        windowHidden = false;
+        if (intent.getBooleanExtra(INTENT_EXTRA_HIDDEN, false)) {
+            applyHidden(params);
+        }
         flutterView.setOnTouchListener(this);
         windowManager.addView(flutterView, params);
         moveOverlay(dx, dy, null);
@@ -288,15 +324,21 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private void updateOverlayFlag(MethodChannel.Result result, String flag) {
         if (windowManager != null) {
             WindowSetup.setFlag(flag);
-            WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
-            params.flags = WindowSetup.flag | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS |
+            int flags = WindowSetup.flag | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS |
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
                     WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && WindowSetup.flag == clickableFlag) {
-                params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
-            } else {
-                params.alpha = 1;
+            float alpha = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && WindowSetup.flag == clickableFlag
+                    ? MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER
+                    : 1;
+            if (windowHidden) {
+                visibleFlags = flags;
+                visibleAlpha = alpha;
+                result.success(true);
+                return;
             }
+            WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+            params.flags = flags;
+            params.alpha = alpha;
             windowManager.updateViewLayout(flutterView, params);
             result.success(true);
         } else {
@@ -314,7 +356,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
             mainHandler.post(() -> resizeOverlay(widthDp, heightDp, enableDrag, result));
             return;
         }
-        if (windowManager == null || flutterView == null) {
+        // A hidden window has no visible rect to anchor on; the caller shows
+        // it first, then resizes.
+        if (windowManager == null || flutterView == null || windowHidden) {
             result.success(false);
             return;
         }
@@ -354,6 +398,59 @@ public class OverlayService extends Service implements View.OnTouchListener {
             result.success(true);
         } catch (Exception e) {
             Log.e("OverLay", "resizeOverlay failed", e);
+            result.success(false);
+        }
+    }
+
+    /// Shrinks [params] to an invisible, touch-through 1x1px window and parks
+    /// the visible values. x/y stay, so showing again lands in the same spot.
+    private void applyHidden(WindowManager.LayoutParams params) {
+        visibleWidth = params.width;
+        visibleHeight = params.height;
+        visibleFlags = params.flags;
+        visibleAlpha = params.alpha;
+        params.width = 1;
+        params.height = 1;
+        params.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
+        params.alpha = 0f;
+        windowHidden = true;
+    }
+
+    /// Idempotent. Showing restores the size the window had when it was
+    /// hidden; the overlay isolate resizes afterwards if its state changed.
+    private void setWindowHidden(boolean hidden, MethodChannel.Result result) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(() -> setWindowHidden(hidden, result));
+            return;
+        }
+        if (windowManager == null || flutterView == null) {
+            result.success(false);
+            return;
+        }
+        if (hidden == windowHidden) {
+            result.success(true);
+            return;
+        }
+        try {
+            WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+            if (hidden) {
+                applyHidden(params);
+            } else {
+                params.width = visibleWidth;
+                params.height = visibleHeight;
+                params.flags = visibleFlags;
+                params.alpha = visibleAlpha;
+                windowHidden = false;
+            }
+            windowManager.updateViewLayout(flutterView, params);
+            debugLog(this, "OverLay", hidden ? "window hidden" : "window shown");
+            result.success(true);
+        } catch (Exception e) {
+            Log.e("OverLay", "setWindowHidden failed", e);
             result.success(false);
         }
     }
@@ -460,6 +557,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
 
         createNotificationChannel();
+        startForeground(OverlayConstants.NOTIFICATION_ID, buildNotification());
+        instance = this;
+    }
+
+    private Notification buildNotification() {
         Intent notificationIntent = new Intent(this, FlutterOverlayWindowPlugin.class);
         int pendingFlags;
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
@@ -470,15 +572,44 @@ public class OverlayService extends Service implements View.OnTouchListener {
         PendingIntent pendingIntent = PendingIntent.getActivity(this,
                 0, notificationIntent, pendingFlags);
         final int notifyIcon = getDrawableResourceId("mipmap", "launcher");
-        Notification notification = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
                 .setContentTitle(WindowSetup.overlayTitle)
                 .setContentText(WindowSetup.overlayContent)
                 .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
                 .setContentIntent(pendingIntent)
-                .setVisibility(WindowSetup.notificationVisibility)
-                .build();
-        startForeground(OverlayConstants.NOTIFICATION_ID, notification);
-        instance = this;
+                .setVisibility(WindowSetup.notificationVisibility);
+        Map<String, Object> args = notificationArgs;
+        NotificationDecorator decorator = notificationDecorator;
+        if (args != null && decorator != null) {
+            try {
+                decorator.decorate(this, builder, args);
+            } catch (Exception e) {
+                Log.e("OverLay", "notification decorator failed", e);
+            }
+        }
+        return builder.build();
+    }
+
+    /// Re-posts the foreground notification under the same id, so the
+    /// service stays in the foreground. [args] null restores the plain one.
+    private void updateNotification(@Nullable Map<String, Object> args, MethodChannel.Result result) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(() -> updateNotification(args, result));
+            return;
+        }
+        if (!isRunning) {
+            result.success(false);
+            return;
+        }
+        try {
+            notificationArgs = args;
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            manager.notify(OverlayConstants.NOTIFICATION_ID, buildNotification());
+            result.success(true);
+        } catch (Exception e) {
+            Log.e("OverLay", "updateNotification failed", e);
+            result.success(false);
+        }
     }
 
     // Overlay isolate only needs window IPC, prefs, and path_provider.

@@ -36,11 +36,20 @@ class OverlaySettings {
     required this.lang,
     required this.goalTier,
     required this.autoComplete,
+    this.notificationControls,
+    this.hidePill,
   });
 
   final String lang;
   final String goalTier;
   final bool autoComplete;
+
+  /// Accept/Reject buttons on the overlay notification. Null when the
+  /// sender did not include it — the receiver keeps its current value.
+  final bool? notificationControls;
+
+  /// Shade-only mode (`ShadeControls.hidePillPrefsKey`). Null = keep current.
+  final bool? hidePill;
 }
 
 /// Messages sent between the main app and the overlay isolate via
@@ -56,6 +65,8 @@ abstract final class OverlaySync {
   static const String keyLang = 'lang';
   static const String keyGoalTier = 'goal_tier';
   static const String keyAutoComplete = 'auto_complete';
+  static const String keyNotificationControls = 'notification_controls';
+  static const String keyHidePill = 'hide_pill';
 
   static const String actionMediaKeyIncrement = 'media_key_increment';
   static const String keyMediaKey = 'key';
@@ -85,6 +96,8 @@ abstract final class OverlaySync {
     keyLang,
     keyGoalTier,
     keyAutoComplete,
+    keyNotificationControls,
+    keyHidePill,
   };
 
   static const Set<String> _mediaKeyKeys = {'action', keyMediaKey};
@@ -162,10 +175,22 @@ abstract final class OverlaySync {
         !_allowedGoalTiers.contains(goalTier)) {
       return null;
     }
+    bool? notificationControls;
+    if (event.containsKey(keyNotificationControls)) {
+      notificationControls = _boolField(event[keyNotificationControls]);
+      if (notificationControls == null) return null;
+    }
+    bool? hidePill;
+    if (event.containsKey(keyHidePill)) {
+      hidePill = _boolField(event[keyHidePill]);
+      if (hidePill == null) return null;
+    }
     return OverlaySettings(
       lang: lang,
       goalTier: goalTier,
       autoComplete: autoComplete,
+      notificationControls: notificationControls,
+      hidePill: hidePill,
     );
   }
 
@@ -315,6 +340,8 @@ abstract final class OverlaySync {
     required String lang,
     required String goalTier,
     required bool autoComplete,
+    required bool notificationControls,
+    required bool hidePill,
   }) async {
     try {
       if (!await FlutterOverlayWindow.isActive()) return;
@@ -323,6 +350,8 @@ abstract final class OverlaySync {
         keyLang: lang,
         keyGoalTier: goalTier,
         keyAutoComplete: '$autoComplete',
+        keyNotificationControls: '$notificationControls',
+        keyHidePill: '$hidePill',
       });
     } catch (e, s) {
       loge(

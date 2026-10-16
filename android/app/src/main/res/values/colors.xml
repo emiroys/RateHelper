@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#161616</color>
+
+    <!-- Same hues as AppColors.emerald / crimson / amber. -->
+    <color name="shade_emerald">#10B981</color>
+    <color name="shade_crimson">#EF4444</color>
+    <color name="shade_amber">#F59E0B</color>
+    <color name="shade_emerald_fill">#2610B981</color>
+    <color name="shade_crimson_fill">#26EF4444</color>
+    <color name="shade_emerald_ripple">#5510B981</color>
+    <color name="shade_crimson_ripple">#55EF4444</color>
 </resources>

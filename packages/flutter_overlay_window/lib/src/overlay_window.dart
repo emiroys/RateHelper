@@ -42,6 +42,9 @@ class FlutterOverlayWindow {
   /// `positionGravity` the overlay postion after drag and default is [PositionGravity.none]
   ///
   /// `startPosition` the overlay start position and default is null
+  ///
+  /// `hidden` starts the window invisible and untouchable (see
+  /// [setWindowHidden]); the service and its notification run as usual
   static Future<void> showOverlay({
     int height = WindowSize.fullCover,
     int width = WindowSize.matchParent,
@@ -53,6 +56,7 @@ class FlutterOverlayWindow {
     bool enableDrag = false,
     PositionGravity positionGravity = PositionGravity.none,
     OverlayPosition? startPosition,
+    bool hidden = false,
   }) async {
     await _channel.invokeMethod(
       'showOverlay',
@@ -67,6 +71,7 @@ class FlutterOverlayWindow {
         "notificationVisibility": visibility.name,
         "positionGravity": positionGravity.name,
         "startPosition": startPosition?.toMap(),
+        "hidden": hidden,
       },
     );
   }
@@ -142,6 +147,33 @@ class FlutterOverlayWindow {
       },
     );
     return _res;
+  }
+
+  /// Re-post the overlay service's foreground notification. Overlay isolate
+  /// only, like [resizeOverlay].
+  ///
+  /// [content] is handed to the host app's `OverlayService.notificationDecorator`
+  /// on the native side; null restores the plain notification.
+  ///
+  /// `return` true when the notification was re-posted.
+  static Future<bool?> updateNotification(Map<String, Object?>? content) {
+    return _overlayChannel.invokeMethod<bool?>('updateNotification', content);
+  }
+
+  /// Hide or show the overlay window without stopping the service. Overlay
+  /// isolate only, like [resizeOverlay].
+  ///
+  /// Hidden keeps the window attached but 1x1px, transparent and
+  /// untouchable, so the engine and the foreground notification keep running.
+  /// Showing restores the size the window had when it was hidden.
+  /// [resizeOverlay] returns false while hidden.
+  ///
+  /// `return` true when the window is in the requested state.
+  static Future<bool?> setWindowHidden(bool hidden) {
+    return _overlayChannel.invokeMethod<bool?>(
+      'setWindowHidden',
+      {'hidden': hidden},
+    );
   }
 
   /// Update the overlay position in the screen

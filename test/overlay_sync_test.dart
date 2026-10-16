@@ -132,6 +132,53 @@ void main() {
     expect(settings!.autoComplete, isFalse);
   });
 
+  test('settings carry the notification-controls flag when present', () {
+    final on = OverlaySync.settingsFromEvent(<String, String>{
+      'action': OverlaySync.actionSettingsChanged,
+      OverlaySync.keyLang: 'tr',
+      OverlaySync.keyGoalTier: 'tier1',
+      OverlaySync.keyAutoComplete: 'false',
+      OverlaySync.keyNotificationControls: 'true',
+    });
+    expect(on, isNotNull);
+    expect(on!.notificationControls, isTrue);
+
+    final absent = OverlaySync.settingsFromEvent(<String, String>{
+      'action': OverlaySync.actionSettingsChanged,
+      OverlaySync.keyLang: 'tr',
+      OverlaySync.keyGoalTier: 'tier1',
+      OverlaySync.keyAutoComplete: 'false',
+    });
+    expect(absent, isNotNull);
+    expect(absent!.notificationControls, isNull);
+
+    expect(
+      OverlaySync.settingsFromEvent(<String, String>{
+        'action': OverlaySync.actionSettingsChanged,
+        OverlaySync.keyLang: 'tr',
+        OverlaySync.keyGoalTier: 'tier1',
+        OverlaySync.keyAutoComplete: 'false',
+        OverlaySync.keyNotificationControls: 'maybe',
+      }),
+      isNull,
+    );
+  });
+
+  test('settings carry the shade-only flag when present', () {
+    Map<String, String> event([String? hide]) => {
+      'action': OverlaySync.actionSettingsChanged,
+      OverlaySync.keyLang: 'tr',
+      OverlaySync.keyGoalTier: 'tier1',
+      OverlaySync.keyAutoComplete: 'false',
+      OverlaySync.keyNotificationControls: 'true',
+      OverlaySync.keyHidePill: ?hide,
+    };
+    expect(OverlaySync.settingsFromEvent(event('true'))!.hidePill, isTrue);
+    expect(OverlaySync.settingsFromEvent(event('false'))!.hidePill, isFalse);
+    expect(OverlaySync.settingsFromEvent(event())!.hidePill, isNull);
+    expect(OverlaySync.settingsFromEvent(event('1')), isNull);
+  });
+
   test('countersFromEvent rejects out-of-range and unknown keys', () {
     expect(
       OverlaySync.countersFromEvent(<String, String>{
@@ -189,14 +236,8 @@ void main() {
   });
 
   test('deliver never throws on malformed input', () {
-    expect(
-      () => OverlaySync.deliver(null),
-      returnsNormally,
-    );
-    expect(
-      () => OverlaySync.deliver(42),
-      returnsNormally,
-    );
+    expect(() => OverlaySync.deliver(null), returnsNormally);
+    expect(() => OverlaySync.deliver(42), returnsNormally);
     expect(
       () => OverlaySync.deliver(<String, Object>{
         'action': 'not_a_real_action',

@@ -83,6 +83,73 @@ class S {
   );
   static String get openSettings =>
       _p('AYARLARA GİT', 'OPEN SETTINGS', 'OTWÓRZ USTAWIENIA');
+  static String get notificationControls => _p(
+    'Bildirim kontrolleri',
+    'Notification controls',
+    'Sterowanie z powiadomienia',
+  );
+  static String get notificationControlsHint => _p(
+    'Baloncuk açıkken bildirim panelini aşağı çek: Kabul +1 / Red +1 ve güncel kabul oranı.',
+    'While the bubble is open, pull down the notification shade: Accept +1 / Reject +1 and the live acceptance rate.',
+    'Gdy dymek jest otwarty, rozwiń panel powiadomień: Akceptuj +1 / Odrzuć +1 i bieżący wskaźnik akceptacji.',
+  );
+  static String get notificationControlsDialogTitle => _p(
+    'Bildirim İzni Gerekli',
+    'Notification Permission Needed',
+    'Wymagane uprawnienie do powiadomień',
+  );
+  static String get notificationControlsDialogDesc => _p(
+    'Sayaç düğmeleri baloncuğun bildiriminde durur. Android bu bildirimi ancak izin verirsen gösterir. Bildirimde sadece kabul oranı ve sayılar olur; kilit ekranında görünmez, kazanç bilgisi içermez.',
+    'The counter buttons live on the bubble\'s notification. Android only shows it if you allow notifications. It contains only the acceptance rate and counts — never earnings — and stays hidden on the lock screen.',
+    'Przyciski licznika są w powiadomieniu dymka. Android pokaże je tylko po zezwoleniu na powiadomienia. Zawiera wyłącznie wskaźnik akceptacji i liczby — bez zarobków — i nie pojawia się na ekranie blokady.',
+  );
+  static String get notificationControlsContinue =>
+      _p('DEVAM', 'CONTINUE', 'DALEJ');
+  static String get notificationControlsDeniedTitle => _p(
+    'Bildirim kontrolleri kapalı',
+    'Notification controls are off',
+    'Sterowanie z powiadomienia wyłączone',
+  );
+  static String get notificationControlsDeniedDesc => _p(
+    'Bildirim izni verilmediği için bu ayar kapalı kaldı. Ayarlar\'dan RateHelper bildirimlerine izin verip ayarı tekrar açabilirsin.',
+    'Notifications are not allowed, so this setting stayed off. Allow RateHelper notifications in Settings, then switch it on again.',
+    'Powiadomienia nie są dozwolone, więc ustawienie pozostało wyłączone. Zezwól na powiadomienia RateHelper w Ustawieniach i włącz je ponownie.',
+  );
+  static String get hidePill => _p(
+    'Yüzen baloncuğu gizle (Sadece bildirim paneli)',
+    'Hide floating pill (Notification shade only)',
+    'Ukryj pływającą pigułkę (Tylko pasek powiadomień)',
+  );
+  static String get hidePillHint => _p(
+    'Ekranda baloncuk göstermez, kontroller yalnızca bildirim panelinde kalır.',
+    'Hides the on-screen bubble and keeps controls only in the notification shade.',
+    'Ukrywa dymek na ekranie i zostawia przyciski tylko w panelu powiadomień.',
+  );
+  static String get contactDeveloper =>
+      _p('Geliştiriciyle İletişim', 'Contact developer', 'Kontakt z autorem');
+  static String get contactDeveloperWhatsApp => 'Emirhan Metin • WhatsApp';
+  static String get contactDeveloperGitHub => 'Emirhan Metin • GitHub';
+  static String get contactDeveloperPrefill => _p(
+    'Merhaba Emirhan, RateHelper hakkında yazıyorum: ',
+    'Hi Emirhan, I\'m writing about RateHelper: ',
+    'Cześć Emirhan, piszę w sprawie aplikacji RateHelper: ',
+  );
+  static String get contactDeveloperFailed => _p(
+    'Bağlantı açılamadı.',
+    'Could not open the link.',
+    'Nie udało się otworzyć linku.',
+  );
+  static String get shadeChannelName =>
+      _p('Sayaç kontrolleri', 'Counter controls', 'Sterowanie licznikiem');
+  static String shadeTitle(String percent) =>
+      _p('Kabul oranı $percent', 'Acceptance $percent', 'Akceptacja $percent');
+  static String shadeCounts(int accepted, int rejected) => _p(
+    'Kabul: $accepted · Red: $rejected',
+    'Accepted: $accepted · Rejected: $rejected',
+    'Zaakceptowane: $accepted · Odrzucone: $rejected',
+  );
+  static String get shadeAccept => _p('Kabul +1', 'Accept +1', 'Akceptuj +1');
+  static String get shadeReject => _p('Red +1', 'Reject +1', 'Odrzuć +1');
   static String get editCompletedTitle =>
       _p('Tamamlanan Sayısı', 'Completed Trips', 'Ukończone przejazdy');
   static String get editAcceptedTitle =>

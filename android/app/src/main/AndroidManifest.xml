@@ -6,6 +6,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
 
+    <!-- Optional "Notification controls" (Accept +1 / Reject +1 on the
+         overlay notification). Requested only when the driver switches the
+         setting on; without it Android 13+ hides the notification. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
     <!-- Self-update manifest fetch on app launch. -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
@@ -75,6 +80,11 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+        <!-- Accept +1 / Reject +1 notification buttons. Reached only through
+             the app's own FLAG_IMMUTABLE PendingIntents. -->
+        <receiver
+            android:name=".ShadeControlsReceiver"
+            android:exported="false" />
         <!-- Grants the system installer a one-shot read on the downloaded APK.
              Scoped to the cache subdirectory the updater writes to, so no
              other app-private file is ever exposed through this provider. -->

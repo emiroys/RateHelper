@@ -1,6 +1,8 @@
 package com.ratehelper.app
 
+import android.Manifest
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -15,8 +17,11 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import flutter.overlay.window.flutter_overlay_window.OverlayService
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -29,14 +34,16 @@ class MainActivity : FlutterActivity() {
         /** Must match `res/xml/file_provider_paths.xml` and the Dart updater. */
         private const val UPDATE_APK_DIR = "updates"
         private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
+        private const val REQUEST_POST_NOTIFICATIONS = 4711
     }
 
     private val channelName = "com.ratehelper.app/system"
     private var methodChannel: MethodChannel? = null
+    private var pendingNotificationPermission: MethodChannel.Result? = null
 
     private val mediaKeyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == MediaKeyAccessibilityService.ACTION_MEDIA_KEY_INCREMENT) {
+            if (intent?.action == TapDelivery.ACTION_MEDIA_KEY_INCREMENT) {
                 val key = intent.getStringExtra("key") ?: return
                 methodChannel?.invokeMethod("onMediaKeyIncrement", key)
             }
@@ -45,7 +52,10 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val filter = IntentFilter(MediaKeyAccessibilityService.ACTION_MEDIA_KEY_INCREMENT)
+        // Only this activity starts the overlay, so the hook is in place
+        // before OverlayService can post its first notification.
+        OverlayService.notificationDecorator = ShadeControls
+        val filter = IntentFilter(TapDelivery.ACTION_MEDIA_KEY_INCREMENT)
         ContextCompat.registerReceiver(
             this,
             mediaKeyReceiver,
@@ -55,9 +65,91 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        // Answer while the engine is still attached.
+        pendingNotificationPermission?.let { runCatching { it.success(notificationsAllowed()) } }
+        pendingNotificationPermission = null
         super.onDestroy()
         runCatching { unregisterReceiver(mediaKeyReceiver) }
         methodChannel = null
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_POST_NOTIFICATIONS) return
+        val result = pendingNotificationPermission ?: return
+        pendingNotificationPermission = null
+        result.success(notificationsAllowed())
+    }
+
+    /** POST_NOTIFICATIONS on 13+, and the app-level notification switch. */
+    private fun notificationsAllowed(): Boolean = runCatching {
+        val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        granted && NotificationManagerCompat.from(this).areNotificationsEnabled()
+    }.getOrDefault(false)
+
+    /**
+     * Shows the system prompt when it can help. Below 13 there is no runtime
+     * permission, and a user-disabled app switch cannot be prompted for, so
+     * both just report the current state.
+     */
+    private fun requestNotificationPermission(result: MethodChannel.Result) {
+        if (notificationsAllowed()) {
+            result.success(true)
+            return
+        }
+        val needsPrompt = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        if (!needsPrompt) {
+            result.success(false)
+            return
+        }
+        // A second request while the first dialog is up must not leave the
+        // first Dart Future hanging.
+        pendingNotificationPermission?.success(false)
+        pendingNotificationPermission = result
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            REQUEST_POST_NOTIFICATIONS,
+        )
+    }
+
+    /**
+     * Hands an https link to WhatsApp or the browser. Only the two hosts the
+     * contact row can produce are accepted, so the channel cannot be used to
+     * fire arbitrary intents.
+     */
+    private fun openExternalUrl(url: String?): Boolean {
+        if (url.isNullOrBlank()) return false
+        val uri = Uri.parse(url)
+        if (uri.scheme != "https" || uri.host !in setOf("wa.me", "github.com")) return false
+        return try {
+            startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        } catch (e: ActivityNotFoundException) {
+            false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun openNotificationSettings(): Boolean {
+        runCatching {
+            val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            return true
+        }
+        return openAppDetails()
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -99,9 +191,17 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
+                "areNotificationsAllowed" -> result.success(notificationsAllowed())
+
+                "requestNotificationPermission" -> requestNotificationPermission(result)
+
+                "openNotificationSettings" -> result.success(openNotificationSettings())
+
+                "openExternalUrl" -> result.success(openExternalUrl(call.argument<String>("url")))
+
                 "drainPendingTaps" -> {
                     val prefs = getSharedPreferences(
-                        MediaKeyAccessibilityService.PENDING_TAPS_PREFS,
+                        TapDelivery.PENDING_TAPS_PREFS,
                         Context.MODE_PRIVATE
                     )
                     val accepted = prefs.getInt("accepted", 0)

@@ -32,9 +32,10 @@ class _AppShimmerState extends State<AppShimmer>
       duration: const Duration(milliseconds: 900),
       vsync: this,
     )..repeat(reverse: true);
-    _opacity = Tween<double>(begin: 0.25, end: 0.70).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _opacity = Tween<double>(
+      begin: 0.25,
+      end: 0.70,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -157,11 +158,7 @@ class AppEmptyState extends StatelessWidget {
                 shape: BoxShape.circle,
                 border: Border.all(color: accent.withValues(alpha: 0.35)),
               ),
-              child: Icon(
-                icon,
-                color: accent,
-                size: compact ? 26 : 40,
-              ),
+              child: Icon(icon, color: accent, size: compact ? 26 : 40),
             ),
             SizedBox(height: compact ? 12 : 20),
             Text(
@@ -447,3 +444,41 @@ class AppDangerButton extends StatelessWidget {
   }
 }
 
+/// Leading icon for a settings-style row: a glyph on a tonal rounded square.
+///
+/// [active] tints it emerald so a switched-on row reads as "on" before the
+/// driver finds the switch itself.
+class AppIconBadge extends StatelessWidget {
+  const AppIconBadge({
+    super.key,
+    required this.icon,
+    this.active = false,
+    this.dimmed = false,
+  });
+
+  static const double size = 40;
+
+  final IconData icon;
+  final bool active;
+  final bool dimmed;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg = dimmed
+        ? AppColors.disabledText
+        : active
+        ? AppColors.emerald
+        : AppColors.labelText;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: active && !dimmed
+            ? AppColors.emerald.withValues(alpha: 0.14)
+            : AppColors.surfaceElevated,
+        borderRadius: const BorderRadius.all(Radius.circular(12)),
+      ),
+      child: Icon(icon, size: 22, color: fg),
+    );
+  }
+}

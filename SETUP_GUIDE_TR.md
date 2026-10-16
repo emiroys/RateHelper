@@ -133,7 +133,7 @@ Ana ekran → sağ üst **dişli**. Bölümler:
 | Bölüm | Ne var? |
 | --- | --- |
 | **Sürüş ve sayaçlar** | **Sürüş modu** (Tek / İki / Üç sürücü), **Otomatik tamamla**, **Direksiyon tuşu (Beta)**, **Ekranı açık tut** |
-| **Baloncuk** | **Baloncuk yönü** (Yatay / Dikey), **Baloncukta iptal düğmesi** (isteğe bağlı) |
+| **Baloncuk** | **Baloncuk yönü** (Yatay / Dikey), **Baloncukta iptal düğmesi** (isteğe bağlı), **Bildirim kontrolleri** (isteğe bağlı) |
 | **Tercihler** | **Dil**, **Otomatik güncelleme denetimi**, **Etkinlikleri otomatik getir** |
 | **Sistem ve destek** | **Güncellemeleri denetle** (son kontrol saati + sürüm), **Kurulum Rehberi**, **Çökme Kayıtları** |
 
@@ -168,6 +168,16 @@ Ekranda yer açmak için **%**’ye dokun: widget 48 dp’lik bir **R** baloncu�
 **Ayarlar → Baloncukta iptal düğmesi** açıksa, kırmızı **−** yanında turuncu **iptal** düğmesi de görünür.
 
 Ana ekrandaki sayaçlar, baloncuktan yaptığın değişiklikleri **anında** yansıtır (uygulamayı kapat-aç gerekmez).
+
+### Bildirim kontrolleri (isteğe bağlı)
+
+**Ayarlar → Bildirim kontrolleri** açıkken, baloncuk açık olduğu sürece bildirim panelini aşağı çekince solda büyük **−** (Red +1), sağda **+** (Kabul +1) düğmesi, ortada da güncel kabul oranı görünür. Her dokunuşta telefon titrer: kabulde tek, redde çift titreşim. Ekranı hiç kapatmadan sayabilirsin; baloncuğu **R**’ye küçültüp sadece paneli kullanmak da olur.
+
+Ekranda hiçbir şey istemiyorsan, hemen altındaki **Yüzen baloncuğu gizle (Sadece bildirim paneli)** ayarını aç: baloncuk açıldığında ekranda görünmez, sayaç yalnızca bildirim panelinden (ve direksiyon tuşundan) çalışır. Bildirim kontrollerini kapatınca veya bildirim izni geri alınınca baloncuk otomatik geri gelir.
+
+- İlk açışta uygulama bildirim izni ister. İzin vermezsen ayar kapalı kalır; izni **Ayarlar → Uygulamalar → RateHelper → Bildirimler**’den verip ayarı tekrar açabilirsin.
+- Bildirimde sadece kabul oranı ve kabul/red sayıları vardır — kazanç yoktur. Kilit ekranında görünmez.
+- Her dokunuşta kısa bir titreşim olur. Oran en fazla saniyede bir güncellenir.
 
 > Widget kapalıyken sayaç tutmak için ana ekrana dönüp büyük **+ / −** butonlarını kullan.
 

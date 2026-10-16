@@ -30,6 +30,7 @@ import 'services/github_access.dart';
 import 'services/update_service.dart';
 import 'overlay_widget.dart';
 import 'radar_screen.dart';
+import 'shade_controls.dart';
 import 'shift_counter_store.dart';
 import 'tap_history_store.dart';
 import 'update_dialog.dart';
@@ -203,6 +204,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setAutoEvents: _setAutoEvents,
     setPillOrientation: _setPillOrientation,
     setOverlayCancel: _setOverlayShowCancelButton,
+    setNotificationControls: _setNotificationControls,
+    setHidePill: _setHidePill,
     setLanguage: _setLanguage,
     onDriverModeChanged: () {
       if (mounted) setState(() {});
@@ -235,6 +238,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _autoEvents = false;
   PillOrientation _pillOrientation = PillOrientation.horizontal;
   bool _showOverlayCancelButton = false;
+  bool _notificationControls = false;
+  bool _hidePill = false;
   TripGoal _selectedGoal = TripGoal.tier1;
 
   int? _prevAccepted;
@@ -382,6 +387,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // steering-wheel taps taken while the app was closed reach the counters.
     unawaited(_drainPendingTaps());
     unawaited(_syncSteeringWheelState());
+    unawaited(_syncNotificationControlsState());
     unawaited(_refreshOverlayState());
   }
 
@@ -646,6 +652,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await _loadAndCheckReset();
       await _drainPendingTaps();
       unawaited(_syncSteeringWheelState());
+      unawaited(_syncNotificationControlsState());
       unawaited(_refreshOverlayState());
     } catch (e, s) {
       loge('reload/sync failed', name: 'home', error: e, stack: s);
@@ -774,6 +781,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _pillOrientation = PillOrientation.fromPrefs(prefs);
             _showOverlayCancelButton =
                 prefs.getBool(OverlayWidget.cancelButtonPrefsKey) ?? false;
+            _notificationControls =
+                prefs.getBool(ShadeControls.prefsKey) ?? false;
+            _hidePill = ShadeControls.pillHidden(
+              notificationControls: _notificationControls,
+              hidePill: prefs.getBool(ShadeControls.hidePillPrefsKey) ?? false,
+            );
           });
           _publishSettings();
         }
@@ -791,6 +804,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _pillOrientation = PillOrientation.fromPrefs(prefs);
           _showOverlayCancelButton =
               prefs.getBool(OverlayWidget.cancelButtonPrefsKey) ?? false;
+          _notificationControls =
+              prefs.getBool(ShadeControls.prefsKey) ?? false;
+          _hidePill = ShadeControls.pillHidden(
+            notificationControls: _notificationControls,
+            hidePill: prefs.getBool(ShadeControls.hidePillPrefsKey) ?? false,
+          );
           _syncBaseline();
         });
         _publishSettings();
@@ -826,6 +845,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       autoEvents: _autoEvents,
       pillOrientation: _pillOrientation,
       showOverlayCancel: _showOverlayCancelButton,
+      notificationControls: _notificationControls,
+      hidePill: _hidePill,
       lang: _currentLang,
     );
     if (_settings.value == next) return;
@@ -833,7 +854,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// Pushes the pill-relevant settings to a running overlay. The overlay
-  /// isolate has its own prefs cache, so every write to one of these three
+  /// isolate has its own prefs cache, so every write to one of these
   /// settings must be followed by this call or the pill keeps the old value
   /// until it is closed and reopened.
   void _notifyOverlaySettings() {
@@ -842,6 +863,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         lang: S.lang.name,
         goalTier: _selectedGoal.name,
         autoComplete: _autoCompleteTrips,
+        notificationControls: _notificationControls,
+        hidePill: _hidePill,
       ),
     );
   }
@@ -1254,6 +1277,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     if (!mounted) return;
 
+    // Shade-only with notifications blocked would start a service with no
+    // visible controls at all. Drop back to the pill instead.
+    var hidden = ShadeControls.pillHidden(
+      notificationControls: _notificationControls,
+      hidePill: _hidePill,
+    );
+    if (hidden && await _notificationsAllowed() == false) {
+      await _turnOffNotificationControls();
+      hidden = false;
+    }
+    if (!mounted) return;
+
     // Native window sized to the pill (dp) so touches pass through elsewhere.
     // resizeOverlay from the main isolate is unreliable — orientation changes
     // close+reopen with these dimensions instead.
@@ -1273,6 +1308,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       positionGravity: PositionGravity.none,
       startPosition: startPosition ?? _defaultOverlayStart,
       overlayTitle: 'RateHelper',
+      hidden: hidden,
     );
 
     await OverlaySync.notifyCountersChanged();
@@ -2413,6 +2449,204 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _publishSettings();
     final prefs = await _getPrefs();
     await prefs.setBool(_keySteeringWheel, enabled);
+  }
+
+  /// POST_NOTIFICATIONS is asked for here and nowhere else. The switch only
+  /// turns on once Android confirms notifications are allowed; a denial
+  /// leaves it off and says why.
+  Future<void> _setNotificationControls(bool enabled) async {
+    if (enabled == _notificationControls) return;
+    if (enabled) {
+      try {
+        final allowed =
+            await _kSysChannel.invokeMethod<bool>('areNotificationsAllowed') ??
+            false;
+        if (!allowed) {
+          if (!mounted) return;
+          final proceed = await _showNotificationControlsDialog(
+            title: S.notificationControlsDialogTitle,
+            body: S.notificationControlsDialogDesc,
+            confirmLabel: S.notificationControlsContinue,
+          );
+          if (proceed != true) return;
+          final granted =
+              await _kSysChannel.invokeMethod<bool>(
+                'requestNotificationPermission',
+              ) ??
+              false;
+          if (!granted) {
+            if (!mounted) return;
+            final open = await _showNotificationControlsDialog(
+              title: S.notificationControlsDeniedTitle,
+              body: S.notificationControlsDeniedDesc,
+              confirmLabel: S.openSettings,
+            );
+            if (open == true) {
+              await _kSysChannel.invokeMethod<bool>('openNotificationSettings');
+            }
+            return;
+          }
+        }
+      } on PlatformException catch (e, s) {
+        loge(
+          'Notification permission check failed',
+          name: 'home',
+          error: e,
+          stack: s,
+        );
+        return;
+      }
+    }
+    if (!mounted) return;
+    if (!enabled) {
+      await _turnOffNotificationControls();
+      return;
+    }
+    setState(() => _notificationControls = true);
+    _publishSettings();
+    final prefs = await _getPrefs();
+    await prefs.setBool(ShadeControls.prefsKey, true);
+    _notifyOverlaySettings();
+  }
+
+  /// Turns the notification buttons off and, with them, shade-only mode, so
+  /// the pill comes back instead of leaving a service with no controls. A
+  /// running overlay shows the pill again on the settings push.
+  Future<void> _turnOffNotificationControls() async {
+    if (!mounted) return;
+    setState(() {
+      _notificationControls = false;
+      _hidePill = false;
+    });
+    _publishSettings();
+    final prefs = await _getPrefs();
+    await prefs.setBool(ShadeControls.prefsKey, false);
+    await prefs.setBool(ShadeControls.hidePillPrefsKey, false);
+    _notifyOverlaySettings();
+  }
+
+  /// Shade-only mode. Only offered while the notification buttons are on,
+  /// and re-checks the permission on the way in: a hidden pill plus a
+  /// blocked notification would be a running service nobody can see.
+  Future<void> _setHidePill(bool enabled) async {
+    if (enabled == _hidePill) return;
+    if (enabled) {
+      if (!_notificationControls) return;
+      final allowed = await _notificationsAllowed();
+      if (!mounted || allowed == null) return;
+      if (!allowed) {
+        await _turnOffNotificationControls();
+        if (!mounted) return;
+        final open = await _showNotificationControlsDialog(
+          title: S.notificationControlsDeniedTitle,
+          body: S.notificationControlsDeniedDesc,
+          confirmLabel: S.openSettings,
+        );
+        if (open == true) {
+          await _kSysChannel.invokeMethod<bool>('openNotificationSettings');
+        }
+        return;
+      }
+    }
+    if (!mounted) return;
+    setState(() => _hidePill = enabled);
+    _publishSettings();
+    final prefs = await _getPrefs();
+    await prefs.setBool(ShadeControls.hidePillPrefsKey, enabled);
+    _notifyOverlaySettings();
+  }
+
+  /// Null when the platform call failed — callers treat that as "unknown"
+  /// and change nothing.
+  Future<bool?> _notificationsAllowed() async {
+    try {
+      return await _kSysChannel.invokeMethod<bool>('areNotificationsAllowed');
+    } on PlatformException catch (e, s) {
+      loge(
+        'Notification permission check failed',
+        name: 'home',
+        error: e,
+        stack: s,
+      );
+      return null;
+    }
+  }
+
+  /// Notifications can be switched off in system settings behind our back.
+  /// Same rule as the steering wheel: only a definite `false` turns the
+  /// switch off, and quietly — one tap re-runs the permission flow. This
+  /// also ends shade-only mode, so a running overlay shows the pill again.
+  Future<void> _syncNotificationControlsState() async {
+    if (!_notificationControls) return;
+    final allowed = await _notificationsAllowed();
+    if (allowed != false || !mounted || !_notificationControls) return;
+    await _turnOffNotificationControls();
+  }
+
+  Future<bool?> _showNotificationControlsDialog({
+    required String title,
+    required String body,
+    required String confirmLabel,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.dialogAlt,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontFamily: AppFonts.dmSans,
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: SingleChildScrollView(
+          child: Text(
+            body,
+            style: const TextStyle(
+              fontFamily: AppFonts.dmSans,
+              color: AppColors.mutedText,
+              height: 1.4,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, kMinTouchTarget),
+            ),
+            child: Text(
+              S.cancel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
+                color: AppColors.mutedText,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, kMinTouchTarget),
+            ),
+            child: Text(
+              confirmLabel,
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: AppFonts.dmSans,
+                color: _emerald,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

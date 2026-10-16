@@ -12,6 +12,7 @@ import 'app_text_styles.dart';
 import 'l10n.dart';
 import 'log.dart';
 import 'overlay_sync.dart';
+import 'shade_controls.dart';
 import 'shift_counter_store.dart';
 import 'tap_history_store.dart';
 
@@ -43,6 +44,7 @@ class OverlayWidget extends StatefulWidget {
     this.initialOrientation,
     this.initialShowCancel = false,
     this.initialCollapsed = false,
+    this.initialHidden = false,
   });
 
   /// When set (tests / first-frame), used until prefs load.
@@ -56,6 +58,10 @@ class OverlayWidget extends StatefulWidget {
   /// to it right after. `overlayMain` reads [collapsedPrefsKey] before
   /// `runApp` so a collapsed pill does not flash open on every reopen.
   final bool initialCollapsed;
+
+  /// Shade-only mode at startup ([ShadeControls.pillHidden] from prefs).
+  /// Home opened the native window hidden to match, so nothing flashes.
+  final bool initialHidden;
 
   /// SharedPreferences flag for the optional third button. Default off.
   static const String cancelButtonPrefsKey = 'overlay_show_cancel_button';
@@ -166,7 +172,17 @@ class _OverlayWidgetState extends State<OverlayWidget>
   int _rejected = 0;
   int _completed = 0;
   bool _autoComplete = false;
+  late bool _notificationControls = widget.initialHidden;
+  late bool _hidePill = widget.initialHidden;
   double? _requiredAcceptRate = 80.0;
+
+  /// What the native window is (or is being switched to). Counters, taps and
+  /// the notification run the same either way; only drawing stops.
+  late bool _windowHidden = widget.initialHidden;
+
+  final ShadeNotificationThrottle _shade = ShadeNotificationThrottle(
+    send: FlutterOverlayWindow.updateNotification,
+  );
   late PillOrientation _orientation =
       widget.initialOrientation ?? PillOrientation.horizontal;
   late bool _showCancelButton = widget.initialShowCancel;
@@ -227,11 +243,9 @@ class _OverlayWidgetState extends State<OverlayWidget>
     super.initState();
     _orientation = widget.initialOrientation ?? PillOrientation.horizontal;
     WidgetsBinding.instance.addObserver(this);
-    if (_collapsed) {
-      // Home opens the window at pill size. Shrink once the bubble frame is
-      // on screen so no frame shows a clipped pill.
+    if (_collapsed || _windowHidden) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        unawaited(_syncCollapsedWindowOnStartup());
+        unawaited(_syncWindowOnStartup());
       });
     }
     unawaited(_loadCountsOnStartup());
@@ -289,8 +303,7 @@ class _OverlayWidgetState extends State<OverlayWidget>
       final orientation = PillOrientation.fromPrefs(prefs);
       final showCancel =
           prefs.getBool(OverlayWidget.cancelButtonPrefsKey) ?? false;
-      final collapsed =
-          prefs.getBool(OverlayWidget.collapsedPrefsKey) ?? false;
+      final collapsed = prefs.getBool(OverlayWidget.collapsedPrefsKey) ?? false;
       // A settings push that landed while this load was in flight is newer
       // than anything `prefs` holds — the reload above may have run before
       // home's write reached disk. Don't roll it back.
@@ -302,15 +315,25 @@ class _OverlayWidgetState extends State<OverlayWidget>
       final reqRate = applySettings
           ? _parseReqRate(prefs)
           : _requiredAcceptRate;
+      final notificationControls = applySettings
+          ? (prefs.getBool(ShadeControls.prefsKey) ?? false)
+          : _notificationControls;
+      final hidePill = applySettings
+          ? (prefs.getBool(ShadeControls.hidePillPrefsKey) ?? false)
+          : _hidePill;
       setState(() {
         _accepted = accepted;
         _rejected = rejected;
         _completed = completed;
         _autoComplete = autoComplete;
+        _notificationControls = notificationControls;
+        _hidePill = hidePill;
         _requiredAcceptRate = reqRate;
         _orientation = orientation;
         _showCancelButton = showCancel;
       });
+      _syncShade();
+      unawaited(_syncWindowHidden());
       // overlayMain already seeded [_collapsed] from the same key; this only
       // matters when that early read failed or timed out.
       if (collapsed != _collapsed &&
@@ -334,6 +357,7 @@ class _OverlayWidgetState extends State<OverlayWidget>
       unawaited(_persistCounts());
     }
     _syncSub?.cancel();
+    _shade.dispose();
     WidgetsBinding.instance.removeObserver(this);
     final waiter = _viewSizeWaiter;
     _viewSizeWaiter = null;
@@ -404,16 +428,91 @@ class _OverlayWidgetState extends State<OverlayWidget>
     }
   }
 
-  Future<void> _syncCollapsedWindowOnStartup() async {
-    if (!mounted || !_collapsed || _windowResizeBusy) return;
+  /// Native show/hide. Never throws, like [_resizeWindow].
+  Future<bool> _setNativeHidden(bool hidden) async {
+    try {
+      final ok = await FlutterOverlayWindow.setWindowHidden(
+        hidden,
+      ).timeout(_resizeTimeout);
+      if (ok != true) {
+        loge('overlay setWindowHidden($hidden) returned $ok', name: 'overlay');
+      }
+      return ok == true;
+    } catch (e, s) {
+      loge(
+        'overlay setWindowHidden failed',
+        name: 'overlay',
+        error: e,
+        stack: s,
+      );
+      return false;
+    }
+  }
+
+  bool get _wantHidden => ShadeControls.pillHidden(
+    notificationControls: _notificationControls,
+    hidePill: _hidePill,
+  );
+
+  /// Home opens the window at pill size. Shade-only re-sends "hidden" (one
+  /// idempotent call) so the window can never stay transparent but
+  /// touchable; a collapsed pill shrinks to the bubble once that frame is
+  /// on screen so no frame shows a clipped pill.
+  Future<void> _syncWindowOnStartup() async {
+    if (!mounted || _windowResizeBusy) return;
     _windowResizeBusy = true;
     try {
+      if (_windowHidden) {
+        await _setNativeHidden(true);
+        return;
+      }
+      if (!mounted || !_collapsed) return;
       const bubble = OverlayWidget.bubbleSizeDp;
       final ok = await _resizeWindow(bubble, bubble);
       // The window is still pill-sized; show the pill that fits it.
       if (!ok && mounted) setState(() => _collapsed = false);
     } finally {
       _windowResizeBusy = false;
+      unawaited(_syncWindowHidden());
+    }
+  }
+
+  /// Brings the window in line with [_wantHidden]. Safe to call on every
+  /// settings change: a no-op when they already match, and a request made
+  /// while another window change runs is picked up when that one finishes.
+  ///
+  /// Hide: stop drawing, then shrink natively. Show: restore natively, fit
+  /// the window to the pill or bubble, then draw — same order rule as
+  /// [_setCollapsed], so drawn content never outgrows the window.
+  Future<void> _syncWindowHidden() async {
+    if (!mounted || _windowResizeBusy) return;
+    final hide = _wantHidden;
+    if (hide == _windowHidden) return;
+    _windowResizeBusy = true;
+    try {
+      if (hide) {
+        setState(() => _windowHidden = true);
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
+        if (!await _setNativeHidden(true) && mounted) {
+          setState(() => _windowHidden = false);
+        }
+        return;
+      }
+      if (!await _setNativeHidden(false) || !mounted) return;
+      final width = _collapsed ? OverlayWidget.bubbleSizeDp : _expandedWidthDp;
+      final height = _collapsed
+          ? OverlayWidget.bubbleSizeDp
+          : _expandedHeightDp;
+      await _resizeWindow(width, height);
+      if (!mounted) return;
+      await _awaitViewSize(Size(width, height));
+      if (!mounted) return;
+      setState(() => _windowHidden = false);
+    } finally {
+      _windowResizeBusy = false;
+      // Only a newer request re-runs; a failed native call must not loop.
+      if (mounted && _wantHidden != hide) unawaited(_syncWindowHidden());
     }
   }
 
@@ -434,6 +533,12 @@ class _OverlayWidgetState extends State<OverlayWidget>
   /// matching whatever size the window really is.
   Future<void> _setCollapsed(bool collapse, {bool persist = true}) async {
     if (!mounted || _windowResizeBusy || collapse == _collapsed) return;
+    if (_windowHidden) {
+      // Nothing on screen to resize; showing the window fits it to this.
+      setState(() => _collapsed = collapse);
+      if (persist) _persistCollapsed(collapse);
+      return;
+    }
     _windowResizeBusy = true;
     try {
       if (collapse) {
@@ -459,6 +564,7 @@ class _OverlayWidgetState extends State<OverlayWidget>
       if (persist) _persistCollapsed(collapse);
     } finally {
       _windowResizeBusy = false;
+      unawaited(_syncWindowHidden());
     }
   }
 
@@ -491,6 +597,21 @@ class _OverlayWidgetState extends State<OverlayWidget>
       _rejected = counters.rejected;
       _completed = counters.completed;
     });
+    _syncShade();
+  }
+
+  /// Hands the current rate to the notification. Cheap to call on every
+  /// change: the throttle drops duplicates and posts at most once a second.
+  void _syncShade() {
+    _shade.update(
+      _notificationControls
+          ? ShadeControls.content(
+              accepted: _accepted,
+              rejected: _rejected,
+              requiredRate: _requiredAcceptRate,
+            )
+          : null,
+    );
   }
 
   /// Applies settings pushed by the home isolate. Authoritative over anything
@@ -504,16 +625,26 @@ class _OverlayWidgetState extends State<OverlayWidget>
       orElse: () => S.lang,
     );
     final reqRate = _reqRateForTier(settings.goalTier);
+    final notificationControls =
+        settings.notificationControls ?? _notificationControls;
+    final hidePill = settings.hidePill ?? _hidePill;
     if (lang == S.lang &&
         reqRate == _requiredAcceptRate &&
-        settings.autoComplete == _autoComplete) {
+        settings.autoComplete == _autoComplete &&
+        notificationControls == _notificationControls &&
+        hidePill == _hidePill) {
       return;
     }
     S.setLang(lang);
     setState(() {
       _requiredAcceptRate = reqRate;
       _autoComplete = settings.autoComplete;
+      _notificationControls = notificationControls;
+      _hidePill = hidePill;
     });
+    // Also covers a language switch: the notification strings change.
+    _syncShade();
+    unawaited(_syncWindowHidden());
   }
 
   Future<void> _loadCounts() async {
@@ -538,6 +669,7 @@ class _OverlayWidgetState extends State<OverlayWidget>
         _rejected = rejected;
         _completed = completed;
       });
+      _syncShade();
     } catch (e, s) {
       loge('overlay load failed', name: 'overlay', error: e, stack: s);
     }
@@ -603,6 +735,7 @@ class _OverlayWidgetState extends State<OverlayWidget>
       }
     });
 
+    _syncShade();
     unawaited(
       TapHistoryStore.instance.append(accepted ? 'accepted' : 'rejected'),
     );
@@ -708,6 +841,7 @@ class _OverlayWidgetState extends State<OverlayWidget>
 
   @override
   Widget build(BuildContext context) {
+    if (_windowHidden) return const SizedBox.shrink();
     final vertical = _orientation.isVertical;
     final showCancel = _showCancelButton;
     final width = OverlayWidget.windowWidthDp(

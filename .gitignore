@@ -112,3 +112,6 @@ GoogleService-Info.plist
 **/GoogleService-Info.plist
 canvases/trio-rental-feasibility.canvas.tsx
 release/YAYIN_TR.md
+
+# Local compile-time defines (real WhatsApp contact) — never commit
+dart_defines.json

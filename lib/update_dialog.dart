@@ -503,31 +503,27 @@ class _UpdateCheckTileState extends State<UpdateCheckTile> {
   Widget build(BuildContext context) {
     final versionLabel = widget.versionLabel;
 
+    // Borderless: it is laid out as a row inside a Settings group card.
     return Material(
-      color: AppColors.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: AppRadius.mdBorder,
-        side: BorderSide(color: AppColors.cardBorderColor, width: 1),
-      ),
+      color: Colors.transparent,
       child: InkWell(
         onTap: _checking ? null : _check,
-        borderRadius: AppRadius.mdBorder,
         splashColor: AppColors.emerald.withValues(alpha: 0.12),
         highlightColor: AppColors.emerald.withValues(alpha: 0.06),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 56),
+          constraints: const BoxConstraints(minHeight: 72),
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md,
-            vertical: AppSpacing.sm + 2,
+            vertical: 14,
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.system_update_alt_rounded,
-                size: 20,
-                color: _checking ? AppColors.disabledText : AppColors.emerald,
+              AppIconBadge(
+                icon: Icons.system_update_outlined,
+                active: !_checking,
+                dimmed: _checking,
               ),
-              const SizedBox(width: AppSpacing.sm + 4),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -538,12 +534,13 @@ class _UpdateCheckTileState extends State<UpdateCheckTile> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontFamily: AppFonts.dmSans,
-                        fontSize: AppTextStyles.body,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.mutedText,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        height: 1.25,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     ListenableBuilder(
                       listenable: GithubAccess.lastUpdateCheck,
                       builder: (context, _) => Text(
@@ -554,9 +551,10 @@ class _UpdateCheckTileState extends State<UpdateCheckTile> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontFamily: AppFonts.dmSans,
-                          color: AppColors.labelText,
-                          fontSize: AppTextStyles.caption,
-                          fontWeight: FontWeight.w600,
+                          color: AppColors.mutedText,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                          height: 1.35,
                         ),
                       ),
                     ),

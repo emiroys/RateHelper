@@ -127,6 +127,8 @@ void main() {
                 setAutoEvents: (_) async {},
                 setPillOrientation: (_) async {},
                 setOverlayCancel: (_) async {},
+                setNotificationControls: (_) async {},
+                setHidePill: (_) async {},
                 setLanguage: (_) async {},
                 onDriverModeChanged: () {},
               ),

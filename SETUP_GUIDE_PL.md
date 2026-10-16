@@ -133,7 +133,7 @@ Ekran główny → **koło zębate** u góry. Sekcje:
 | Sekcja | Zawartość |
 | --- | --- |
 | **Jazda i liczniki** | **Tryb jazdy** (1 / 2 / 3 kierowców), **Automatyczne ukończenie**, **Licznik z kierownicy (Beta)**, **Utrzymuj ekran włączony** |
-| **Dymek** | **Kierunek dymka** (poziomy / pionowy), **Przycisk anulowania na dymku** (opcjonalnie) |
+| **Dymek** | **Kierunek dymka** (poziomy / pionowy), **Przycisk anulowania na dymku** (opcjonalnie), **Sterowanie z powiadomienia** (opcjonalnie) |
 | **Preferencje** | **Język**, **Automatyczne sprawdzanie aktualizacji**, **Automatyczne pobieranie wydarzeń** |
 | **System i wsparcie** | **Sprawdź aktualizacje** (czas ostatniego sprawdzenia + wersja), **Przewodnik konfiguracji**, **Dziennik awarii** |
 
@@ -168,6 +168,16 @@ Dotknij **%**, by zwolnić miejsce: dymek **R** (48 dp); dotknięcia obok trafia
 **Ustawienia → Przycisk anulowania na dymku** — opcjonalny pomarańczowy przycisk obok czerwonego **−**.
 
 Liczniki na ekranie głównym **od razu** odzwierciedlają zmiany z dymka (bez minimalizowania aplikacji).
+
+### Sterowanie z powiadomienia (opcjonalnie)
+
+Gdy **Ustawienia → Sterowanie z powiadomienia** jest włączone, a dymek otwarty, rozwiń panel powiadomień: po lewej jest duży przycisk **−** (Odrzuć +1), po prawej **+** (Akceptuj +1), a pośrodku bieżący wskaźnik akceptacji. Każde dotknięcie daje wibrację: jedną przy akceptacji, podwójną przy odrzuceniu. Możesz liczyć bez niczego na ekranie — np. zwiń dymek do **R** i używaj tylko panelu.
+
+Jeśli nie chcesz niczego na ekranie, włącz zaraz pod spodem **Ukryj pływającą pigułkę (Tylko pasek powiadomień)**: po uruchomieniu dymek jest niewidoczny, a licznik działa tylko z panelu powiadomień (i z kierownicy). Wyłączenie sterowania z powiadomienia albo cofnięcie uprawnienia do powiadomień automatycznie przywraca dymek.
+
+- Przy pierwszym włączeniu aplikacja poprosi o zgodę na powiadomienia. Bez zgody ustawienie zostaje wyłączone; zezwól w **Ustawienia → Aplikacje → RateHelper → Powiadomienia** i włącz je ponownie.
+- Powiadomienie pokazuje tylko wskaźnik akceptacji i liczby zaakceptowanych/odrzuconych — bez zarobków. Nie pojawia się na ekranie blokady.
+- Każde dotknięcie daje krótką wibrację. Wskaźnik odświeża się najwyżej raz na sekundę.
 
 > Gdy widget jest wyłączony, wróć na ekran główny i używaj dużych przycisków **+ / −**.
 

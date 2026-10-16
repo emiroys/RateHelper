@@ -22,6 +22,7 @@ import 'log.dart';
 import 'onboarding_screen.dart';
 import 'overlay_widget.dart';
 import 'services/github_access.dart';
+import 'shade_controls.dart';
 
 const _kKeyOnboardingComplete = 'onboardingComplete';
 
@@ -35,11 +36,13 @@ Future<void> main() async {
     Future<void>(() => tz.initializeTimeZones()).catchError((Object e) {}),
     CrashLogger.install().catchError((Object e) {}),
   ]);
-  
+
   SharedPreferences? prefs;
   try {
     prefs = await SharedPreferences.getInstance();
-  } catch (_) {/* run with defaults; HomeScreen re-tries lazily */}
+  } catch (_) {
+    /* run with defaults; HomeScreen re-tries lazily */
+  }
 
   final bool seenOnboarding = prefs?.getBool(_kKeyOnboardingComplete) ?? false;
 
@@ -60,9 +63,7 @@ Future<void> main() async {
     } catch (_) {}
   }
 
-  runApp(RateHelperApp(
-    showOnboarding: !seenOnboarding,
-  ));
+  runApp(RateHelperApp(showOnboarding: !seenOnboarding));
 }
 
 @pragma('vm:entry-point')
@@ -101,11 +102,17 @@ void overlayMain() {
       // Fresh isolate per overlay open, so getInstance() reads disk — no
       // reload needed. Capped so a slow read cannot hold the first frame.
       var startCollapsed = false;
+      var startHidden = false;
       try {
-        final prefs = await SharedPreferences.getInstance()
-            .timeout(const Duration(milliseconds: 400));
+        final prefs = await SharedPreferences.getInstance().timeout(
+          const Duration(milliseconds: 400),
+        );
         startCollapsed =
             prefs.getBool(OverlayWidget.collapsedPrefsKey) ?? false;
+        startHidden = ShadeControls.pillHidden(
+          notificationControls: prefs.getBool(ShadeControls.prefsKey) ?? false,
+          hidePill: prefs.getBool(ShadeControls.hidePillPrefsKey) ?? false,
+        );
       } catch (e) {
         logd('overlay collapsed pref read skipped: $e', name: 'overlay');
       }
@@ -124,19 +131,25 @@ void overlayMain() {
               surface: Colors.transparent,
               primary: Colors.white,
             ),
-            textTheme: ThemeData.dark().textTheme.apply(fontFamily: AppFonts.dmSans),
+            textTheme: ThemeData.dark().textTheme.apply(
+              fontFamily: AppFonts.dmSans,
+            ),
           ),
           builder: (BuildContext context, Widget? child) {
             return Directionality(
               textDirection: TextDirection.ltr,
               child: MediaQuery(
-                data: MediaQuery.maybeOf(context) ??
+                data:
+                    MediaQuery.maybeOf(context) ??
                     MediaQueryData.fromView(View.of(context)),
                 child: child ?? const SizedBox.shrink(),
               ),
             );
           },
-          home: OverlayWidget(initialCollapsed: startCollapsed),
+          home: OverlayWidget(
+            initialCollapsed: startCollapsed,
+            initialHidden: startHidden,
+          ),
         ),
       );
     },
@@ -156,10 +169,7 @@ void overlayMain() {
 }
 
 class RateHelperApp extends StatefulWidget {
-  const RateHelperApp({
-    super.key,
-    required this.showOnboarding,
-  });
+  const RateHelperApp({super.key, required this.showOnboarding});
 
   final bool showOnboarding;
 
@@ -231,7 +241,9 @@ class _RateHelperAppState extends State<RateHelperApp> {
           primary: Colors.white,
         ),
         useMaterial3: true,
-        textTheme: ThemeData.dark().textTheme.apply(fontFamily: AppFonts.dmSans),
+        textTheme: ThemeData.dark().textTheme.apply(
+          fontFamily: AppFonts.dmSans,
+        ),
       ),
       builder: (BuildContext context, Widget? child) {
         // Above the Navigator, so pushed routes feed the wakelock idle timer
