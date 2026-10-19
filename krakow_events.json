@@ -42,15 +42,39 @@
     "surgeLevel": "High"
   },
   {
+    "title": "Ricchi e Poveri",
+    "venue": "Mała Hala TAURON Areny Kraków",
+    "date": "2026-10-20T19:00:00",
+    "surgeLevel": "Medium"
+  },
+  {
     "title": "Wisła Kraków vs. Raków Częstochowa (Ekstraklasa)",
     "venue": "Stadion Miejski im. Henryka Reymana",
     "date": "2026-10-24T18:00:00",
     "surgeLevel": "High"
   },
   {
+    "title": "Red Bull 64 Bars Live",
+    "venue": "TAURON Arena Kraków (Arena Główna)",
+    "date": "2026-10-24T20:00:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Mrozu - Odpowiedni Moment Live Tour 2026",
+    "venue": "TAURON Arena Kraków (Arena Główna)",
+    "date": "2026-10-30T20:00:00",
+    "surgeLevel": "High"
+  },
+  {
     "title": "MKS Cracovia vs. Motor Lublin (Ekstraklasa)",
     "venue": "Stadion Cracovii im. Józefa Piłsudskiego",
     "date": "2026-10-31T17:30:00",
+    "surgeLevel": "High"
+  },
+  {
+    "title": "Niall Horan - The Show Live On Tour",
+    "venue": "TAURON Arena Kraków (Arena Główna)",
+    "date": "2026-11-03T18:00:00",
     "surgeLevel": "High"
   },
   {
