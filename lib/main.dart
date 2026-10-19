@@ -24,6 +24,8 @@ import 'services/backup_service.dart';
 import 'services/github_access.dart';
 import 'shade_controls.dart';
 import 'startup_language.dart';
+import 'survey_screen.dart';
+import 'survey_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,7 +53,12 @@ Future<void> main() async {
     deviceLocale: PlatformDispatcher.instance.locale,
   );
 
-  runApp(RateHelperApp(showOnboarding: shouldShowOnboarding(prefs)));
+  runApp(
+    RateHelperApp(
+      showOnboarding: shouldShowOnboarding(prefs),
+      showSurvey: SurveyStore.shouldShowSurvey(prefs),
+    ),
+  );
 }
 
 @pragma('vm:entry-point')
@@ -167,24 +174,53 @@ void overlayMain() {
 }
 
 class RateHelperApp extends StatefulWidget {
-  const RateHelperApp({super.key, required this.showOnboarding});
+  const RateHelperApp({
+    super.key,
+    required this.showOnboarding,
+    this.showSurvey = false,
+  });
 
   final bool showOnboarding;
+
+  /// Production passes the versioned survey gate. Tests that pump the app
+  /// without survey intent keep the existing home-screen behaviour.
+  final bool showSurvey;
 
   @override
   State<RateHelperApp> createState() => _RateHelperAppState();
 }
 
-class _RateHelperAppState extends State<RateHelperApp> {
+class _RateHelperAppState extends State<RateHelperApp>
+    with WidgetsBindingObserver {
   late bool _needsOnboarding = widget.showOnboarding;
+  late bool _needsSurvey = widget.showSurvey;
   final _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_askGithubOnce());
+      if (!_needsOnboarding && !_needsSurvey) {
+        unawaited(_askGithubOnce());
+      }
+      // One foreground retry for an answer queued while offline. No timer and
+      // no background polling.
+      unawaited(SurveyStore.syncPending());
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(SurveyStore.syncPending());
+    }
   }
 
   /// One question, before any GitHub read. Existing installs see it once
@@ -223,6 +259,15 @@ class _RateHelperAppState extends State<RateHelperApp> {
     await prefs.setBool(kOnboardingCompletePrefsKey, true);
     if (!mounted) return;
     setState(() => _needsOnboarding = false);
+    if (!_needsSurvey) {
+      unawaited(_askGithubOnce());
+    }
+  }
+
+  void _completeSurvey() {
+    if (!mounted) return;
+    setState(() => _needsSurvey = false);
+    unawaited(_askGithubOnce());
   }
 
   @override
@@ -254,6 +299,8 @@ class _RateHelperAppState extends State<RateHelperApp> {
       },
       home: _needsOnboarding
           ? OnboardingScreen(onDone: _completeOnboarding)
+          : _needsSurvey
+          ? SurveyScreen(onCompleted: _completeSurvey)
           : const HomeScreen(),
     );
   }

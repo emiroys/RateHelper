@@ -6,8 +6,10 @@ compatibility_date = "2026-10-01"
 #   wrangler secret put TELEGRAM_BOT_TOKEN
 #   wrangler secret put TELEGRAM_WEBHOOK_SECRET
 #   wrangler secret put TELEGRAM_ADMIN_CHAT_ID
-# The same bot token and admin chat ID are used server-side for /bug-report.
-# Never expose either value through app dart-defines.
+#   wrangler secret put SURVEY_ADMIN_TOKEN   # protects GET /survey/summary
+# The same bot token and admin chat ID are used server-side for /bug-report,
+# /survey and the /surveysummary Telegram command.
+# Never expose any of these values through app dart-defines.
 
 # `wrangler kv namespace create ORLEN_PRICES` prints the id to paste here.
 [[kv_namespaces]]

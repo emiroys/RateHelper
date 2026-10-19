@@ -2,11 +2,13 @@
 //
 //   GET  /prices            published fuel prices
 //   POST /submissions       fuel proposal -> Telegram approval message
-//   POST /telegram/webhook  existing fuel approval/rejection callback
+//   POST /telegram/webhook  fuel approval + admin survey-summary command
 //   POST /bug-report        user-initiated bug report -> administrator
+//   POST /survey            anonymous one-time pricing/feature survey
+//   GET  /survey/summary    protected aggregate summary (SURVEY_ADMIN_TOKEN)
 //
-// Fuel approval and bug-report processing intentionally use separate routes,
-// validation, rate-limit keys, and message builders.
+// Fuel approval, bug-report and survey processing intentionally use separate
+// routes, validation, rate-limit keys, and message builders.
 
 // Dashboard single-file build: station data is intentionally inlined below.
 // Must list exactly the ids in lib/fuel/orlen_stations.dart
@@ -14,30 +16,30 @@
 // `lpg: false` mirrors `sellsLpg: false` on the Dart side.
 const STATIONS = {
   'nowohucka-71': { name: 'ORLEN Nowohucka', address: 'ul. Nowohucka 71' },
-  'sliwiaka-34': { name: 'ORLEN Śliwiaka', address: 'ul. Tadeusza Śliwiaka 34' },
+  'sliwiaka-34': { name: 'ORLEN Åšliwiaka', address: 'ul. Tadeusza Åšliwiaka 34' },
   'centralna-62': { name: 'ORLEN Centralna', address: 'ul. Centralna 62' },
-  'pilotow-4b': { name: 'ORLEN Pilotów', address: 'ul. Pilotów 4B' },
-  'jasnogorska-2b': { name: 'ORLEN Jasnogórska', address: 'ul. Jasnogórska 2B' },
-  'zakopianska-58': { name: 'ORLEN Zakopiańska (Borek Fałęcki)', address: 'ul. Zakopiańska 58' },
-  'zakopianska-289': { name: 'ORLEN Zakopiańska (Opatkowice)', address: 'ul. Zakopiańska 289' },
+  'pilotow-4b': { name: 'ORLEN PilotÃ³w', address: 'ul. PilotÃ³w 4B' },
+  'jasnogorska-2b': { name: 'ORLEN JasnogÃ³rska', address: 'ul. JasnogÃ³rska 2B' },
+  'zakopianska-58': { name: 'ORLEN ZakopiaÅ„ska (Borek FaÅ‚Ä™cki)', address: 'ul. ZakopiaÅ„ska 58' },
+  'zakopianska-289': { name: 'ORLEN ZakopiaÅ„ska (Opatkowice)', address: 'ul. ZakopiaÅ„ska 289' },
   'grota-roweckiego-33': { name: 'ORLEN Grota-Roweckiego', address: 'ul. Stefana Grota-Roweckiego 33' },
   'armii-krajowej-21a': { name: 'ORLEN Armii Krajowej', address: 'ul. Armii Krajowej 21A' },
   'olszanicka-174': { name: 'ORLEN Olszanicka', address: 'ul. Olszanicka 174' },
   'skotnicka-242': { name: 'ORLEN Skotnicka', address: 'ul. Skotnicka 242' },
-  'zawila-62': { name: 'ORLEN Zawiła', address: 'ul. Zawiła 62' },
-  'luzycka-40': { name: 'ORLEN Łużycka', address: 'ul. Łużycka 40' },
+  'zawila-62': { name: 'ORLEN ZawiÅ‚a', address: 'ul. ZawiÅ‚a 62' },
+  'luzycka-40': { name: 'ORLEN ÅuÅ¼ycka', address: 'ul. ÅuÅ¼ycka 40' },
   'tyniecka-186': { name: 'ORLEN Tyniecka', address: 'ul. Tyniecka 186' },
   'kamienna-18': { name: 'ORLEN Kamienna', address: 'ul. Kamienna 18' },
-  'wybickiego-3e': { name: 'ORLEN Wybickiego', address: 'ul. Józefa Wybickiego 3E' },
+  'wybickiego-3e': { name: 'ORLEN Wybickiego', address: 'ul. JÃ³zefa Wybickiego 3E' },
   'okulickiego-61': { name: 'ORLEN Okulickiego', address: 'ul. Gen. Leopolda Okulickiego 61' },
-  'andersa': { name: 'ORLEN Strusia', address: 'os. Józefa Strusia 24' },
+  'andersa': { name: 'ORLEN Strusia', address: 'os. JÃ³zefa Strusia 24' },
   'palacha': { name: 'ORLEN Opolska', address: 'ul. Opolska 5' },
   'mogilska': { name: 'ORLEN Mogilska', address: 'ul. Mogilska 122' },
   'bulwarowa': { name: 'ORLEN Wandy', address: 'os. Wandy 30A' },
-  'igolomska': { name: 'ORLEN Igołomska', address: 'ul. Igołomska 30L' },
-  'daszynskiego': { name: 'ORLEN Daszyńskiego', address: 'al. Ignacego Daszyńskiego 33' },
-  'wloczkow': { name: 'ORLEN Włóczków', address: 'ul. Włóczków 3', lpg: false },
-  'wioslarska': { name: 'ORLEN Wioślarska', address: 'ul. Wioślarska 1' },
+  'igolomska': { name: 'ORLEN IgoÅ‚omska', address: 'ul. IgoÅ‚omska 30L' },
+  'daszynskiego': { name: 'ORLEN DaszyÅ„skiego', address: 'al. Ignacego DaszyÅ„skiego 33' },
+  'wloczkow': { name: 'ORLEN WÅ‚Ã³czkÃ³w', address: 'ul. WÅ‚Ã³czkÃ³w 3', lpg: false },
+  'wioslarska': { name: 'ORLEN WioÅ›larska', address: 'ul. WioÅ›larska 1' },
   'zamknieta': { name: 'ORLEN Wielicka', address: 'ul. Wielicka 31' },
   'jerzmanowskiego': { name: 'ORLEN Jerzmanowskiego', address: 'ul. Erazma Jerzmanowskiego 39' },
   'bunscha': { name: 'ORLEN Bunscha', address: 'ul. Karola Bunscha 68' },
@@ -90,6 +92,30 @@ const BUG_DIAGNOSTIC_FIELDS = [
   'keepScreenOn',
 ];
 
+const SURVEY_SCHEMA_VERSION = 1;
+const SURVEY_BODY_BYTES = 2048;
+const SURVEY_RATE_WINDOW_S = 3600;
+const SURVEY_RATE_LIMIT = 60;
+const SURVEY_RESPONSE_PREFIX = 'survey:v1:response:';
+const SURVEY_RATE_PREFIX = 'survey:v1:rl:';
+const SURVEY_FIELDS = [
+  'schemaVersion',
+  'installationId',
+  'continueUsing',
+  'monthlyPrice',
+  'mostValuableFeature',
+];
+const SURVEY_CONTINUE = new Set(['yes', 'maybe', 'no']);
+const SURVEY_PRICES = new Set(['5', '10', '15', '20', '25_plus', 'not_pay']);
+const SURVEY_FEATURES = new Set([
+  'overlay_counters',
+  'steering_notifications',
+  'earnings_rental',
+  'fuel_orlen',
+  'weekly_reports',
+  'other',
+]);
+
 // `ORLEN_KV` is the dashboard binding; `PRICES` is the older wrangler.toml name.
 function kv(env) {
   return env.ORLEN_KV ?? env.PRICES;
@@ -106,6 +132,26 @@ export default {
         // Do not let report contents or endpoint details escape through logs.
         try {
           return await receiveBugReport(request, env);
+        } catch {
+          return json({ error: 'internal' }, 500);
+        }
+      }
+      if (url.pathname === '/survey') {
+        if (request.method !== 'POST') {
+          return json({ error: 'method_not_allowed' }, 405, { Allow: 'POST' });
+        }
+        try {
+          return await receiveSurvey(request, env);
+        } catch {
+          return json({ error: 'internal' }, 500);
+        }
+      }
+      if (url.pathname === '/survey/summary') {
+        if (request.method !== 'GET') {
+          return json({ error: 'method_not_allowed' }, 405, { Allow: 'GET' });
+        }
+        try {
+          return await surveySummary(request, env);
         } catch {
           return json({ error: 'internal' }, 500);
         }
@@ -159,19 +205,19 @@ async function submit(request, env) {
   const station = STATIONS[proposal.stationId];
   const current = (await kv(env).get(PRICES_KEY, 'json'))?.stations?.[proposal.stationId]?.[proposal.fuel];
   const lines = [
-    '⛽ New price proposal',
+    'â›½ New price proposal',
     `${station.name}`,
     `${station.address}`,
-    `${FUELS[proposal.fuel]}: ${proposal.price.toFixed(2)} zł`,
-    current ? `Current: ${Number(current.price).toFixed(2)} zł (${current.updatedAt})` : 'Current: none',
+    `${FUELS[proposal.fuel]}: ${proposal.price.toFixed(2)} zÅ‚`,
+    current ? `Current: ${Number(current.price).toFixed(2)} zÅ‚ (${current.updatedAt})` : 'Current: none',
   ];
   const sent = await telegram(env, 'sendMessage', {
     chat_id: env.TELEGRAM_ADMIN_CHAT_ID,
     text: lines.join('\n'),
     reply_markup: {
       inline_keyboard: [[
-        { text: '✅ Approve & Publish', callback_data: `a:${id}` },
-        { text: '❌ Reject', callback_data: `r:${id}` },
+        { text: 'âœ… Approve & Publish', callback_data: `a:${id}` },
+        { text: 'âŒ Reject', callback_data: `r:${id}` },
       ]],
     },
   });
@@ -470,16 +516,191 @@ function deleteTelegramMessage(env, messageId) {
   });
 }
 
+async function receiveSurvey(request, env) {
+  const store = kv(env);
+  if (!store) return json({ error: 'unavailable' }, 503);
+
+  const contentType = request.headers.get('content-type') ?? '';
+  if (!/\bapplication\/json\b/i.test(contentType)) {
+    return json({ error: 'unsupported_media_type' }, 415);
+  }
+  const declaredLength = Number(request.headers.get('content-length') ?? '0');
+  if (Number.isFinite(declaredLength) && declaredLength > SURVEY_BODY_BYTES) {
+    return json({ error: 'too_large' }, 413);
+  }
+
+  const raw = await request.text();
+  if (new TextEncoder().encode(raw).byteLength > SURVEY_BODY_BYTES) {
+    return json({ error: 'too_large' }, 413);
+  }
+  let body;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return json({ error: 'bad_json' }, 400);
+  }
+  if (!plainObjectWithExactKeys(body, SURVEY_FIELDS)) {
+    return json({ error: 'invalid' }, 400);
+  }
+  if (body.schemaVersion !== SURVEY_SCHEMA_VERSION) {
+    return json({ error: 'invalid' }, 400);
+  }
+  if (typeof body.installationId !== 'string' ||
+      !/^[a-f0-9]{32}$/.test(body.installationId)) {
+    return json({ error: 'invalid' }, 400);
+  }
+  if (!SURVEY_CONTINUE.has(body.continueUsing) ||
+      !SURVEY_PRICES.has(body.monthlyPrice) ||
+      !SURVEY_FEATURES.has(body.mostValuableFeature)) {
+    return json({ error: 'invalid' }, 400);
+  }
+
+  const responseKey = `${SURVEY_RESPONSE_PREFIX}${body.installationId}`;
+  // A retry with the same installation id is a duplicate, not a new response.
+  // KV is eventually consistent: concurrent first submissions can both write
+  // the same key, but the key remains unique and aggregates read distinct keys.
+  if (await store.get(responseKey)) {
+    return json({ status: 'duplicate' }, 200, { 'Cache-Control': 'no-store' });
+  }
+
+  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
+  if (!(await allowSurveyRate(store, ip))) {
+    return json({ error: 'rate_limited' }, 429);
+  }
+
+  await store.put(
+    responseKey,
+    JSON.stringify({
+      schemaVersion: SURVEY_SCHEMA_VERSION,
+      continueUsing: body.continueUsing,
+      monthlyPrice: body.monthlyPrice,
+      mostValuableFeature: body.mostValuableFeature,
+    }),
+  );
+  return json({ status: 'recorded' }, 201, { 'Cache-Control': 'no-store' });
+}
+
+async function allowSurveyRate(store, ip) {
+  const bucket = Math.floor(Date.now() / 1000 / SURVEY_RATE_WINDOW_S);
+  const ipHash = await sha256Hex(new TextEncoder().encode(ip));
+  const key = `${SURVEY_RATE_PREFIX}${ipHash}:${bucket}`;
+  const count = Number((await store.get(key)) ?? '0');
+  if (count >= SURVEY_RATE_LIMIT) return false;
+  await store.put(key, String(count + 1), {
+    expirationTtl: SURVEY_RATE_WINDOW_S * 2,
+  });
+  return true;
+}
+
+async function surveySummary(request, env) {
+  const token = env.SURVEY_ADMIN_TOKEN;
+  if (!token) return json({ error: 'not_configured' }, 503);
+  const authorization = request.headers.get('authorization') ?? '';
+  // Hash both sides so the comparison runs on equal-length values and does
+  // not leak the token length through an early-exit string compare.
+  const expected = await sha256Hex(new TextEncoder().encode(`Bearer ${token}`));
+  const provided = await sha256Hex(new TextEncoder().encode(authorization));
+  if (expected !== provided) {
+    return json({ error: 'forbidden' }, 403);
+  }
+  const summary = await collectSurveySummary(env);
+  if (!summary) return json({ error: 'unavailable' }, 503);
+  return json(summary, 200, { 'Cache-Control': 'no-store' });
+}
+
+async function collectSurveySummary(env) {
+  const store = kv(env);
+  if (!store) return null;
+  const continueCounts = Object.fromEntries([...SURVEY_CONTINUE].map((key) => [key, 0]));
+  const priceCounts = Object.fromEntries([...SURVEY_PRICES].map((key) => [key, 0]));
+  const featureCounts = Object.fromEntries([...SURVEY_FEATURES].map((key) => [key, 0]));
+  let total = 0;
+  let cursor;
+  do {
+    const page = await store.list({ prefix: SURVEY_RESPONSE_PREFIX, cursor });
+    for (const key of page.keys ?? []) {
+      const value = await store.get(key.name, 'json');
+      if (!value ||
+          !SURVEY_CONTINUE.has(value.continueUsing) ||
+          !SURVEY_PRICES.has(value.monthlyPrice) ||
+          !SURVEY_FEATURES.has(value.mostValuableFeature)) {
+        continue;
+      }
+      total++;
+      continueCounts[value.continueUsing]++;
+      priceCounts[value.monthlyPrice]++;
+      featureCounts[value.mostValuableFeature]++;
+    }
+    cursor = page.list_complete ? null : page.cursor;
+  } while (cursor);
+
+  return {
+    schemaVersion: SURVEY_SCHEMA_VERSION,
+    totalResponses: total,
+    continueUsing: surveyCounts(continueCounts, total),
+    monthlyPrice: surveyCounts(priceCounts, total),
+    mostValuableFeature: surveyCounts(featureCounts, total),
+  };
+}
+
+function surveyCounts(counts, total) {
+  return Object.fromEntries(
+    Object.entries(counts).map(([key, count]) => [
+      key,
+      {
+        count,
+        percent: total === 0 ? 0 : Math.round((count / total) * 1000) / 10,
+      },
+    ]),
+  );
+}
+
+function formatSurveySummary(summary) {
+  if (!summary) return 'RateHelper survey v1\nSurvey storage is not configured.';
+  if (summary.totalResponses === 0) {
+    return 'RateHelper survey v1\nNo responses yet.';
+  }
+  const line = (title, values) => {
+    const parts = Object.entries(values)
+      .map(([key, value]) => `${key} ${value.percent}% (${value.count})`)
+      .join(' Â· ');
+    return `${title}: ${parts}`;
+  };
+  return [
+    'RateHelper survey v1',
+    `Responses: ${summary.totalResponses}`,
+    line('Continue', summary.continueUsing),
+    line('Monthly price', summary.monthlyPrice),
+    line('Most valuable', summary.mostValuableFeature),
+  ].join('\n');
+}
+
 async function telegramWebhook(request, env) {
   // Telegram echoes the secret given to setWebhook; anything else is forged.
   if (request.headers.get('x-telegram-bot-api-secret-token') !== env.TELEGRAM_WEBHOOK_SECRET) {
     return new Response('forbidden', { status: 403 });
   }
   const update = await request.json();
+  const adminId = String(env.TELEGRAM_ADMIN_CHAT_ID);
+  const message = update.message;
+  if (message) {
+    const chatId = String(message.chat?.id);
+    const fromId = String(message.from?.id);
+    if (chatId !== adminId && fromId !== adminId) return new Response('ok');
+    const text = (message.text ?? '').trim().toLowerCase();
+    if (text === '/surveysummary' || text === '/survey_summary') {
+      const summary = await collectSurveySummary(env);
+      await telegram(env, 'sendMessage', {
+        chat_id: adminId,
+        text: formatSurveySummary(summary),
+      });
+    }
+    return new Response('ok');
+  }
+
   const query = update.callback_query;
   if (!query) return new Response('ok');
 
-  const adminId = String(env.TELEGRAM_ADMIN_CHAT_ID);
   if (String(query.from?.id) !== adminId && String(query.message?.chat?.id) !== adminId) {
     await answer(env, query.id, 'Not allowed');
     return new Response('ok');
@@ -495,13 +716,13 @@ async function telegramWebhook(request, env) {
   const pending = await kv(env).get(pendingKey, 'json');
   if (!pending) {
     await answer(env, query.id, 'Already handled or expired');
-    await closeMessage(env, query, '⏱ Already handled or expired');
+    await closeMessage(env, query, 'â± Already handled or expired');
     return new Response('ok');
   }
 
   if (action === 'a') {
     // Single admin, so a read-modify-write race on this key is not a concern.
-    // Delete the pending row only AFTER the prices write succeeds — otherwise
+    // Delete the pending row only AFTER the prices write succeeds â€” otherwise
     // a transient KV put error would drop the proposal with nothing published.
     const prices = (await kv(env).get(PRICES_KEY, 'json')) ?? { stations: {} };
     prices.stations[pending.stationId] ??= {};
@@ -512,11 +733,11 @@ async function telegramWebhook(request, env) {
     await kv(env).put(PRICES_KEY, JSON.stringify(prices));
     await kv(env).delete(pendingKey);
     await answer(env, query.id, 'Published');
-    await closeMessage(env, query, '✅ Published');
+    await closeMessage(env, query, 'âœ… Published');
   } else {
     await kv(env).delete(pendingKey);
     await answer(env, query.id, 'Rejected');
-    await closeMessage(env, query, '❌ Rejected');
+    await closeMessage(env, query, 'âŒ Rejected');
   }
   return new Response('ok');
 }

@@ -27,6 +27,13 @@ class FakeKv {
   async delete(key) {
     this.values.delete(key);
   }
+
+  async list({ prefix = '', cursor } = {}) {
+    const keys = [...this.values.keys()]
+      .filter((key) => key.startsWith(prefix))
+      .map((name) => ({ name }));
+    return { keys, list_complete: true, cursor: null };
+  }
 }
 
 function environment() {
@@ -35,7 +42,31 @@ function environment() {
     TELEGRAM_BOT_TOKEN: 'test-bot-token',
     TELEGRAM_ADMIN_CHAT_ID: '123456',
     TELEGRAM_WEBHOOK_SECRET: 'test-webhook-secret',
+    SURVEY_ADMIN_TOKEN: 'test-survey-token',
   };
+}
+
+function surveyPayload(overrides = {}) {
+  return {
+    schemaVersion: 1,
+    installationId: '0123456789abcdef0123456789abcdef',
+    continueUsing: 'maybe',
+    monthlyPrice: '10',
+    mostValuableFeature: 'fuel_orlen',
+    ...overrides,
+  };
+}
+
+function surveyRequest(payload, headers = {}) {
+  return new Request('https://worker.test/survey', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'cf-connecting-ip': '192.0.2.30',
+      ...headers,
+    },
+    body: JSON.stringify(payload),
+  });
 }
 
 function validPayload(overrides = {}) {
@@ -243,4 +274,179 @@ test('existing fuel submission and webhook approval behavior remains intact', as
   const prices = await worker.fetch(new Request('https://worker.test/prices'), env);
   assert.equal(prices.status, 200);
   assert.equal((await prices.json()).stations['nowohucka-71'].pb95.price, 6.29);
+});
+
+test('records a survey response once and keeps the payload anonymous', async () => {
+  const env = environment();
+  const first = await worker.fetch(surveyRequest(surveyPayload()), env);
+  assert.equal(first.status, 201);
+  assert.deepEqual(await first.json(), { status: 'recorded' });
+
+  const duplicate = await worker.fetch(surveyRequest(surveyPayload()), env);
+  assert.equal(duplicate.status, 200);
+  assert.deepEqual(await duplicate.json(), { status: 'duplicate' });
+
+  const responseKeys = [...env.ORLEN_KV.values.keys()]
+    .filter((key) => key.startsWith('survey:v1:response:'));
+  assert.equal(responseKeys.length, 1);
+  const stored = env.ORLEN_KV.values.get(responseKeys[0]);
+  assert.deepEqual(JSON.parse(stored), {
+    schemaVersion: 1,
+    continueUsing: 'maybe',
+    monthlyPrice: '10',
+    mostValuableFeature: 'fuel_orlen',
+  });
+  assert.doesNotMatch(stored, /name|phone|email|location|earnings/i);
+});
+
+test('rejects malformed survey bodies and wrong methods', async () => {
+  const env = environment();
+
+  const get = await worker.fetch(new Request('https://worker.test/survey'), env);
+  assert.equal(get.status, 405);
+  assert.equal(get.headers.get('allow'), 'POST');
+
+  const wrongType = await worker.fetch(
+    surveyRequest(surveyPayload(), { 'content-type': 'text/plain' }),
+    env,
+  );
+  assert.equal(wrongType.status, 415);
+
+  assert.equal(
+    (await worker.fetch(surveyRequest(surveyPayload({ continueUsing: 'probably' })), env)).status,
+    400,
+  );
+  assert.equal(
+    (await worker.fetch(surveyRequest(surveyPayload({ monthlyPrice: '99' })), env)).status,
+    400,
+  );
+  assert.equal(
+    (await worker.fetch(surveyRequest(surveyPayload({ mostValuableFeature: 'ads' })), env)).status,
+    400,
+  );
+  assert.equal(
+    (await worker.fetch(surveyRequest(surveyPayload({ schemaVersion: 2 })), env)).status,
+    400,
+  );
+  assert.equal(
+    (await worker.fetch(surveyRequest(surveyPayload({ installationId: 'nope' })), env)).status,
+    400,
+  );
+  assert.equal(
+    (await worker.fetch(surveyRequest(surveyPayload({ extra: 'field' })), env)).status,
+    400,
+  );
+
+  const oversized = new Request('https://worker.test/survey', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.31' },
+    body: JSON.stringify({ ...surveyPayload(), pad: 'x'.repeat(3000) }),
+  });
+  assert.equal((await worker.fetch(oversized, env)).status, 413);
+  assert.equal(
+    [...env.ORLEN_KV.values.keys()].filter((key) => key.startsWith('survey:v1:response:')).length,
+    0,
+  );
+});
+
+test('rate-limits new survey installations from one IP', async () => {
+  const env = environment();
+  for (let i = 0; i < 60; i++) {
+    const id = i.toString(16).padStart(32, '0');
+    const response = await worker.fetch(
+      surveyRequest(surveyPayload({ installationId: id })),
+      env,
+    );
+    assert.equal(response.status, 201);
+  }
+  const limited = await worker.fetch(
+    surveyRequest(surveyPayload({ installationId: 'f'.repeat(32) })),
+    env,
+  );
+  assert.equal(limited.status, 429);
+});
+
+test('survey summary requires the admin token and returns aggregates only', async () => {
+  const env = environment();
+  await worker.fetch(
+    surveyRequest(surveyPayload({ installationId: 'a'.repeat(32) })),
+    env,
+  );
+  await worker.fetch(
+    surveyRequest(
+      surveyPayload({
+        installationId: 'b'.repeat(32),
+        continueUsing: 'yes',
+        monthlyPrice: '15',
+        mostValuableFeature: 'overlay_counters',
+      }),
+    ),
+    env,
+  );
+  await worker.fetch(
+    surveyRequest(
+      surveyPayload({
+        installationId: 'c'.repeat(32),
+        continueUsing: 'no',
+        monthlyPrice: 'not_pay',
+        mostValuableFeature: 'other',
+      }),
+    ),
+    env,
+  );
+
+  const unauthorized = await worker.fetch(
+    new Request('https://worker.test/survey/summary'),
+    env,
+  );
+  assert.equal(unauthorized.status, 403);
+
+  const authorized = await worker.fetch(
+    new Request('https://worker.test/survey/summary', {
+      headers: { authorization: `Bearer ${env.SURVEY_ADMIN_TOKEN}` },
+    }),
+    env,
+  );
+  assert.equal(authorized.status, 200);
+  const summary = await authorized.json();
+  assert.equal(summary.totalResponses, 3);
+  assert.equal(summary.continueUsing.yes.count, 1);
+  assert.equal(summary.continueUsing.maybe.count, 1);
+  assert.equal(summary.continueUsing.no.count, 1);
+  assert.equal(summary.monthlyPrice['15'].count, 1);
+  assert.equal(summary.mostValuableFeature.fuel_orlen.count, 1);
+  const serialized = JSON.stringify(summary);
+  assert.doesNotMatch(serialized, /a{32}|b{32}|c{32}/);
+  assert.doesNotMatch(serialized, /installationId/);
+});
+
+test('telegram admin can request an on-demand survey summary', async () => {
+  const env = environment();
+  await worker.fetch(
+    surveyRequest(surveyPayload({ installationId: 'd'.repeat(32) })),
+    env,
+  );
+  const calls = [];
+  telegramSuccess(calls);
+  const webhook = new Request('https://worker.test/telegram/webhook', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-telegram-bot-api-secret-token': env.TELEGRAM_WEBHOOK_SECRET,
+    },
+    body: JSON.stringify({
+      message: {
+        chat: { id: env.TELEGRAM_ADMIN_CHAT_ID },
+        from: { id: env.TELEGRAM_ADMIN_CHAT_ID },
+        text: '/surveysummary',
+      },
+    }),
+  });
+
+  assert.equal((await worker.fetch(webhook, env)).status, 200);
+  assert.equal(calls.length, 1);
+  const body = JSON.parse(calls[0].options.body);
+  assert.equal(body.chat_id, env.TELEGRAM_ADMIN_CHAT_ID);
+  assert.match(body.text, /Responses: 1/);
+  assert.doesNotMatch(body.text, /d{32}|installationId/);
 });

@@ -935,6 +935,129 @@ class S {
   static String get onboardingSkipConfirm =>
       _p('YİNE DE ATLA', 'SKIP ANYWAY', 'POMIŃ MIMO TO');
 
+  // --- One-time pricing & feature-value survey (v1) ---
+
+  static String get surveyLanguageSelector =>
+      _p('Dil seç', 'Choose language', 'Wybierz język');
+  static String get surveyTitle => _p(
+    'RateHelper’ın Geleceği',
+    'The Future of RateHelper',
+    'Przyszłość RateHelper',
+  );
+  static String get surveyIntro => _p(
+    'RateHelper şu anda tamamen ücretsiz. Geliştirmeye devam edebilmek için ileride aylık 15 PLN’lik isteğe bağlı bir sürüm düşünülüyor. Bu bir ödeme talebi değildir; hiçbir abonelik başlatılmaz.',
+    'RateHelper is completely free today. To keep improving it, an optional 15 PLN per month version is being considered for the future. This is not a payment request; no subscription is started.',
+    'RateHelper jest dziś całkowicie darmowy. Aby móc dalej go rozwijać, rozważana jest opcjonalna wersja za 15 zł miesięcznie. To nie jest prośba o płatność; nie uruchamiamy żadnej subskrypcji.',
+  );
+  static String get surveyAnonymousNote => _p(
+    'Yanıtlar anonimdir; ad, telefon, e-posta, kazanç veya konum gönderilmez.',
+    'Your answers are anonymous; no name, phone, email, earnings or location is sent.',
+    'Odpowiedzi są anonimowe; nie wysyłamy imienia, telefonu, e-maila, zarobków ani lokalizacji.',
+  );
+  static String get surveyQuestion1 => _p(
+    'RateHelper ayda 15 zł olsaydı kullanmaya devam eder miydin?',
+    'If RateHelper cost 15 zł per month, would you continue using it?',
+    'Gdyby RateHelper kosztował 15 zł miesięcznie, czy nadal korzystałbyś z aplikacji?',
+  );
+  static String get surveyContinueYes =>
+      _p('Evet, kesinlikle.', 'Yes, definitely.', 'Tak, zdecydowanie.');
+  static String get surveyContinueMaybe => _p(
+    'Belki, özelliklere bağlı.',
+    'Maybe, depending on the features.',
+    'Może, w zależności od funkcji.',
+  );
+  static String get surveyContinueNo => _p(
+    'Hayır, yalnızca ücretsiz sürümü kullanırdım.',
+    'No, I would only use the free version.',
+    'Nie, korzystałbym tylko z darmowej wersji.',
+  );
+  static String get surveyQuestion2 => _p(
+    'Aylık olarak makul bulduğun fiyat nedir?',
+    'What monthly price would you consider reasonable?',
+    'Jaka miesięczna cena wydaje Ci się rozsądna?',
+  );
+  static String get surveyPrice5 => '5 zł';
+  static String get surveyPrice10 => '10 zł';
+  static String get surveyPrice15 => '15 zł';
+  static String get surveyPrice20 => '20 zł';
+  static String get surveyPrice25Plus =>
+      _p('25 zł veya daha fazla', '25 zł or more', '25 zł lub więcej');
+  static String get surveyPriceNotPay => _p(
+    'Uygulama için ödeme yapmam.',
+    'I would not pay for the application.',
+    'Nie chcę płacić za aplikację.',
+  );
+  static String get surveyQuestion3 => _p(
+    'Hangi RateHelper özelliği senin için en değerli?',
+    'Which RateHelper feature is most valuable to you?',
+    'Która funkcja RateHelper jest dla Ciebie najcenniejsza?',
+  );
+  static String get surveyFeatureOverlay => _p(
+    'Yüzen baloncuk ve yolculuk sayaçları',
+    'Floating overlay and trip counters',
+    'Pływający dymek i liczniki przejazdów',
+  );
+  static String get surveyFeatureSteering => _p(
+    'Direksiyon ve bildirim kontrolleri',
+    'Steering-wheel and notification controls',
+    'Sterowanie z kierownicy i powiadomień',
+  );
+  static String get surveyFeatureEarnings => _p(
+    'Kazanç ve kira hesaplamaları',
+    'Earnings and rental calculations',
+    'Obliczenia zarobków i najmu',
+  );
+  static String get surveyFeatureFuel => _p(
+    'ORLEN yakıt fiyatları ve yakıt kayıtları',
+    'ORLEN fuel prices and fuel records',
+    'Ceny paliw ORLEN i zapisy paliwa',
+  );
+  static String get surveyFeatureWeekly => _p(
+    'Haftalık hedefler, arşivler ve raporlar',
+    'Weekly goals, archives and reports',
+    'Cele tygodniowe, archiwa i raporty',
+  );
+  static String get surveyFeatureOther =>
+      _p('Diğer özellikler', 'Other features', 'Inne funkcje');
+  static String surveyProgress(int answered) => _p(
+    '$answered / 3 yanıtlandı',
+    '$answered of 3 answered',
+    '$answered z 3 odpowiedzi',
+  );
+  static String get surveyAnswerRequired => _p(
+    'Göndermek için üç soruyu da yanıtla.',
+    'Answer all three questions to submit.',
+    'Aby wysłać, odpowiedz na wszystkie trzy pytania.',
+  );
+  static String get surveySubmit =>
+      _p('YANITLARI GÖNDER', 'SUBMIT ANSWERS', 'WYŚLIJ ODPOWIEDZI');
+  static String get surveySubmitting =>
+      _p('GÖNDERİLİYOR…', 'SUBMITTING…', 'WYSYŁANIE…');
+  static String get surveySuccessTitle =>
+      _p('Teşekkürler!', 'Thank you!', 'Dziękujemy!');
+  static String get surveySuccessBody => _p(
+    'Yanıtların kaydedildi. Bu anket bir daha gösterilmeyecek.',
+    'Your answers have been saved. This survey will not be shown again.',
+    'Twoje odpowiedzi zostały zapisane. Ta ankieta nie pojawi się ponownie.',
+  );
+  static String get surveyQueuedTitle =>
+      _p('Yanıtlar kaydedildi', 'Answers saved', 'Odpowiedzi zapisane');
+  static String get surveyQueuedBody => _p(
+    'Şu anda gönderilemedi. Yanıtların cihazda saklandı ve uygulama açıldığında yeniden denenecek. RateHelper’ı kullanmaya devam edebilirsin.',
+    'Could not send right now. Your answers are stored on this device and will be retried when the app is next opened. You can continue using RateHelper.',
+    'Nie udało się teraz wysłać. Odpowiedzi są zapisane na urządzeniu i zostaną ponowione przy następnym otwarciu aplikacji. Możesz dalej korzystać z RateHelper.',
+  );
+  static String get surveyErrorLocal => _p(
+    'Yanıtlar kaydedilemedi. Lütfen tekrar dene.',
+    'Could not save your answers. Please try again.',
+    'Nie udało się zapisać odpowiedzi. Spróbuj ponownie.',
+  );
+  static String get surveyContinue => _p(
+    'RATEHELPER’A DEVAM ET',
+    'CONTINUE TO RATEHELPER',
+    'PRZEJDŹ DO RATEHELPER',
+  );
+
   static String get crashLogTitle =>
       _p('Çökme Kayıtları', 'Crash Log', 'Dziennik awarii');
   static String get crashLogEmpty => _p(
