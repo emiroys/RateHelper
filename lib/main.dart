@@ -101,12 +101,17 @@ void overlayMain() {
 
       // Fresh isolate per overlay open, so getInstance() reads disk — no
       // reload needed. Capped so a slow read cannot hold the first frame.
+      var startOrientation = PillOrientation.horizontal;
+      var startShowCancel = false;
       var startCollapsed = false;
       var startHidden = false;
       try {
         final prefs = await SharedPreferences.getInstance().timeout(
           const Duration(milliseconds: 400),
         );
+        final layout = OverlayWidget.layoutFromPrefs(prefs);
+        startOrientation = layout.orientation;
+        startShowCancel = layout.showCancel;
         startCollapsed =
             prefs.getBool(OverlayWidget.collapsedPrefsKey) ?? false;
         startHidden = ShadeControls.pillHidden(
@@ -147,6 +152,8 @@ void overlayMain() {
             );
           },
           home: OverlayWidget(
+            initialOrientation: startOrientation,
+            initialShowCancel: startShowCancel,
             initialCollapsed: startCollapsed,
             initialHidden: startHidden,
           ),

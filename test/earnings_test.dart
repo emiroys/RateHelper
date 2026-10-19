@@ -347,6 +347,136 @@ void main() {
       expect(decoded.cashReceived, closeTo(300.50, 0.001));
     });
 
+    test('parses standard dot-decimal strings without 100x inflation', () {
+      expect(parseStoredAmount('1924.97'), closeTo(1924.97, 0.001));
+      expect(parseStoredAmount('1924,97'), closeTo(1924.97, 0.001));
+      expect(parseStoredAmount('1.924,97'), closeTo(1924.97, 0.001));
+      expect(parseStoredAmount('1.924'), closeTo(1924, 0.001));
+      expect(parseStoredAmount(1924.97), closeTo(1924.97, 0.001));
+
+      final decoded = WeekEarning.fromJson({
+        'id': 'dot_decimal',
+        'weekStart': DateTime(2026, 6, 22).toIso8601String(),
+        'weekEnd': DateTime(2026, 6, 28).toIso8601String(),
+        'netIncome': '1924.97',
+        'cashReceived': '300.50',
+        'onlineHours': '40.5',
+        'tripCount': 130,
+        'fuelPumpPaid': '277.78',
+      })!;
+      expect(decoded.netIncome, closeTo(1924.97, 0.001));
+      expect(decoded.cashReceived, closeTo(300.50, 0.001));
+      expect(decoded.onlineHours, closeTo(40.5, 0.001));
+    });
+
+    test('stored rate and rental snapshots survive round-trip', () {
+      final week = WeekEarning(
+        id: 'snap',
+        weekStart: DateTime(2026, 6, 22),
+        weekEnd: DateTime(2026, 6, 28),
+        driverMode: DriverMode.solo,
+        netIncome: 5000,
+        cashReceived: 0,
+        onlineHours: 40,
+        driverTripCount: 130,
+        vatRate: 0.10,
+        settlementFeeRate: 0.05,
+        fuelDiscountRate: 0.20,
+        rentalFeeSnapshot: 123,
+        totalCarRentalFeeSnapshot: 456,
+        fuelReceipts: [
+          FuelReceipt(
+            id: 'f1',
+            timestamp: DateTime(2026, 6, 23),
+            amountPaid: 100,
+          ),
+        ],
+      );
+      expect(week.vat, closeTo(500, 0.001));
+      expect(week.settlementFee, closeTo(250, 0.001));
+      expect(week.fuelAfterDiscount, closeTo(80, 0.001));
+      expect(week.rentalFee, 123);
+      expect(week.totalCarRentalFee, 456);
+
+      final decoded = WeekEarning.fromJson(week.toJson())!;
+      expect(decoded.vatRate, closeTo(0.10, 1e-9));
+      expect(decoded.settlementFeeRate, closeTo(0.05, 1e-9));
+      expect(decoded.fuelDiscountRate, closeTo(0.20, 1e-9));
+      expect(decoded.rentalFee, 123);
+      expect(decoded.totalCarRentalFee, 456);
+      expect(decoded.vat, closeTo(500, 0.001));
+    });
+
+    test('editing an existing week preserves rate and rental snapshots unless rental inputs change', () {
+      final historical = WeekEarning(
+        id: 'hist-1',
+        weekStart: DateTime(2026, 6, 22),
+        weekEnd: DateTime(2026, 6, 28),
+        driverMode: DriverMode.solo,
+        netIncome: 5000,
+        cashReceived: 200,
+        onlineHours: 40,
+        driverTripCount: 130,
+        vatRate: 0.10,
+        settlementFeeRate: 0.03,
+        fuelDiscountRate: 0.15,
+        rentalFeeSnapshot: 650,
+        totalCarRentalFeeSnapshot: 650,
+        fuelReceipts: [
+          FuelReceipt(
+            id: 'f1',
+            timestamp: DateTime(2026, 6, 23),
+            amountPaid: 200,
+          ),
+        ],
+      );
+
+      // Edit cashReceived and onlineHours without changing trip count, mode, or discount.
+      final editedNonRental = buildSavedWeekEarning(
+        existing: historical,
+        fallbackId: 'ignored',
+        weekStart: historical.weekStart,
+        weekEnd: historical.weekEnd,
+        driverMode: DriverMode.solo,
+        netIncome: 5200,
+        cashReceived: 400,
+        onlineHours: 42,
+        driverTripCount: 130,
+        carTripCountOverride: null,
+        hasRentalDiscount: true,
+        fuelReceipts: historical.fuelReceipts,
+      );
+
+      expect(editedNonRental.id, 'hist-1');
+      expect(editedNonRental.vatRate, closeTo(0.10, 1e-9));
+      expect(editedNonRental.settlementFeeRate, closeTo(0.03, 1e-9));
+      expect(editedNonRental.fuelDiscountRate, closeTo(0.15, 1e-9));
+      expect(editedNonRental.rentalFee, 650);
+      expect(editedNonRental.totalCarRentalFee, 650);
+
+      // Changing trip count into a new bracket recalculates rental while keeping historical rates.
+      final editedRentalInputs = buildSavedWeekEarning(
+        existing: historical,
+        fallbackId: 'ignored',
+        weekStart: historical.weekStart,
+        weekEnd: historical.weekEnd,
+        driverMode: DriverMode.solo,
+        netIncome: 5200,
+        cashReceived: 400,
+        onlineHours: 42,
+        driverTripCount: 210,
+        carTripCountOverride: null,
+        hasRentalDiscount: true,
+        fuelReceipts: historical.fuelReceipts,
+      );
+
+      expect(editedRentalInputs.vatRate, closeTo(0.10, 1e-9));
+      expect(editedRentalInputs.settlementFeeRate, closeTo(0.03, 1e-9));
+      expect(editedRentalInputs.fuelDiscountRate, closeTo(0.15, 1e-9));
+      expect(editedRentalInputs.rentalFee, 300);
+      expect(editedRentalInputs.totalCarRentalFee, 300);
+    });
+
     test('legacy JSON decodes with default hasRentalDiscount true', () {
       final legacy = {
         'id': 'legacy0',

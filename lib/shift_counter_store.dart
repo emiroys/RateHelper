@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -118,8 +119,8 @@ class ShiftCounterStore {
   }
 
   @visibleForTesting
-  static void resetInstanceForTest({File? file}) {
-    instance = ShiftCounterStore(file: file);
+  static void resetInstanceForTest({File? file, ShiftCounterStore? store}) {
+    instance = store ?? ShiftCounterStore(file: file);
   }
 
   Future<File> _resolve() async {
@@ -144,9 +145,9 @@ class ShiftCounterStore {
   }
 
   /// Adds signed deltas to whatever is currently on disk, as a single queued
-  /// read-modify-write. Home must not do `read()` then `write()`: those are
-  /// two separate queue jobs, and an overlay [merge] landing in the gap would
-  /// be computed away by the stale snapshot, silently losing a tap.
+  /// read-modify-write. Both isolates write counters only through here: an
+  /// absolute write computed from an isolate's in-memory view would erase
+  /// whatever the other isolate added since that view was taken.
   Future<ShiftCounters> applyDelta({
     int acceptedDelta = 0,
     int rejectedDelta = 0,
@@ -165,29 +166,17 @@ class ShiftCounterStore {
     }).then((_) => _last);
   }
 
-  /// Overlay writes accepted/rejected/completed without clobbering canceled.
-  Future<ShiftCounters> merge({
-    int? accepted,
-    int? rejected,
-    int? completed,
-    int? canceled,
-  }) {
-    return _enqueue(() async {
-      final current = await _readFile(await _resolve()) ?? const ShiftCounters();
-      final next = current.copyWith(
-        accepted: accepted,
-        rejected: rejected,
-        completed: completed,
-        canceled: canceled,
-      );
-      await _writeNow(next);
-    }).then((_) => _last);
-  }
+  /// Per-isolate tag for temp file names. Home and the overlay each hold
+  /// their own store (and queue), so a shared `.tmp` name let one isolate's
+  /// rename publish or delete the other's half-written file.
+  static final String _tmpTag =
+      Random().nextInt(1 << 32).toRadixString(16).padLeft(8, '0');
+  static int _tmpSeq = 0;
 
   Future<void> _writeNow(ShiftCounters counters) async {
     final file = await _resolve();
     await file.parent.create(recursive: true);
-    final tmp = File('${file.path}.tmp');
+    final tmp = File('${file.path}.$_tmpTag.${_tmpSeq++}.tmp');
     await tmp.writeAsString(counters.encode(), flush: false);
     // rename(2) replaces the target atomically on Android, so the counters
     // file is never absent. Deleting first would open a window where a

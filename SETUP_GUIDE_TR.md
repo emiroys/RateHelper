@@ -308,12 +308,13 @@ Bu isteklerde giden: IP adresi ve standart başlıklar. Verin gitmez.
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs
 flutter test
-flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbols/
+flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbols/ --dart-define-from-file=dart_defines.json
 ```
 
 - `--obfuscate` → Dart AOT sembollerini siler.
 - `--split-debug-info` → sembolleri proje dışında tutar (geri izleme için sakla).
 - `--split-per-abi` → APK boyutunu ~8 MB / mimari seviyesine düşürür.
+- `--dart-define-from-file` → Git tarafından yok sayılan yerel yapılandırmayı derlemeye ekler; dosyanın içeriğini yazdırma veya commit etme.
 
 `key.properties` proje kökünde durmalı ve okunabilir olmalı (`android/key.properties` değil). Yoksa veya okunamazsa release derlemesi `GradleException` ile durur — debug anahtarına düşmez. Debug derlemesi bu dosya olmadan çalışır. Her sürümde aynı keystore kullan.
 

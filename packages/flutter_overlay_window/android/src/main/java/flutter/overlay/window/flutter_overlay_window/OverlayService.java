@@ -26,6 +26,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
@@ -46,6 +47,9 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.plugin.common.BasicMessageChannel;
 import io.flutter.plugin.common.JSONMessageCodec;
 import io.flutter.plugin.common.MethodChannel;
+import io.flutter.plugin.common.MethodChannel.Result;
+
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class OverlayService extends Service implements View.OnTouchListener {
     private static void debugLog(Context context, String tag, String msg) {
@@ -82,6 +86,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private FlutterView flutterView;
     private MethodChannel flutterChannel;
     private BasicMessageChannel<Object> overlayMessageChannel;
+    @Nullable
+    private Result pendingCloseResult;
     private int clickableFlag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
 
@@ -116,22 +122,96 @@ public class OverlayService extends Service implements View.OnTouchListener {
         return null;
     }
 
+    /**
+     * Asks the overlay isolate to persist pending counter deltas, then stops
+     * this service. Never blocks the main thread (a latch would deadlock the
+     * Flutter reply). Completes [result] from onDestroy after teardown.
+     */
+    public static void flushThenStop(@NonNull Result result) {
+        OverlayService service = instance;
+        if (service == null) {
+            result.success(false);
+            return;
+        }
+        if (service.pendingCloseResult != null) {
+            result.success(false);
+            return;
+        }
+        service.pendingCloseResult = result;
+        service.flushPendingCountersThen(new Runnable() {
+            @Override
+            public void run() {
+                service.stopSelf();
+            }
+        });
+    }
+
+    /** Completes closeOverlay only after the old view and engine are gone. */
+    private void completePendingClose() {
+        Result result = pendingCloseResult;
+        pendingCloseResult = null;
+        if (result != null) {
+            result.success(true);
+        }
+    }
+
+    private void flushPendingCountersThen(@NonNull Runnable after) {
+        final BasicMessageChannel<Object> channel = overlayMessageChannel;
+        final AtomicBoolean done = new AtomicBoolean(false);
+        final Runnable finish = new Runnable() {
+            @Override
+            public void run() {
+                if (!done.compareAndSet(false, true)) return;
+                after.run();
+            }
+        };
+        if (channel == null) {
+            finish.run();
+            return;
+        }
+        // Cap wait so a wedged isolate cannot leave closeOverlay hanging.
+        mainHandler.postDelayed(finish, 1500);
+        try {
+            Map<String, Object> msg = new HashMap<>();
+            msg.put("action", "flush_counters");
+            channel.send(msg, new BasicMessageChannel.Reply<Object>() {
+                @Override
+                public void reply(@Nullable Object reply) {
+                    mainHandler.removeCallbacks(finish);
+                    finish.run();
+                }
+            });
+        } catch (Exception e) {
+            Log.e("OverLay", "flush before stop failed", e);
+            mainHandler.removeCallbacks(finish);
+            finish.run();
+        }
+    }
+
     @RequiresApi(api = Build.VERSION_CODES.M)
     @Override
     public void onDestroy() {
         debugLog(this, "OverLay", "Destroying the overlay window service");
         if (windowManager != null) {
-            windowManager.removeView(flutterView);
+            try {
+                if (flutterView != null) {
+                    windowManager.removeView(flutterView);
+                    flutterView.detachFromFlutterEngine();
+                }
+            } catch (Exception e) {
+                Log.e("OverLay", "failed to remove overlay view", e);
+            }
             windowManager = null;
-            flutterView.detachFromFlutterEngine();
             flutterView = null;
         }
         isRunning = false;
         NotificationManager notificationManager = (NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
-        notificationManager.cancel(OverlayConstants.NOTIFICATION_ID);
+        if (notificationManager != null) {
+            notificationManager.cancel(OverlayConstants.NOTIFICATION_ID);
+        }
         instance = null;
         cancelTrayAnimation();
-        
+
         // Destroy the cached overlay engine so a close/reopen is a true
         // isolate restart. A hung Future queue or a stuck GestureBinding
         // pointer survives a FlutterView detach if the engine is reused.
@@ -150,6 +230,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
         flutterChannel = null;
         overlayMessageChannel = null;
+        // stopSelf() only requests teardown. Waiting until here prevents a
+        // close -> reopen settings change from attaching a new view to the
+        // old engine while this onDestroy is still dismantling it.
+        completePendingClose();
+        super.onDestroy();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)

@@ -23,6 +23,11 @@
 
     <uses-permission android:name="android.permission.VIBRATE"/>
 
+    <!-- Fuel screen "Nearest" sort: one fix on demand, distances stay on the
+         device. Asked only when the driver taps that chip. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
     <!-- Needed for the in-app "Disable battery optimization" button to
          open the system page directly on stock AOSP, Pixel, OnePlus.
          Without it the Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS

@@ -442,17 +442,18 @@ class _MemoryShiftStore extends ShiftCounterStore {
   }
 
   @override
-  Future<ShiftCounters> merge({
-    int? accepted,
-    int? rejected,
-    int? completed,
-    int? canceled,
+  Future<ShiftCounters> applyDelta({
+    int acceptedDelta = 0,
+    int rejectedDelta = 0,
+    int completedDelta = 0,
+    int canceledDelta = 0,
+    int max = 99999,
   }) async {
-    data = data.copyWith(
-      accepted: accepted,
-      rejected: rejected,
-      completed: completed,
-      canceled: canceled,
+    data = ShiftCounters(
+      accepted: (data.accepted + acceptedDelta).clamp(0, max),
+      rejected: (data.rejected + rejectedDelta).clamp(0, max),
+      completed: (data.completed + completedDelta).clamp(0, max),
+      canceled: (data.canceled + canceledDelta).clamp(0, max),
     );
     return data;
   }

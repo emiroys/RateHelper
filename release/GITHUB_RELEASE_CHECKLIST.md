@@ -21,9 +21,10 @@ Rebuild after every bump.
 ## 2. Build the APK
 
 ```powershell
+Test-Path dart_defines.json # must be True; never print or stage the file
 flutter clean
 dart run build_runner build --delete-conflicting-outputs
-flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbols/
+flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbols/ --dart-define-from-file=dart_defines.json
 ```
 
 Output (S24 Ultra / arm64):

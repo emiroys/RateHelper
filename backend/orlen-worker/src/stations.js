@@ -1,0 +1,33 @@
+// Must list exactly the ids in lib/fuel/orlen_stations.dart
+// (test/fuel_screen_test.dart fails when they drift apart).
+// `lpg: false` mirrors `sellsLpg: false` on the Dart side.
+export const STATIONS = {
+  'nowohucka-71': { name: 'ORLEN Nowohucka', address: 'ul. Nowohucka 71' },
+  'sliwiaka-34': { name: 'ORLEN Śliwiaka', address: 'ul. Tadeusza Śliwiaka 34' },
+  'centralna-62': { name: 'ORLEN Centralna', address: 'ul. Centralna 62' },
+  'pilotow-4b': { name: 'ORLEN Pilotów', address: 'ul. Pilotów 4B' },
+  'jasnogorska-2b': { name: 'ORLEN Jasnogórska', address: 'ul. Jasnogórska 2B' },
+  'zakopianska-58': { name: 'ORLEN Zakopiańska (Borek Fałęcki)', address: 'ul. Zakopiańska 58' },
+  'zakopianska-289': { name: 'ORLEN Zakopiańska (Opatkowice)', address: 'ul. Zakopiańska 289' },
+  'grota-roweckiego-33': { name: 'ORLEN Grota-Roweckiego', address: 'ul. Stefana Grota-Roweckiego 33' },
+  'armii-krajowej-21a': { name: 'ORLEN Armii Krajowej', address: 'ul. Armii Krajowej 21A' },
+  'olszanicka-174': { name: 'ORLEN Olszanicka', address: 'ul. Olszanicka 174' },
+  'skotnicka-242': { name: 'ORLEN Skotnicka', address: 'ul. Skotnicka 242' },
+  'zawila-62': { name: 'ORLEN Zawiła', address: 'ul. Zawiła 62' },
+  'luzycka-40': { name: 'ORLEN Łużycka', address: 'ul. Łużycka 40' },
+  'tyniecka-186': { name: 'ORLEN Tyniecka', address: 'ul. Tyniecka 186' },
+  'kamienna-18': { name: 'ORLEN Kamienna', address: 'ul. Kamienna 18' },
+  'wybickiego-3e': { name: 'ORLEN Wybickiego', address: 'ul. Józefa Wybickiego 3E' },
+  'okulickiego-61': { name: 'ORLEN Okulickiego', address: 'ul. Gen. Leopolda Okulickiego 61' },
+  'andersa': { name: 'ORLEN Andersa', address: 'al. Gen. Władysława Andersa' },
+  'palacha': { name: 'ORLEN Palacha', address: 'ul. Jana Palacha' },
+  'mogilska': { name: 'ORLEN Mogilska', address: 'ul. Mogilska' },
+  'bulwarowa': { name: 'ORLEN Bulwarowa', address: 'ul. Bulwarowa' },
+  'igolomska': { name: 'ORLEN Igołomska', address: 'ul. Igołomska' },
+  'daszynskiego': { name: 'ORLEN Daszyńskiego', address: 'al. Ignacego Daszyńskiego' },
+  'wloczkow': { name: 'ORLEN Włóczków', address: 'ul. Włóczków', lpg: false },
+  'wioslarska': { name: 'ORLEN Wioślarska', address: 'ul. Wioślarska' },
+  'zamknieta': { name: 'ORLEN Zamknięta', address: 'ul. Zamknięta' },
+  'jerzmanowskiego': { name: 'ORLEN Jerzmanowskiego', address: 'ul. Erazma Jerzmanowskiego' },
+  'bunscha': { name: 'ORLEN Bunscha', address: 'ul. Karola Bunscha' },
+};

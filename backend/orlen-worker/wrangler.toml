@@ -1,0 +1,13 @@
+name = "ratehelper-orlen"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+
+# Secrets (never commit, public repo):
+#   wrangler secret put TELEGRAM_BOT_TOKEN
+#   wrangler secret put TELEGRAM_WEBHOOK_SECRET
+#   wrangler secret put TELEGRAM_ADMIN_CHAT_ID
+
+# `wrangler kv namespace create ORLEN_PRICES` prints the id to paste here.
+[[kv_namespaces]]
+binding = "ORLEN_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"

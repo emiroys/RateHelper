@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rate_helper/app_colors.dart';
 import 'package:rate_helper/app_spacing.dart';
@@ -30,9 +31,29 @@ void _stubOverlayChannels() {
 }
 
 void main() {
+  late Directory tmp;
+
   setUp(() {
     _stubOverlayChannels();
     SharedPreferences.setMockInitialValues({});
+    // File-backed stores so media-key ACK-after-persist never waits on
+    // path_provider (unregistered in widget tests → hang).
+    tmp = Directory.systemTemp.createTempSync('overlay_widget_');
+    final sep = Platform.pathSeparator;
+    ShiftCounterStore.resetInstanceForTest(
+      file: File('${tmp.path}${sep}shift_counters.json'),
+    );
+    TapHistoryStore.resetInstanceForTest(
+      file: File('${tmp.path}${sep}tap_history.jsonl'),
+    );
+  });
+
+  tearDown(() {
+    ShiftCounterStore.resetInstanceForTest();
+    TapHistoryStore.resetInstanceForTest();
+    try {
+      if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+    } catch (_) {}
   });
 
   test('window size swaps for the vertical pill', () {
@@ -98,6 +119,36 @@ void main() {
     );
     expect(
       OverlayWidget.windowHeightDp(PillOrientation.vertical, showCancel: true),
+      (OverlayWidget.verticalPillHeightDp +
+              OverlayWidget.verticalGapDp +
+              OverlayWidget.cancelBtnSizeDp)
+          .round(),
+    );
+  });
+
+  test('startup layout reads orientation and cancel as one saved state', () async {
+    SharedPreferences.setMockInitialValues({
+      PillOrientation.prefsKey: PillOrientation.vertical.name,
+      OverlayWidget.cancelButtonPrefsKey: true,
+    });
+    final prefs = await SharedPreferences.getInstance();
+
+    final layout = OverlayWidget.layoutFromPrefs(prefs);
+
+    expect(layout.orientation, PillOrientation.vertical);
+    expect(layout.showCancel, isTrue);
+    expect(
+      OverlayWidget.windowWidthDp(
+        layout.orientation,
+        showCancel: layout.showCancel,
+      ),
+      OverlayWidget.verticalPillWidthDp.round(),
+    );
+    expect(
+      OverlayWidget.windowHeightDp(
+        layout.orientation,
+        showCancel: layout.showCancel,
+      ),
       (OverlayWidget.verticalPillHeightDp +
               OverlayWidget.verticalGapDp +
               OverlayWidget.cancelBtnSizeDp)
@@ -417,6 +468,7 @@ void main() {
   }
 
   group('collapse to bubble', _collapseTests);
+  group('native ACK and flush_counters persistence', _ackAndFlushTests);
 }
 
 void _collapseTests() {
@@ -634,6 +686,11 @@ void _collapseTests() {
     );
     await settle(tester);
 
+    // Drop the reply handler so the inbound message is streamed (same UI
+    // path as a fall-through). Awaiting the ACK-after-persist reply handler
+    // on this channel deadlocks the test binding's messenger.
+    FlutterOverlayWindow.setMessageReplyHandler(null);
+
     await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
       'x-slayer/overlay_messenger',
       const JSONMessageCodec().encodeMessage(<String, Object>{
@@ -668,4 +725,212 @@ Rect _squareButtonRect(WidgetTester tester, IconData icon) {
   });
   expect(box, isNotNull);
   return tester.getRect(find.byWidget(box!));
+}
+
+class _ControllableShiftCounterStore extends ShiftCounterStore {
+  ShiftCounters current = const ShiftCounters();
+  bool failNextApply = false;
+  Completer<void>? gate;
+  int applyCalls = 0;
+
+  @override
+  Future<ShiftCounters> read() async => current;
+
+  @override
+  Future<void> write(ShiftCounters counters) async {
+    current = counters;
+  }
+
+  @override
+  Future<ShiftCounters> applyDelta({
+    int acceptedDelta = 0,
+    int rejectedDelta = 0,
+    int completedDelta = 0,
+    int canceledDelta = 0,
+    int max = 99999,
+  }) async {
+    applyCalls++;
+    final activeGate = gate;
+    if (activeGate != null) {
+      await activeGate.future;
+    }
+    if (failNextApply) {
+      failNextApply = false;
+      throw const FileSystemException('simulated write failure');
+    }
+    current = ShiftCounters(
+      accepted: (current.accepted + acceptedDelta).clamp(0, max),
+      rejected: (current.rejected + rejectedDelta).clamp(0, max),
+      completed: (current.completed + completedDelta).clamp(0, max),
+      canceled: (current.canceled + canceledDelta).clamp(0, max),
+    );
+    return current;
+  }
+}
+
+void _ackAndFlushTests() {
+  late _ControllableShiftCounterStore store;
+  late Directory tmp;
+
+  setUp(() {
+    _stubOverlayChannels();
+    SharedPreferences.setMockInitialValues({});
+    store = _ControllableShiftCounterStore();
+    ShiftCounterStore.resetInstanceForTest(store: store);
+    tmp = Directory.systemTemp.createTempSync('overlay_ack_');
+    TapHistoryStore.resetInstanceForTest(
+      file: File('${tmp.path}${Platform.pathSeparator}tap_history.jsonl'),
+    );
+  });
+
+  tearDown(() {
+    ShiftCounterStore.resetInstanceForTest();
+    TapHistoryStore.resetInstanceForTest();
+    try {
+      if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+    } catch (_) {}
+  });
+
+  Future<Object?> sendNativeMessage(
+    WidgetTester tester,
+    Map<String, Object> payload,
+  ) async {
+    const codec = JSONMessageCodec();
+    ByteData? rawReply;
+    var replied = false;
+    unawaited(
+      tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+        'x-slayer/overlay_messenger',
+        codec.encodeMessage(payload),
+        (data) {
+          rawReply = data;
+          replied = true;
+        },
+      ),
+    );
+    for (var i = 0; i < 10 && !replied; i++) {
+      await tester.pump();
+    }
+    expect(replied, isTrue, reason: 'native message did not reply');
+    return codec.decodeMessage(rawReply);
+  }
+
+  testWidgets(
+    'native tap returns false when persistence fails and retries dirty delta on next flush',
+    (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: OverlayWidget()));
+      await tester.pump();
+
+      store.failNextApply = true;
+      final firstReply = await sendNativeMessage(tester, <String, Object>{
+        'action': 'media_key_increment',
+        'key': 'accepted',
+      });
+
+      expect(firstReply, isFalse);
+      expect(store.current.accepted, 0);
+
+      // The failed delta remains dirty in memory and succeeds on the next flush.
+      final flushReply = await sendNativeMessage(tester, <String, Object>{
+        'action': 'flush_counters',
+      });
+      expect(flushReply, isTrue);
+      expect(store.current.accepted, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'flush_counters waits for an in-flight write before acknowledging',
+    (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: OverlayWidget()));
+      await tester.pump();
+
+      store.gate = Completer<void>();
+
+      // Trigger a UI tap and advance past the 300ms debounce so the write is in flight.
+      await tester.tap(find.byIcon(Icons.add_rounded));
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(store.applyCalls, 1);
+
+      const codec = JSONMessageCodec();
+      ByteData? flushReplyData;
+      var flushCompleted = false;
+      unawaited(
+        tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+          'x-slayer/overlay_messenger',
+          codec.encodeMessage(<String, Object>{'action': 'flush_counters'}),
+          (data) {
+            flushReplyData = data;
+            flushCompleted = true;
+          },
+        ),
+      );
+      await tester.pump();
+
+      // Must not ACK while the in-flight write is still blocked.
+      expect(flushCompleted, isFalse);
+
+      store.gate!.complete();
+      store.gate = null;
+      for (var i = 0; i < 5 && !flushCompleted; i++) {
+        await tester.pump();
+      }
+
+      expect(flushCompleted, isTrue);
+      expect(codec.decodeMessage(flushReplyData), isTrue);
+      expect(store.current.accepted, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'flush_counters returns false if an in-flight write finishes with an error',
+    (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: OverlayWidget()));
+      await tester.pump();
+
+      store.gate = Completer<void>();
+
+      await tester.tap(find.byIcon(Icons.add_rounded));
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(store.applyCalls, 1);
+
+      const codec = JSONMessageCodec();
+      ByteData? flushReplyData;
+      var flushCompleted = false;
+      unawaited(
+        tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+          'x-slayer/overlay_messenger',
+          codec.encodeMessage(<String, Object>{'action': 'flush_counters'}),
+          (data) {
+            flushReplyData = data;
+            flushCompleted = true;
+          },
+        ),
+      );
+      await tester.pump();
+      expect(flushCompleted, isFalse);
+
+      store.gate!.completeError(
+        const FileSystemException('simulated in-flight failure'),
+      );
+      store.gate = null;
+      for (var i = 0; i < 5 && !flushCompleted; i++) {
+        await tester.pump();
+      }
+
+      expect(flushCompleted, isTrue);
+      expect(codec.decodeMessage(flushReplyData), isFalse);
+      expect(store.current.accepted, 0);
+
+      // Subsequent flush retries the preserved delta and succeeds.
+      final retryReply = await sendNativeMessage(tester, <String, Object>{
+        'action': 'flush_counters',
+      });
+      expect(retryReply, isTrue);
+      expect(store.current.accepted, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

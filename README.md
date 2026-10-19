@@ -304,8 +304,12 @@ dart run build_runner build --delete-conflicting-outputs
 ### 3. Kompilacja produkcyjna ze stripowaniem i obfuskacją
 Oficjalne polecenie budowania paczek APK:
 ```bash
-flutter clean && dart run build_runner build --delete-conflicting-outputs && flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbols/
+flutter clean && dart run build_runner build --delete-conflicting-outputs && flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbols/ --dart-define-from-file=dart_defines.json
 ```
+
+Lokalny, ignorowany przez Git plik `dart_defines.json` jest wymagany do
+włączenia usług konfigurowanych w czasie kompilacji. Nie wyświetlaj jego
+zawartości ani nie dodawaj go do repozytorium.
 
 > **Krytyczny wymóg archiwizacji symboli:**  
 > Katalog `symbols/` wygenerowany podczas kompilacji **musi zostać zarchiwizowany przez wydawcę dla każdej opublikowanej wersji**. Ponieważ kod produkcyjny jest poddawany zaciemnianiu (`--obfuscate`), zrzuty błędów z pliku `crash.log` zgłaszane przez kierowców będą zawierać zaszyfrowane ścieżki stosu. Ich odszyfrowanie możliwe jest wyłącznie przy użyciu zachowanego katalogu symboli danej kompilacji (`flutter symbolize`).

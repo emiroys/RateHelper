@@ -71,6 +71,10 @@ abstract final class OverlaySync {
   static const String actionMediaKeyIncrement = 'media_key_increment';
   static const String keyMediaKey = 'key';
 
+  /// Native → overlay, sent by `OverlayService` right before it destroys the
+  /// overlay engine. The reply is held until pending taps are on disk.
+  static const String actionFlushCounters = 'flush_counters';
+
   /// Matches home-screen manual counter clamp.
   static const int maxCounterValue = 99999;
 
@@ -204,6 +208,9 @@ abstract final class OverlaySync {
     if (key == 'accepted' || key == 'rejected') return key;
     return null;
   }
+
+  static bool isFlushRequest(Object? event) =>
+      event is Map && event['action'] == actionFlushCounters;
 
   /// Applies [event] when it matches a known, validated message. Never throws.
   static void deliver(

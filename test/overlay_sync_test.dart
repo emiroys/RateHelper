@@ -235,6 +235,23 @@ void main() {
     );
   });
 
+  test('isFlushRequest matches only the close-time flush action', () {
+    expect(
+      OverlaySync.isFlushRequest(<String, String>{
+        'action': OverlaySync.actionFlushCounters,
+      }),
+      isTrue,
+    );
+    expect(
+      OverlaySync.isFlushRequest(<String, String>{
+        'action': OverlaySync.actionMediaKeyIncrement,
+        OverlaySync.keyMediaKey: 'accepted',
+      }),
+      isFalse,
+    );
+    expect(OverlaySync.isFlushRequest(null), isFalse);
+  });
+
   test('deliver never throws on malformed input', () {
     expect(() => OverlaySync.deliver(null), returnsNormally);
     expect(() => OverlaySync.deliver(42), returnsNormally);

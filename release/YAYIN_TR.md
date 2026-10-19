@@ -30,9 +30,10 @@ Her yeni APK çıktığında **dört yer aynı sürümü** göstermeli. Biri kay
 PowerShell, proje kökünde:
 
 ```powershell
+Test-Path dart_defines.json # True olmalı; içeriği yazdırma veya stage etme
 flutter clean
 dart run build_runner build --delete-conflicting-outputs
-flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbols/
+flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbols/ --dart-define-from-file=dart_defines.json
 ```
 
 - **Hedef cihaz (S24 Ultra):** `build\app\outputs\flutter-apk\app-arm64-v8a-release.apk` (~21 MB).

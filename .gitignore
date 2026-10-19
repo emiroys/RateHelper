@@ -1,4 +1,93 @@
-# Miscellaneous
+# =====================================================================
+#  PUBLIC REPO — anything personal or secret must match a rule below.
+#  Before every commit: `git status --short` and check nothing new shows.
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# Secrets & personal values (CRITICAL)
+# ---------------------------------------------------------------------
+
+# Compile-time defines: WhatsApp contact, ORLEN_API_URL. Any variant
+# (dart_defines.prod.json, dart_defines.local.json, …) stays local.
+dart_defines*.json
+!dart_defines.example.json
+
+# Android release signing
+key.properties
+**/key.properties
+*.jks
+**/*.jks
+*.keystore
+**/*.keystore
+*.p12
+**/*.p12
+*.pfx
+**/*.pfx
+*.pem
+**/*.pem
+*.key
+**/*.key
+
+# Envied secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+lib/env.g.dart
+**/env.g.dart
+
+# Firebase / Google service configs and service-account keys
+google-services.json
+**/google-services.json
+GoogleService-Info.plist
+**/GoogleService-Info.plist
+service-account*.json
+**/service-account*.json
+client_secret*.json
+**/client_secret*.json
+
+# Cloudflare Worker (backend/orlen-worker): the Telegram bot token, webhook
+# secret, and admin chat id live in `wrangler secret`, never in files.
+# `.dev.vars` is Wrangler's local secrets file.
+.dev.vars
+.dev.vars.*
+**/.dev.vars
+**/.dev.vars.*
+.wrangler/
+**/.wrangler/
+node_modules/
+**/node_modules/
+
+# Generic secret drops
+secrets/
+**/secrets/
+*.secret
+**/*.secret
+
+# ---------------------------------------------------------------------
+# Local tooling & private notes
+# ---------------------------------------------------------------------
+
+# Cursor / agent notes — local only
+.cursor/
+.cursorrules
+agent-learnings.md
+handoff.md
+canvases/
+
+# Maintainer-only release notes
+release/YAYIN_TR.md
+
+# IDEs (IntelliJ, VS Code)
+*.iml
+*.ipr
+*.iws
+.idea/
+.vscode/
+
+# OS / editor junk
 *.class
 *.log
 *.pyc
@@ -17,18 +106,16 @@ Desktop.ini
 .swiftpm/
 migrate_working_dir/
 
-# IDEs (IntelliJ, Cursor, VS Code)
-*.iml
-*.ipr
-*.iws
-.idea/
-.vscode/
-# Cursor — local only, do not commit
-.cursor/
-.cursorrules
-agent-learnings.md
+# Ad-hoc dumps — regenerate locally; never commit
+deps.txt
+**/deps.txt
+requirements.txt
 
-# Flutter/Dart/Pub related
+# ---------------------------------------------------------------------
+# Build output
+# ---------------------------------------------------------------------
+
+# Flutter / Dart / Pub
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
@@ -42,14 +129,7 @@ build/
 /coverage/
 .test_runner/
 
-# Ad-hoc dependency dumps — regenerate locally; never commit
-deps.txt
-**/deps.txt
-
-# Python scratch (not part of the Flutter app build)
-requirements.txt
-
-# Android specifics
+# Android
 .gradle/
 **/.gradle/
 **/.kotlin/
@@ -63,18 +143,18 @@ requirements.txt
 /android/app/profile
 /android/app/release
 
-# iOS/macOS specifics
+# iOS / macOS
 ios/Pods/
 ios/.symlinks/
 macos/Pods/
 macos/Flutter/ephemeral/
 
-# Binaries (Do not commit heavy app files)
+# Binaries
 *.apk
 *.aab
 *.zip
 
-# Symbolication & Obfuscation
+# Obfuscation symbols (--split-debug-info=symbols/)
 app.*.symbols
 app.*.map.json
 symbols/
@@ -82,36 +162,3 @@ symbols/
 
 # JVM / native crash dumps
 *.hprof
-
-# Signing keys — never commit (CRITICAL)
-key.properties
-**/key.properties
-*.jks
-**/*.jks
-*.keystore
-**/*.keystore
-*.p12
-**/*.p12
-*.pfx
-**/*.pfx
-*.pem
-**/*.pem
-
-# Envied secrets & Firebase — never commit (CRITICAL)
-.env
-.env.*
-!.env.example
-**/.env
-**/.env.*
-!**/.env.example
-**/env.g.dart
-lib/env.g.dart
-google-services.json
-**/google-services.json
-GoogleService-Info.plist
-**/GoogleService-Info.plist
-canvases/trio-rental-feasibility.canvas.tsx
-release/YAYIN_TR.md
-
-# Local compile-time defines (real WhatsApp contact) — never commit
-dart_defines.json

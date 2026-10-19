@@ -28,6 +28,29 @@ double round2(double value) =>
 double computeFuelAfterDiscount(double fuelPumpPaid) =>
     round2(fuelPumpPaid * (1 - FUEL_PARTNER_DISCOUNT));
 
+/// Lenient PLN amount parser for stored JSON values that may be strings.
+///
+/// Both `.` and `,` present: `.` groups thousands and `,` is the decimal
+/// (`1.924,97`). Only `,`: decimal comma (`1924,97`). Only `.`: a decimal
+/// point when a single `.` has 1–2 trailing digits (`1924.97`), otherwise
+/// thousands grouping (`1.924`). Unparseable input reads as 0.
+double parseStoredAmount(Object? v) {
+  if (v is num) return v.toDouble();
+  if (v == null) return 0;
+  var s = v.toString().replaceAll(RegExp(r'[\s\u00A0]'), '');
+  if (s.isEmpty) return 0;
+  final hasDot = s.contains('.');
+  final hasComma = s.contains(',');
+  if (hasDot && hasComma) {
+    s = s.replaceAll('.', '').replaceAll(',', '.');
+  } else if (hasComma) {
+    s = s.replaceAll(',', '.');
+  } else if (hasDot && !RegExp(r'^[+-]?\d*\.\d{1,2}$').hasMatch(s)) {
+    s = s.replaceAll('.', '');
+  }
+  return double.tryParse(s) ?? 0;
+}
+
 enum DriverMode {
   solo,
   paired,
@@ -410,13 +433,8 @@ class FuelReceipt {
   factory FuelReceipt.fromJson(Map<String, dynamic> json) => FuelReceipt(
         id: json['id']?.toString(),
         timestamp: DateTime.tryParse(json['timestamp']?.toString() ?? '') ?? DateTime.now(),
-        amountPaid: _toDoubleHelper(json['amountPaid']),
+        amountPaid: parseStoredAmount(json['amountPaid']),
       );
-
-  static double _toDoubleHelper(Object? v) {
-    if (v is num) return v.toDouble();
-    return double.tryParse(v?.toString().replaceAll(' ', '').replaceAll('.', '').replaceAll(',', '.') ?? '') ?? 0.0;
-  }
 }
 
 const Object _sentinel = Object();
@@ -440,7 +458,14 @@ class WeekEarning {
     this.hasRentalDiscount = true,
     List<FuelReceipt>? fuelReceipts,
     double? fuelPumpPaid,
-  })  : assert(driverTripCount != null || tripCount != null,
+    this.vatRate = FLAT_VAT_RATE,
+    this.settlementFeeRate = SETTLEMENT_FEE_RATE,
+    this.fuelDiscountRate = FUEL_PARTNER_DISCOUNT,
+    double? rentalFeeSnapshot,
+    double? totalCarRentalFeeSnapshot,
+  })  : _rentalFeeSnapshot = rentalFeeSnapshot,
+        _totalCarRentalFeeSnapshot = totalCarRentalFeeSnapshot,
+        assert(driverTripCount != null || tripCount != null,
             'driverTripCount or tripCount must be provided'),
         driverTripCount = driverTripCount ?? tripCount ?? 0,
         fuelReceipts = capFuelReceipts(
@@ -494,6 +519,18 @@ class WeekEarning {
   /// Whether rental discount is active for this entry.
   final bool hasRentalDiscount;
 
+  /// Rates in force when the week was recorded. Serialized with the entry so
+  /// a later change to [FLAT_VAT_RATE], [SETTLEMENT_FEE_RATE] or
+  /// [FUEL_PARTNER_DISCOUNT] does not rewrite archived weeks.
+  final double vatRate;
+  final double settlementFeeRate;
+  final double fuelDiscountRate;
+
+  /// Rental fees as charged when the week was saved. Null = derive from the
+  /// current tier tables (new entries, and pre-snapshot history).
+  final double? _rentalFeeSnapshot;
+  final double? _totalCarRentalFeeSnapshot;
+
   /// List of fuel receipts recorded during this week.
   final List<FuelReceipt> fuelReceipts;
 
@@ -505,7 +542,8 @@ class WeekEarning {
 
   /// Real fuel cost after the 10% partner discount (not stored), rounded to
   /// whole cents.
-  double get fuelAfterDiscount => computeFuelAfterDiscount(fuelPumpPaidTotal);
+  double get fuelAfterDiscount =>
+      round2(fuelPumpPaidTotal * (1 - fuelDiscountRate));
 
   /// True when the week carries no reported activity at all — no income, no
   /// online time, no trips.
@@ -523,18 +561,22 @@ class WeekEarning {
   /// see [isUnreported].
   double get rentalFee {
     if (isUnreported) return 0;
-    return hasRentalDiscount
-        ? expectedRentalFee(carTripCount, driverMode)
-        : driverMode.undiscountedFeePerDriver;
+    return _rentalFeeSnapshot ?? _currentRentalFee;
   }
 
   /// Total car rental fee (PLN). Shared modes split this flat across drivers.
   double get totalCarRentalFee {
     if (isUnreported) return 0;
-    return hasRentalDiscount
-        ? expectedRentalTier(carTripCount, driverMode).totalCarFee
-        : 900.0;
+    return _totalCarRentalFeeSnapshot ?? _currentTotalCarRentalFee;
   }
+
+  double get _currentRentalFee => hasRentalDiscount
+      ? expectedRentalFee(carTripCount, driverMode)
+      : driverMode.undiscountedFeePerDriver;
+
+  double get _currentTotalCarRentalFee => hasRentalDiscount
+      ? expectedRentalTier(carTripCount, driverMode).totalCarFee
+      : 900.0;
 
   WeekEarning copyWith({
     DateTime? weekStart,
@@ -550,7 +592,7 @@ class WeekEarning {
     List<FuelReceipt>? fuelReceipts,
     double? fuelPumpPaid,
   }) {
-    return WeekEarning(
+    final next = WeekEarning(
       id: id,
       weekStart: weekStart ?? this.weekStart,
       weekEnd: weekEnd ?? this.weekEnd,
@@ -565,14 +607,52 @@ class WeekEarning {
       hasRentalDiscount: hasRentalDiscount ?? this.hasRentalDiscount,
       fuelReceipts: fuelReceipts ?? (fuelPumpPaid != null ? null : this.fuelReceipts),
       fuelPumpPaid: fuelPumpPaid,
+      vatRate: vatRate,
+      settlementFeeRate: settlementFeeRate,
+      fuelDiscountRate: fuelDiscountRate,
+    );
+    // The frozen rental only stands while the inputs it was charged on do.
+    final rentalInputsSame = next.driverMode == this.driverMode &&
+        next.carTripCount == carTripCount &&
+        next.hasRentalDiscount == this.hasRentalDiscount &&
+        next.isUnreported == isUnreported;
+    if (!rentalInputsSame ||
+        (_rentalFeeSnapshot == null && _totalCarRentalFeeSnapshot == null)) {
+      return next;
+    }
+    return next._withRentalSnapshot(
+      _rentalFeeSnapshot,
+      _totalCarRentalFeeSnapshot,
     );
   }
 
-  /// Flat 12% VAT charged on [netIncome], rounded to whole cents.
-  double get vat => round2(netIncome * FLAT_VAT_RATE);
+  WeekEarning _withRentalSnapshot(double? rental, double? totalCar) {
+    return WeekEarning(
+      id: id,
+      weekStart: weekStart,
+      weekEnd: weekEnd,
+      driverMode: driverMode,
+      netIncome: netIncome,
+      cashReceived: cashReceived,
+      onlineHours: onlineHours,
+      driverTripCount: driverTripCount,
+      carTripCountOverride: carTripCountOverride,
+      hasRentalDiscount: hasRentalDiscount,
+      fuelReceipts: fuelReceipts,
+      vatRate: vatRate,
+      settlementFeeRate: settlementFeeRate,
+      fuelDiscountRate: fuelDiscountRate,
+      rentalFeeSnapshot: rental,
+      totalCarRentalFeeSnapshot: totalCar,
+    );
+  }
 
-  /// Flat 4.3125% settlement fee charged on [netIncome], rounded to whole cents.
-  double get settlementFee => round2(netIncome * SETTLEMENT_FEE_RATE);
+  /// VAT charged on [netIncome] at [vatRate], rounded to whole cents.
+  double get vat => round2(netIncome * vatRate);
+
+  /// Settlement fee charged on [netIncome] at [settlementFeeRate], rounded
+  /// to whole cents.
+  double get settlementFee => round2(netIncome * settlementFeeRate);
 
   /// Real net profit after the fixed admin fee, VAT, rental, and settlement fee.
   /// Computed from the already-rounded components so the breakdown card lines
@@ -615,6 +695,13 @@ class WeekEarning {
           'carTripCountOverride': carTripCountOverride,
         'hasRentalDiscount': hasRentalDiscount,
         'fuelReceipts': fuelReceipts.map((r) => r.toJson()).toList(),
+        'vatRate': vatRate,
+        'settlementFeeRate': settlementFeeRate,
+        'fuelDiscountRate': fuelDiscountRate,
+        // An unreported placeholder is charged nothing yet; freezing that 0
+        // would stick once the week's real figures arrive.
+        if (!isUnreported) 'rentalFeeSnapshot': rentalFee,
+        if (!isUnreported) 'totalCarRentalFeeSnapshot': totalCarRentalFee,
       };
 
   /// Rebuilds an entry from stored JSON. Reads only the keys it still needs, so
@@ -680,6 +767,14 @@ class WeekEarning {
       carTripCountOverride: carTripsOverride,
       hasRentalDiscount: hasRentalDiscount,
       fuelReceipts: receipts,
+      vatRate: _toRateOrNull(json['vatRate']) ?? FLAT_VAT_RATE,
+      settlementFeeRate:
+          _toRateOrNull(json['settlementFeeRate']) ?? SETTLEMENT_FEE_RATE,
+      fuelDiscountRate:
+          _toRateOrNull(json['fuelDiscountRate']) ?? FUEL_PARTNER_DISCOUNT,
+      rentalFeeSnapshot: _toDoubleOrNull(json['rentalFeeSnapshot']),
+      totalCarRentalFeeSnapshot:
+          _toDoubleOrNull(json['totalCarRentalFeeSnapshot']),
     );
   }
 
@@ -695,9 +790,17 @@ class WeekEarning {
     return _toDouble(json['fuelGross']);
   }
 
-  static double _toDouble(Object? v) {
+  static double _toDouble(Object? v) => parseStoredAmount(v);
+
+  static double? _toDoubleOrNull(Object? v) =>
+      v == null ? null : parseStoredAmount(v);
+
+  /// Rates carry more than 2 decimals (0.043125), so the amount parser's
+  /// thousands rule does not apply to them.
+  static double? _toRateOrNull(Object? v) {
     if (v is num) return v.toDouble();
-    return double.tryParse(v?.toString().replaceAll(' ', '').replaceAll('.', '').replaceAll(',', '.') ?? '') ?? 0;
+    if (v == null) return null;
+    return double.tryParse(v.toString().trim().replaceAll(',', '.'));
   }
 
   static bool _toBool(Object? v) {

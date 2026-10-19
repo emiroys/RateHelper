@@ -102,6 +102,17 @@ class OverlayWidget extends StatefulWidget {
   static const int nativeWindowWidthDp = 276;
   static const int nativeWindowHeightDp = 80;
 
+  /// Layout values that must be known before the overlay's first frame.
+  /// Native creates its window from the same persisted pair, so seeding the
+  /// widget with them prevents a horizontal/vertical or cancel-size mismatch
+  /// while the overlay isolate finishes its full startup load.
+  static ({PillOrientation orientation, bool showCancel}) layoutFromPrefs(
+    SharedPreferences prefs,
+  ) => (
+    orientation: PillOrientation.fromPrefs(prefs),
+    showCancel: prefs.getBool(cancelButtonPrefsKey) ?? false,
+  );
+
   static int windowWidthDp(
     PillOrientation orientation, {
     bool showCancel = false,
@@ -202,16 +213,25 @@ class _OverlayWidgetState extends State<OverlayWidget>
   Completer<void>? _viewSizeWaiter;
   Size _viewSizeTarget = Size.zero;
 
-  /// Cancel taps waiting for the debounced write. Applied as a delta so an
-  /// in-app edit of [ShiftCounterStore.prefsKeyCanceled] (`canceledTrips`,
-  /// the main screen's "İptal Edilen") is not overwritten by a stale absolute.
+  /// Deltas waiting for the debounced write. Absolute merges from this isolate
+  /// would clobber Home's concurrent applyDelta, so only deltas go to disk.
+  int _unpersistedAccepted = 0;
+  int _unpersistedRejected = 0;
+  int _unpersistedCompleted = 0;
   int _unpersistedCancels = 0;
+  Future<bool>? _inFlightPersist;
 
   int? _trackedPointer;
   Offset? _pointerDownPos;
   bool _pointerIsDrag = false;
 
-  bool get _hasUnpersistedTaps => _persistTimer?.isActive ?? false;
+  bool get _hasUnpersistedTaps =>
+      (_persistTimer?.isActive ?? false) ||
+      _inFlightPersist != null ||
+      _unpersistedAccepted != 0 ||
+      _unpersistedRejected != 0 ||
+      _unpersistedCompleted != 0 ||
+      _unpersistedCancels != 0;
 
   double get _acceptanceRate {
     final total = _accepted + _rejected;
@@ -249,6 +269,7 @@ class _OverlayWidgetState extends State<OverlayWidget>
       });
     }
     unawaited(_loadCountsOnStartup());
+    FlutterOverlayWindow.setMessageReplyHandler(_handleNativeMessage);
     try {
       _syncSub = FlutterOverlayWindow.overlayListener.listen((event) {
         OverlaySync.deliver(
@@ -256,10 +277,11 @@ class _OverlayWidgetState extends State<OverlayWidget>
           onCounters: _applyRemoteCounters,
           onCountersReloadFromStore: () => unawaited(_loadCounts()),
           onSettings: _applyRemoteSettings,
+          // Fallback when [_handleNativeMessage] is unset (tests) or returns
+          // null. The live native path ACKs only after persist in the reply
+          // handler, which consumes the message before it reaches here.
           onMediaKey: (target) {
             final key = target == 'accepted' ? _keyAccepted : _keyRejected;
-            // Native already fired its own accept/reject waveform before
-            // handing the tap over — a second buzz here would blur the rhythm.
             unawaited(_increment(key, haptic: false));
           },
         );
@@ -271,6 +293,33 @@ class _OverlayWidgetState extends State<OverlayWidget>
         error: e,
         stack: s,
       );
+    }
+  }
+
+  /// Answers native messages that must not be echoed until work finishes.
+  ///
+  /// Returns `true` only after pending deltas are persisted so TapDelivery
+  /// and OverlayService can treat the reply as a real ACK.
+  Future<Object?> _handleNativeMessage(Object? message) async {
+    try {
+      if (OverlaySync.isFlushRequest(message)) {
+        return await _persistCounts();
+      }
+      final target = OverlaySync.mediaKeyTargetFromEvent(message);
+      if (target == null) return null;
+      final key = target == 'accepted' ? _keyAccepted : _keyRejected;
+      // Native already fired its own accept/reject waveform before handing
+      // the tap over — a second buzz here would blur the rhythm.
+      await _increment(key, haptic: false);
+      return await _persistCounts();
+    } catch (e, s) {
+      loge(
+        'overlay native message failed',
+        name: 'overlay',
+        error: e,
+        stack: s,
+      );
+      return false;
     }
   }
 
@@ -300,9 +349,7 @@ class _OverlayWidgetState extends State<OverlayWidget>
       final accepted = stored.accepted;
       final rejected = stored.rejected;
       final completed = stored.completed;
-      final orientation = PillOrientation.fromPrefs(prefs);
-      final showCancel =
-          prefs.getBool(OverlayWidget.cancelButtonPrefsKey) ?? false;
+      final layout = OverlayWidget.layoutFromPrefs(prefs);
       final collapsed = prefs.getBool(OverlayWidget.collapsedPrefsKey) ?? false;
       // A settings push that landed while this load was in flight is newer
       // than anything `prefs` holds — the reload above may have run before
@@ -329,8 +376,8 @@ class _OverlayWidgetState extends State<OverlayWidget>
         _notificationControls = notificationControls;
         _hidePill = hidePill;
         _requiredAcceptRate = reqRate;
-        _orientation = orientation;
-        _showCancelButton = showCancel;
+        _orientation = layout.orientation;
+        _showCancelButton = layout.showCancel;
       });
       _syncShade();
       unawaited(_syncWindowHidden());
@@ -348,12 +395,12 @@ class _OverlayWidgetState extends State<OverlayWidget>
 
   @override
   void dispose() {
+    FlutterOverlayWindow.setMessageReplyHandler(null);
     _rejectPulseTimer?.cancel();
     _rejectPulseTimer = null;
-    final hadPending = _persistTimer?.isActive ?? false;
     _persistTimer?.cancel();
     _persistTimer = null;
-    if (hadPending) {
+    if (_hasUnpersistedTaps) {
       unawaited(_persistCounts());
     }
     _syncSub?.cancel();
@@ -727,11 +774,14 @@ class _OverlayWidgetState extends State<OverlayWidget>
       _tapSeq++;
       if (accepted) {
         _accepted = (_accepted + 1).clamp(0, 99999);
+        _unpersistedAccepted++;
         if (_autoComplete) {
           _completed = (_completed + 1).clamp(0, 99999);
+          _unpersistedCompleted++;
         }
       } else {
         _rejected = (_rejected + 1).clamp(0, 99999);
+        _unpersistedRejected++;
       }
     });
 
@@ -755,12 +805,20 @@ class _OverlayWidgetState extends State<OverlayWidget>
   }
 
   void _pingMain({int? canceled}) {
-    OverlaySync.pingCountersChanged(
-      accepted: _accepted,
-      rejected: _rejected,
-      completed: _completed,
-      canceled: canceled,
-    );
+    // Never send on the overlay messenger while a native reply handler is
+    // still awaiting: shareData on the same channel deadlocks the test
+    // binding (and can stall TapDelivery's ACK on device).
+    final accepted = _accepted;
+    final rejected = _rejected;
+    final completed = _completed;
+    scheduleMicrotask(() {
+      OverlaySync.pingCountersChanged(
+        accepted: accepted,
+        rejected: rejected,
+        completed: completed,
+        canceled: canceled,
+      );
+    });
   }
 
   void _schedulePersist() {
@@ -770,32 +828,62 @@ class _OverlayWidgetState extends State<OverlayWidget>
     });
   }
 
-  Future<void> _persistCounts() async {
+  Future<bool> _persistCounts() async {
     _persistTimer?.cancel();
     _persistTimer = null;
+
+    while (_inFlightPersist != null) {
+      final ok = await _inFlightPersist!;
+      if (!ok) return false;
+    }
+
+    if (_unpersistedAccepted == 0 &&
+        _unpersistedRejected == 0 &&
+        _unpersistedCompleted == 0 &&
+        _unpersistedCancels == 0) {
+      return true;
+    }
+
+    final future = _runPersistStep();
+    _inFlightPersist = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_inFlightPersist, future)) {
+        _inFlightPersist = null;
+      }
+    }
+  }
+
+  Future<bool> _runPersistStep() async {
+    final accepted = _unpersistedAccepted;
+    final rejected = _unpersistedRejected;
+    final completed = _unpersistedCompleted;
     final cancels = _unpersistedCancels;
+    _unpersistedAccepted = 0;
+    _unpersistedRejected = 0;
+    _unpersistedCompleted = 0;
     _unpersistedCancels = 0;
     try {
-      await ShiftCounterStore.instance.merge(
-        accepted: _accepted,
-        rejected: _rejected,
-        completed: _completed,
+      final saved = await ShiftCounterStore.instance.applyDelta(
+        acceptedDelta: accepted,
+        rejectedDelta: rejected,
+        completedDelta: completed,
+        canceledDelta: cancels,
       );
-      int? canceled;
-      if (cancels != 0) {
-        final saved = await ShiftCounterStore.instance.applyDelta(
-          canceledDelta: cancels,
-        );
-        canceled = saved.canceled;
-      }
-      // Latest in-memory counts, not the snapshot merge() just wrote.
-      // A tap that landed during the await is already newer; pinging the
-      // stale snapshot would roll the home screen backwards.
-      _pingMain(canceled: canceled);
+      // Latest in-memory counts: a tap that landed during the await is
+      // already newer; pinging [saved] alone would roll home backwards.
+      _pingMain(canceled: cancels != 0 ? saved.canceled : null);
+      return true;
     } catch (e, s) {
+      // Keep the deltas dirty for retry. Reloading disk here would wipe
+      // in-memory taps the failed write never reached.
+      _unpersistedAccepted += accepted;
+      _unpersistedRejected += rejected;
+      _unpersistedCompleted += completed;
       _unpersistedCancels += cancels;
       loge('overlay write failed', name: 'overlay', error: e, stack: s);
-      await _loadCounts();
+      return false;
     }
   }
 

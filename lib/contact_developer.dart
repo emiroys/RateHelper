@@ -1,7 +1,5 @@
-import 'package:flutter/services.dart';
-
+import 'external_url.dart';
 import 'l10n.dart';
-import 'log.dart';
 
 /// "Contact developer" row. The WhatsApp target is a compile-time define so
 /// the number never lands in this public repo:
@@ -13,10 +11,6 @@ abstract final class ContactDeveloper {
 
   static const String issuesUrl =
       'https://github.com/emiroys/ratehelper/issues';
-
-  static const MethodChannel _channel = MethodChannel(
-    'com.ratehelper.app/system',
-  );
 
   static bool get hasWhatsApp => whatsAppUrl(whatsApp) != null;
 
@@ -37,15 +31,5 @@ abstract final class ContactDeveloper {
       hasWhatsApp ? S.contactDeveloperWhatsApp : S.contactDeveloperGitHub;
 
   /// True when Android found an app to open the link.
-  static Future<bool> open([String? url]) async {
-    try {
-      return await _channel.invokeMethod<bool>('openExternalUrl', {
-            'url': url ?? targetUrl,
-          }) ??
-          false;
-    } on Exception catch (e, s) {
-      loge('contact link failed', name: 'settings', error: e, stack: s);
-      return false;
-    }
-  }
+  static Future<bool> open([String? url]) => ExternalUrl.open(url ?? targetUrl);
 }

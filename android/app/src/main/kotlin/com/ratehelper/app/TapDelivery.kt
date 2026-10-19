@@ -23,8 +23,8 @@ object TapDelivery {
     private const val OVERLAY_ENGINE_TAG = "myCachedEngine"
     private const val OVERLAY_MESSENGER_CHANNEL = "x-slayer/overlay_messenger"
 
-    /// A live overlay isolate answers on the platform thread in single
-    /// digit milliseconds. Anything slower than this is a wedged or
+    /// A live overlay isolate answers on the platform thread after the
+    /// counter delta is on disk. Anything slower than this is a wedged or
     /// half-destroyed engine, so the tap goes to the pending store.
     private const val OVERLAY_ACK_TIMEOUT_MS = 1200L
 
@@ -51,9 +51,9 @@ object TapDelivery {
 
         // send() is fire-and-forget: it succeeds against an engine that was
         // destroyed a moment ago and the tap disappears. Treat the message as
-        // delivered only once the overlay isolate answers, and fall back to
-        // the pending store if it never does. Whichever comes first wins, so
-        // the tap is counted exactly once.
+        // delivered only once the overlay isolate answers `true` (delta on
+        // disk), and fall back to the pending store otherwise. Whichever
+        // comes first wins, so the tap is counted exactly once.
         val settled = AtomicBoolean(false)
         val fallback = Runnable {
             if (settled.compareAndSet(false, true)) {
@@ -63,9 +63,15 @@ object TapDelivery {
         }
         handler.postDelayed(fallback, OVERLAY_ACK_TIMEOUT_MS)
         try {
-            channel.send(mapOf("action" to "media_key_increment", "key" to key)) {
-                if (settled.compareAndSet(false, true)) {
-                    handler.removeCallbacks(fallback)
+            channel.send(mapOf("action" to "media_key_increment", "key" to key)) { reply ->
+                if (!settled.compareAndSet(false, true)) return@send
+                handler.removeCallbacks(fallback)
+                if (reply == true) {
+                    onSettled?.invoke()
+                } else {
+                    // Echo / false / unexpected: the delta was not confirmed
+                    // on disk, so park the tap for reconciliation.
+                    recordPendingTap(app, key)
                     onSettled?.invoke()
                 }
             }

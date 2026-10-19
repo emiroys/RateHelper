@@ -108,9 +108,28 @@ class FlutterOverlayWindow {
     return await _overlayMessageChannel.send(data);
   }
 
+  static Future<Object?> Function(Object? message)? _replyHandler;
+
+  /// Lets this isolate answer a message itself instead of echoing it.
+  ///
+  /// [handler] runs before [overlayListener] sees the message. A non-null
+  /// result is sent back as the reply and the message is consumed (not
+  /// streamed), so the sender's reply means "handled", not just "received".
+  /// Null passes the message on to [overlayListener] as before.
+  static void setMessageReplyHandler(
+    Future<Object?> Function(Object? message)? handler,
+  ) {
+    _replyHandler = handler;
+  }
+
   /// Streams message shared between overlay and main app
   static Stream<dynamic> get overlayListener {
     _overlayMessageChannel.setMessageHandler((message) async {
+      final handler = _replyHandler;
+      if (handler != null) {
+        final reply = await handler(message);
+        if (reply != null) return reply;
+      }
       _controller.add(message);
       return message;
     });

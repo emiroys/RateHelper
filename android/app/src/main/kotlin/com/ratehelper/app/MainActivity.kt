@@ -1,6 +1,7 @@
 package com.ratehelper.app
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
@@ -11,9 +12,15 @@ import android.content.IntentFilter
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.Signature
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.CancellationSignal
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
@@ -27,6 +34,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : FlutterActivity() {
 
@@ -35,11 +43,18 @@ class MainActivity : FlutterActivity() {
         private const val UPDATE_APK_DIR = "updates"
         private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
         private const val REQUEST_POST_NOTIFICATIONS = 4711
+        private const val REQUEST_LOCATION = 4712
+        private const val LOCATION_TIMEOUT_MS = 10_000L
+        private const val LAST_KNOWN_MAX_AGE_MS = 2 * 60_000L
+        private val LOCATION_DENIED = mapOf("error" to "denied")
+        private val LOCATION_DISABLED = mapOf("error" to "disabled")
+        private val LOCATION_UNAVAILABLE = mapOf("error" to "unavailable")
     }
 
     private val channelName = "com.ratehelper.app/system"
     private var methodChannel: MethodChannel? = null
     private var pendingNotificationPermission: MethodChannel.Result? = null
+    private var pendingLocation: MethodChannel.Result? = null
 
     private val mediaKeyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -68,6 +83,8 @@ class MainActivity : FlutterActivity() {
         // Answer while the engine is still attached.
         pendingNotificationPermission?.let { runCatching { it.success(notificationsAllowed()) } }
         pendingNotificationPermission = null
+        pendingLocation?.let { runCatching { it.success(LOCATION_UNAVAILABLE) } }
+        pendingLocation = null
         super.onDestroy()
         runCatching { unregisterReceiver(mediaKeyReceiver) }
         methodChannel = null
@@ -79,11 +96,137 @@ class MainActivity : FlutterActivity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode != REQUEST_POST_NOTIFICATIONS) return
-        val result = pendingNotificationPermission ?: return
-        pendingNotificationPermission = null
-        result.success(notificationsAllowed())
+        when (requestCode) {
+            REQUEST_POST_NOTIFICATIONS -> {
+                val result = pendingNotificationPermission ?: return
+                pendingNotificationPermission = null
+                result.success(notificationsAllowed())
+            }
+            REQUEST_LOCATION -> {
+                val result = pendingLocation ?: return
+                pendingLocation = null
+                if (locationGranted()) fetchLocation(result) else result.success(LOCATION_DENIED)
+            }
+        }
     }
+
+    private fun locationGranted(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+
+    /**
+     * One position for the fuel screen's "Nearest" sort. Replies
+     * `{lat, lng, accuracy}` or `{error: denied|disabled|unavailable}`.
+     */
+    private fun getCurrentLocation(result: MethodChannel.Result) {
+        if (locationGranted()) {
+            fetchLocation(result)
+            return
+        }
+        pendingLocation?.success(LOCATION_DENIED)
+        pendingLocation = result
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            ),
+            REQUEST_LOCATION,
+        )
+    }
+
+    /**
+     * A last-known fix younger than [LAST_KNOWN_MAX_AGE_MS] answers at once.
+     * Otherwise every enabled provider is asked for one fix; the first wins,
+     * and after [LOCATION_TIMEOUT_MS] a stale last-known still beats nothing.
+     */
+    @SuppressLint("MissingPermission")
+    private fun fetchLocation(result: MethodChannel.Result) {
+        val manager = getSystemService(LOCATION_SERVICE) as? LocationManager
+        if (manager == null) {
+            result.success(LOCATION_UNAVAILABLE)
+            return
+        }
+        try {
+            val providers = buildList {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) add(LocationManager.FUSED_PROVIDER)
+                add(LocationManager.GPS_PROVIDER)
+                add(LocationManager.NETWORK_PROVIDER)
+            }.filter { runCatching { manager.isProviderEnabled(it) }.getOrDefault(false) }
+            if (providers.isEmpty()) {
+                result.success(LOCATION_DISABLED)
+                return
+            }
+
+            val lastKnown = providers
+                .mapNotNull { runCatching { manager.getLastKnownLocation(it) }.getOrNull() }
+                .maxByOrNull { it.time }
+            if (lastKnown != null &&
+                System.currentTimeMillis() - lastKnown.time <= LAST_KNOWN_MAX_AGE_MS
+            ) {
+                result.success(locationReply(lastKnown))
+                return
+            }
+
+            val replied = AtomicBoolean(false)
+            val handler = Handler(Looper.getMainLooper())
+            val signal = CancellationSignal()
+            val listeners = mutableListOf<LocationListener>()
+            var emptyAnswers = 0
+
+            fun finish(location: Location?) {
+                if (!replied.compareAndSet(false, true)) return
+                handler.removeCallbacksAndMessages(null)
+                runCatching { signal.cancel() }
+                listeners.forEach { runCatching { manager.removeUpdates(it) } }
+                val best = location ?: lastKnown
+                result.success(if (best != null) locationReply(best) else LOCATION_UNAVAILABLE)
+            }
+
+            fun onAnswer(location: Location?) {
+                if (location != null) {
+                    finish(location)
+                } else if (++emptyAnswers >= providers.size) {
+                    finish(null)
+                }
+            }
+
+            handler.postDelayed({ finish(null) }, LOCATION_TIMEOUT_MS)
+            for (provider in providers) {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        manager.getCurrentLocation(provider, signal, mainExecutor) { onAnswer(it) }
+                    } else {
+                        // Old platforms declare every callback abstract.
+                        val listener = object : LocationListener {
+                            override fun onLocationChanged(location: Location) = onAnswer(location)
+                            override fun onProviderEnabled(provider: String) {}
+                            override fun onProviderDisabled(provider: String) = onAnswer(null)
+                            @Deprecated("Deprecated in Java")
+                            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+                        }
+                        listeners += listener
+                        @Suppress("DEPRECATION")
+                        manager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
+                    }
+                } catch (e: Exception) {
+                    onAnswer(null)
+                }
+            }
+        } catch (e: SecurityException) {
+            result.success(LOCATION_DENIED)
+        } catch (e: Exception) {
+            result.success(LOCATION_UNAVAILABLE)
+        }
+    }
+
+    private fun locationReply(location: Location): Map<String, Any> = mapOf(
+        "lat" to location.latitude,
+        "lng" to location.longitude,
+        "accuracy" to location.accuracy.toDouble(),
+    )
 
     /** POST_NOTIFICATIONS on 13+, and the app-level notification switch. */
     private fun notificationsAllowed(): Boolean = runCatching {
@@ -122,14 +265,25 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
-     * Hands an https link to WhatsApp or the browser. Only the two hosts the
-     * contact row can produce are accepted, so the channel cannot be used to
-     * fire arbitrary intents.
+     * Only the links the app itself builds (contact row, fuel directions) are
+     * accepted, so the channel cannot be used to fire arbitrary intents.
      */
+    private fun isAllowedExternalUrl(uri: Uri): Boolean {
+        if (uri.scheme != "https") return false
+        val path = uri.path.orEmpty()
+        return when (uri.host) {
+            "wa.me", "github.com" -> true
+            "www.google.com" -> path.startsWith("/maps/dir")
+            "waze.com" -> path == "/ul"
+            else -> false
+        }
+    }
+
+    /** Hands an allowlisted https link to WhatsApp, Maps, Waze, or the browser. */
     private fun openExternalUrl(url: String?): Boolean {
         if (url.isNullOrBlank()) return false
         val uri = Uri.parse(url)
-        if (uri.scheme != "https" || uri.host !in setOf("wa.me", "github.com")) return false
+        if (!isAllowedExternalUrl(uri)) return false
         return try {
             startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             true
@@ -198,6 +352,8 @@ class MainActivity : FlutterActivity() {
                 "openNotificationSettings" -> result.success(openNotificationSettings())
 
                 "openExternalUrl" -> result.success(openExternalUrl(call.argument<String>("url")))
+
+                "getCurrentLocation" -> getCurrentLocation(result)
 
                 "drainPendingTaps" -> {
                     val prefs = getSharedPreferences(

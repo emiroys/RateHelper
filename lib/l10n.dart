@@ -139,6 +139,156 @@ class S {
     'Could not open the link.',
     'Nie udało się otworzyć linku.',
   );
+  static String get fuelTitle =>
+      _p('Orlen Yakıt Fiyatları', 'Orlen Fuel Prices', 'Ceny paliw Orlen');
+  static String get fuelEntryHint => _p(
+    'Kraków istasyonları · PB95 ve LPG',
+    'Kraków stations · PB95 and LPG',
+    'Stacje w Krakowie · PB95 i LPG',
+  );
+  static String get fuelSortCheapest => _p('En ucuz', 'Cheapest', 'Najtańsze');
+  static String get fuelSortNearest => _p('En yakın', 'Nearest', 'Najbliższe');
+  static String get fuelTabAdd => _p('Yakıt ekle', 'Add fuel', 'Dodaj paliwo');
+  static String get fuelTabStations => _p('İstasyonlar', 'Stations', 'Stacje');
+  static String get fuelBestCheapest =>
+      _p('EN UCUZ İSTASYON', 'CHEAPEST STATION', 'NAJTAŃSZA STACJA');
+  static String get fuelBestNearest =>
+      _p('EN YAKIN İSTASYON', 'NEAREST STATION', 'NAJBLIŻSZA STACJA');
+  static String get fuelThisWeek => _p('BU HAFTA', 'THIS WEEK', 'TEN TYDZIEŃ');
+  static String fuelWeekSummary(int count, String total) => _p(
+    '$count alım · $total PLN',
+    count == 1 ? '1 purchase · $total PLN' : '$count purchases · $total PLN',
+    '$count zakup(y) · $total PLN',
+  );
+  static String fuelAddButton(String amount) =>
+      _p('Ekle · $amount PLN', 'Add · $amount PLN', 'Dodaj · $amount PLN');
+  static String get fuelSplitHint => _p(
+    'Fiş başkasıyla ortaksa toplamı gir, payın otomatik hesaplanır.',
+    'Shared receipt? Enter the total and your share is worked out.',
+    'Wspólny paragon? Wpisz całość, a Twój udział zostanie wyliczony.',
+  );
+  static String get fuelPb95 => 'PB95';
+  static String get fuelLpg => 'LPG';
+  static String get fuelPb95Long =>
+      _p('PB95 (Benzin)', 'PB95 (Petrol)', 'PB95 (Benzyna)');
+  static String get fuelLpgLong =>
+      _p('LPG (Otogaz)', 'LPG (Autogas)', 'LPG (Autogaz)');
+  static String get fuelNoPrice => _p('Fiyat yok', 'No price yet', 'Brak ceny');
+  static String get fuelNoLpg => _p('LPG yok', 'No LPG', 'Brak LPG');
+  static String fuelUpdatedAgo(Duration age) {
+    if (age.inMinutes < 1) return _p('az önce', 'just now', 'przed chwilą');
+    if (age.inHours < 1) {
+      final m = age.inMinutes;
+      return _p('$m dk önce', '$m min ago', '$m min temu');
+    }
+    if (age.inDays < 1) {
+      final h = age.inHours;
+      return _p(
+        '$h saat önce',
+        h == 1 ? '1 hour ago' : '$h hours ago',
+        '$h godz. temu',
+      );
+    }
+    final d = age.inDays;
+    return _p(
+      '$d gün önce',
+      d == 1 ? '1 day ago' : '$d days ago',
+      d == 1 ? '1 dzień temu' : '$d dni temu',
+    );
+  }
+
+  static String fuelPricesFetchedAgo(String ago) =>
+      _p('Fiyatlar alındı: $ago', 'Prices fetched $ago', 'Ceny pobrane $ago');
+  static String get fuelDirections => _p('Yol tarifi', 'Directions', 'Nawiguj');
+  static String get fuelNavigateWith =>
+      _p('Navigasyon uygulaması', 'Navigate with', 'Nawiguj przez');
+  static String get fuelGoogleMaps => 'Google Maps';
+  static String get fuelWaze => 'Waze';
+  static String get fuelOpenNavFailed => _p(
+    'Navigasyon açılamadı.',
+    'Could not open navigation.',
+    'Nie udało się otworzyć nawigacji.',
+  );
+  static String get fuelUpdatePrice =>
+      _p('Fiyat bildir', 'Report price', 'Zgłoś cenę');
+  static String get fuelSubmitPrompt => _p(
+    'Pompadaki fiyatı gir (PLN/litre). Yönetici onayından sonra herkese görünür.',
+    'Enter the pump price (PLN/litre). It goes public after admin approval.',
+    'Wpisz cenę z dystrybutora (PLN/litr). Pojawi się po akceptacji administratora.',
+  );
+  static String get fuelPriceLabel =>
+      _p('Fiyat (PLN)', 'Price (PLN)', 'Cena (PLN)');
+  static String get fuelPriceEmpty =>
+      _p('Bir fiyat gir.', 'Enter a price.', 'Wpisz cenę.');
+  static String get fuelPriceNotANumber => _p(
+    'Sadece rakam gir, örn. 6.29',
+    'Numbers only, e.g. 6.29',
+    'Tylko liczby, np. 6,29',
+  );
+  static String get fuelPriceTooPrecise => _p(
+    'En fazla 2 ondalık basamak.',
+    'At most 2 decimal places.',
+    'Najwyżej 2 miejsca po przecinku.',
+  );
+  static String fuelPriceOutOfRange(String min, String max) => _p(
+    'Fiyat $min – $max PLN arasında olmalı.',
+    'Price must be between $min and $max PLN.',
+    'Cena musi mieścić się w zakresie $min – $max PLN.',
+  );
+  static String get fuelSubmit =>
+      _p('ONAYA GÖNDER', 'SEND FOR APPROVAL', 'WYŚLIJ DO AKCEPTACJI');
+  static String get fuelSubmitted => _p(
+    'Gönderildi. Onaylanınca yayınlanacak, teşekkürler!',
+    'Sent. It will be published once approved, thanks!',
+    'Wysłano. Cena pojawi się po akceptacji, dzięki!',
+  );
+  static String get fuelSubmitInvalid => _p(
+    'Sunucu bu fiyatı kabul etmedi.',
+    'The server did not accept this price.',
+    'Serwer nie przyjął tej ceny.',
+  );
+  static String get fuelSubmitRateLimited => _p(
+    'Çok fazla gönderim. Biraz sonra tekrar dene.',
+    'Too many submissions. Try again a bit later.',
+    'Zbyt wiele zgłoszeń. Spróbuj ponownie za chwilę.',
+  );
+  static String get fuelSubmitFailed => _p(
+    'Gönderilemedi. İnternet bağlantını kontrol et.',
+    'Could not send. Check your connection.',
+    'Nie udało się wysłać. Sprawdź połączenie.',
+  );
+  static String get fuelNotConfigured => _p(
+    'Fiyat servisi bu sürümde ayarlı değil; istasyonlar ve yol tarifi çalışır.',
+    'The price service is not set up in this build; stations and directions still work.',
+    'Usługa cen nie jest skonfigurowana w tej wersji; stacje i nawigacja działają.',
+  );
+  static String get fuelLoadFailed => _p(
+    'Fiyatlar güncellenemedi.',
+    'Could not refresh prices.',
+    'Nie udało się odświeżyć cen.',
+  );
+  static String get fuelCommunityNote => _p(
+    'Fiyatlar sürücüler tarafından gönderilir ve onaydan sonra yayınlanır.',
+    'Prices are sent by drivers and published after review.',
+    'Ceny zgłaszają kierowcy, publikowane są po weryfikacji.',
+  );
+  static String get fuelLocating =>
+      _p('Konum alınıyor…', 'Getting location…', 'Ustalanie lokalizacji…');
+  static String get fuelLocationDenied => _p(
+    'Konum izni yok; en yakın sıralaması yapılamıyor.',
+    'No location permission, so Nearest cannot sort.',
+    'Brak uprawnień do lokalizacji, nie można posortować wg odległości.',
+  );
+  static String get fuelLocationDisabled => _p(
+    'Konum kapalı. Telefonda konumu aç.',
+    'Location is off. Turn it on in the phone settings.',
+    'Lokalizacja jest wyłączona. Włącz ją w ustawieniach telefonu.',
+  );
+  static String get fuelLocationUnavailable => _p(
+    'Konum bulunamadı. Tekrar dene.',
+    'Could not get a location. Try again.',
+    'Nie udało się ustalić lokalizacji. Spróbuj ponownie.',
+  );
   static String get shadeChannelName =>
       _p('Sayaç kontrolleri', 'Counter controls', 'Sterowanie licznikiem');
   static String shadeTitle(String percent) =>

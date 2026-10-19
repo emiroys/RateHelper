@@ -15,6 +15,7 @@ import 'crash_logger.dart';
 import 'earnings_models.dart';
 import 'earnings_screen.dart';
 import 'fonts.dart';
+import 'fuel/fuel_screen.dart';
 import 'l10n.dart';
 import 'onboarding_screen.dart';
 import 'overlay_widget.dart';
@@ -201,6 +202,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       switchKey: const ValueKey('settings-keep-screen-on'),
                       onChanged: (enabled) =>
                           unawaited(bindings.setKeepScreenOn(enabled)),
+                    ),
+                    _ActionRow(
+                      key: const ValueKey('settings-fuel-prices'),
+                      icon: Icons.local_gas_station_outlined,
+                      title: S.fuelTitle,
+                      value: S.fuelEntryHint,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => FuelScreen.fromEnvironment(
+                              initialTab: FuelTab.stations,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),

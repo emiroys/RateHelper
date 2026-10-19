@@ -42,7 +42,7 @@ void main() {
     );
   });
 
-  test('merge updates a subset without clobbering canceled', () async {
+  test('home and overlay applyDelta on separate stores keep all taps', () async {
     await store.write(
       const ShiftCounters(
         accepted: 10,
@@ -51,11 +51,30 @@ void main() {
         canceled: 4,
       ),
     );
-    final merged = await store.merge(accepted: 11, rejected: 2, completed: 8);
-    expect(merged.accepted, 11);
-    expect(merged.completed, 8);
-    expect(merged.canceled, 4);
-    expect((await store.read()).canceled, 4);
+    // Two isolates ⇒ two store instances, one shared file. Absolute merges
+    // from either side used to erase the other's in-flight taps; deltas
+    // compose. (True concurrent RMW across isolates still needs the OS
+    // rename atomicity — queues are per-isolate.)
+    final home = ShiftCounterStore(file: file);
+    final overlay = ShiftCounterStore(file: file);
+
+    await home.applyDelta(acceptedDelta: 1, completedDelta: 1);
+    await overlay.applyDelta(rejectedDelta: 1, canceledDelta: 1);
+
+    expect(
+      await store.read(),
+      const ShiftCounters(
+        accepted: 11,
+        rejected: 3,
+        completed: 8,
+        canceled: 5,
+      ),
+    );
+    final leftovers = tmp
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.tmp'));
+    expect(leftovers, isEmpty);
   });
 
   test('applyDelta adds signed deltas to what is on disk', () async {

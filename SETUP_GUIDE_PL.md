@@ -308,12 +308,13 @@ Build produkcyjny:
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs
 flutter test
-flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbols/
+flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbols/ --dart-define-from-file=dart_defines.json
 ```
 
 - `--obfuscate` → usuwa symbole Dart AOT.
 - `--split-debug-info` → symbole poza projektem (zachowaj do debugowania).
 - `--split-per-abi` → APK ~8 MB na architekturę.
+- `--dart-define-from-file` → dodaje lokalną konfigurację ignorowaną przez Git; nie wyświetlaj zawartości pliku ani nie dodawaj go do repozytorium.
 
 `key.properties` musi leżeć w katalogu głównym projektu (nie w `android/`) i być czytelny. Brak albo błąd odczytu **przerywa build release** (`GradleException`) — klucz debug nie jest używany. Build debug działa bez tego pliku. Każda wersja tym samym keystore.
 

@@ -174,6 +174,8 @@ void main() {
         matching: find.byType(Scrollable),
       ),
     );
+    await tester.ensureVisible(find.text(S.navLang));
+    await tester.pump();
     await tester.tap(find.text(S.navLang));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));

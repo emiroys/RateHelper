@@ -44,7 +44,10 @@ public class FlutterOverlayWindowPlugin implements
     private BasicMessageChannel<Object> messenger;
     /// True only for the main-engine plugin, which owns [WindowSetup.messenger].
     private boolean ownsWindowMessenger = false;
-    private Result pendingResult;
+    private ActivityPluginBinding activityBinding;
+    /// Only [requestPermission] parks a Result here — other methods must not
+    /// overwrite it or an Activity result would complete the wrong call.
+    private Result pendingPermissionResult;
     final int REQUEST_CODE_FOR_OVERLAY_PERMISSION = 1248;
 
     @Override
@@ -70,11 +73,15 @@ public class FlutterOverlayWindowPlugin implements
     @RequiresApi(api = Build.VERSION_CODES.N)
     @Override
     public void onMethodCall(@NonNull MethodCall call, @NonNull Result result) {
-        pendingResult = result;
         if (call.method.equals("checkPermission")) {
             result.success(checkOverlayPermission());
         } else if (call.method.equals("requestPermission")) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (mActivity == null) {
+                    result.error("NO_ACTIVITY", "overlay permission requires an Activity", null);
+                    return;
+                }
+                pendingPermissionResult = result;
                 Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
                 intent.setData(Uri.parse("package:" + mActivity.getPackageName()));
                 mActivity.startActivityForResult(intent, REQUEST_CODE_FOR_OVERLAY_PERMISSION);
@@ -132,9 +139,9 @@ public class FlutterOverlayWindowPlugin implements
             result.success(OverlayService.getCurrentPosition());
         } else if (call.method.equals("closeOverlay")) {
             if (OverlayService.isRunning) {
-                final Intent i = new Intent(context, OverlayService.class);
-                context.stopService(i);
-                result.success(true);
+                // Flush pending overlay deltas before the engine dies; the
+                // reply completes [result] so Dart awaits a durable close.
+                OverlayService.flushThenStop(result);
             } else {
                 result.success(false);
             }
@@ -166,7 +173,9 @@ public class FlutterOverlayWindowPlugin implements
 
     @Override
     public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
+        activityBinding = binding;
         mActivity = binding.getActivity();
+        binding.addActivityResultListener(this);
         // Eager engine creation removed: Engine will be created lazily when the
         // overlay is actually shown, saving RAM & battery for sessions where
         // the user never opens it.
@@ -174,15 +183,27 @@ public class FlutterOverlayWindowPlugin implements
 
     @Override
     public void onDetachedFromActivityForConfigChanges() {
+        if (activityBinding != null) {
+            activityBinding.removeActivityResultListener(this);
+            activityBinding = null;
+        }
+        mActivity = null;
     }
 
     @Override
     public void onReattachedToActivityForConfigChanges(@NonNull ActivityPluginBinding binding) {
-        this.mActivity = binding.getActivity();
+        activityBinding = binding;
+        mActivity = binding.getActivity();
+        binding.addActivityResultListener(this);
     }
 
     @Override
     public void onDetachedFromActivity() {
+        if (activityBinding != null) {
+            activityBinding.removeActivityResultListener(this);
+            activityBinding = null;
+        }
+        mActivity = null;
     }
 
     @Override
@@ -208,7 +229,11 @@ public class FlutterOverlayWindowPlugin implements
     @Override
     public boolean onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_CODE_FOR_OVERLAY_PERMISSION) {
-            pendingResult.success(checkOverlayPermission());
+            Result pending = pendingPermissionResult;
+            pendingPermissionResult = null;
+            if (pending != null) {
+                pending.success(checkOverlayPermission());
+            }
             return true;
         }
         return false;

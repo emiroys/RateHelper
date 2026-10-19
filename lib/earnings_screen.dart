@@ -3978,6 +3978,50 @@ class _HistoryRow extends StatelessWidget {
   }
 }
 
+@visibleForTesting
+WeekEarning buildSavedWeekEarning({
+  required WeekEarning? existing,
+  required String fallbackId,
+  required DateTime weekStart,
+  required DateTime weekEnd,
+  required DriverMode driverMode,
+  required double netIncome,
+  required double cashReceived,
+  required double onlineHours,
+  required int driverTripCount,
+  required int? carTripCountOverride,
+  required bool hasRentalDiscount,
+  required List<FuelReceipt> fuelReceipts,
+}) {
+  if (existing != null) {
+    return existing.copyWith(
+      weekStart: weekStart,
+      weekEnd: weekEnd,
+      driverMode: driverMode,
+      netIncome: netIncome,
+      cashReceived: cashReceived,
+      onlineHours: onlineHours,
+      driverTripCount: driverTripCount,
+      carTripCountOverride: carTripCountOverride,
+      hasRentalDiscount: hasRentalDiscount,
+      fuelReceipts: fuelReceipts,
+    );
+  }
+  return WeekEarning(
+    id: fallbackId,
+    weekStart: weekStart,
+    weekEnd: weekEnd,
+    driverMode: driverMode,
+    netIncome: netIncome,
+    cashReceived: cashReceived,
+    onlineHours: onlineHours,
+    driverTripCount: driverTripCount,
+    carTripCountOverride: carTripCountOverride,
+    hasRentalDiscount: hasRentalDiscount,
+    fuelReceipts: fuelReceipts,
+  );
+}
+
 class _EarningsFormScreen extends StatefulWidget {
   const _EarningsFormScreen({
     required this.existing,
@@ -4126,9 +4170,20 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       return;
     }
     _saved = true;
-    final existing = widget.existing;
-    final entry = WeekEarning(
-      id: existing?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
+    final entry = _buildCurrentEntry(
+      fallbackId: DateTime.now().microsecondsSinceEpoch.toString(),
+      hours: hours,
+    );
+    Navigator.of(context).pop(entry);
+  }
+
+  WeekEarning _buildCurrentEntry({
+    required String fallbackId,
+    required double hours,
+  }) {
+    return buildSavedWeekEarning(
+      existing: widget.existing,
+      fallbackId: fallbackId,
       weekStart: widget.weekStart,
       weekEnd: widget.weekEnd,
       driverMode: _formDriverMode,
@@ -4142,7 +4197,6 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
       hasRentalDiscount: _hasRentalDiscount,
       fuelReceipts: _fuelReceipts,
     );
-    Navigator.of(context).pop(entry);
   }
 
   int? _parseIntOrNull(TextEditingController c) {
@@ -4254,23 +4308,12 @@ class _EarningsFormScreenState extends State<_EarningsFormScreen> {
               ListenableBuilder(
                 listenable: _previewListenable,
                 builder: (context, _) {
-                  final preview = WeekEarning(
-                    id: 'preview',
-                    weekStart: widget.weekStart,
-                    weekEnd: widget.weekEnd,
-                    driverMode: _formDriverMode,
-                    netIncome: _parse(_netIncomeCtrl),
-                    cashReceived: _parse(_cashCtrl),
-                    onlineHours: onlineHoursFromHm(
+                  final preview = _buildCurrentEntry(
+                    fallbackId: 'preview',
+                    hours: onlineHoursFromHm(
                       _parseInt(_hoursCtrl),
                       _parseInt(_minutesCtrl),
                     ),
-                    driverTripCount: _parseInt(_tripsCtrl),
-                    carTripCountOverride: _formDriverMode.sharesCar
-                        ? _parseIntOrNull(_carTripsOverrideCtrl)
-                        : null,
-                    hasRentalDiscount: _hasRentalDiscount,
-                    fuelReceipts: _fuelReceipts,
                   );
                   final warnings = preview.warnings;
                   if (warnings.isEmpty) return const SizedBox.shrink();

@@ -19,6 +19,7 @@ import 'crash_logger.dart';
 import 'earnings_models.dart';
 import 'earnings_screen.dart';
 import 'env.dart';
+import 'fuel/fuel_screen.dart';
 import 'models/weekly_archive_entry.dart';
 import 'weekly_archive_card.dart';
 import 'l10n.dart';
@@ -491,8 +492,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _settingsClosed = true;
     _settings.dispose();
     _overlayListenerSub?.cancel();
-    _saveDebounce?.cancel();
     _wakelockIdleTimer?.cancel();
+    // Cancels the debounce itself; cancelling it first would hide the
+    // pending taps from the isActive check and drop them.
     _flushSave();
     unawaited(_setWakelock(false));
     WidgetsBinding.instance.removeObserver(this);
@@ -694,7 +696,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _flushSave() {
     if (_saveDebounce?.isActive ?? false) {
       _saveDebounce!.cancel();
-      _saveDataNow();
+      unawaited(
+        _saveDataNow().catchError((Object e, StackTrace s) {
+          loge('flush save failed', name: 'home', error: e, stack: s);
+        }),
+      );
     }
   }
 
@@ -773,7 +779,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (lastReset.isBefore(resetBoundary)) {
         // Pass the loaded tier: _selectedGoal is still the default until the
         // setState below, and the archived week must remember the real goal.
-        await _performReset(prefs, resetBoundary, stored, loadedGoal);
+        // The counters belong to the week that just ended, not the one
+        // starting at [resetBoundary]. Built from the calendar date, not
+        // subtract(7 days), so a DST week still lands on Monday 04:00.
+        final endedWeekStart = tz.TZDateTime(
+          _warsaw,
+          resetBoundary.year,
+          resetBoundary.month,
+          resetBoundary.day - 7,
+          4,
+        );
+        await _performReset(prefs, endedWeekStart, stored, loadedGoal);
         if (mounted) {
           setState(() {
             _selectedGoal = loadedGoal;
@@ -1790,7 +1806,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: _BottomBarAction(
                 icon: Icons.local_gas_station_rounded,
                 label: S.quickFuelNavLabel,
-                onTap: _quickAddFuelReceipt,
+                onTap: _openFuel,
               ),
             ),
             Expanded(
@@ -1843,6 +1859,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _openRadar() => unawaited(_pushGuarded(() => const RadarScreen()));
 
+  void _openFuel() => unawaited(_pushGuarded(FuelScreen.fromEnvironment));
+
   Future<void> _openSettings() async {
     _publishSettings();
     await _pushGuarded(() => SettingsScreen(bindings: _settingsBindings));
@@ -1852,180 +1870,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _openEarnings() async {
     await _pushGuarded(() => const EarningsScreen());
     if (mounted) setState(() {});
-  }
-
-  Future<void> _quickAddFuelReceipt() async {
-    final prefs = await _getPrefs();
-    await prefs.reload();
-    if (!mounted) return;
-    final ctrl = TextEditingController();
-    double? added;
-    try {
-      added = await showDialog<double>(
-        context: context,
-        builder: (ctx) {
-          return AlertDialog(
-            backgroundColor: AppColors.card,
-            shape: const RoundedRectangleBorder(
-              borderRadius: AppRadius.mdBorder,
-              side: BorderSide(color: AppColors.hairline),
-            ),
-            title: Text(
-              S.quickAddFuelTitle,
-              style: AppTextStyles.headlineStyle,
-            ),
-            content: TextField(
-              controller: ctrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              style: AppTextStyles.tabularNumbers(
-                fontSize: 18,
-                color: Colors.white,
-              ),
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: S.amountPaidLabel,
-                labelStyle: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  color: AppColors.mutedText,
-                  fontSize: AppTextStyles.body,
-                ),
-                suffixText: 'PLN',
-                suffixStyle: const TextStyle(
-                  fontFamily: AppFonts.dmSans,
-                  color: AppColors.actionAccent,
-                  fontWeight: FontWeight.w700,
-                  fontSize: AppTextStyles.body,
-                ),
-                enabledBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white24),
-                ),
-                focusedBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: AppColors.actionAccent),
-                ),
-              ),
-              onSubmitted: (_) {
-                final val = double.tryParse(
-                  ctrl.text.replaceAll(' ', '').replaceAll(',', '.').trim(),
-                );
-                if (val != null && val > 0) {
-                  Navigator.of(ctx).pop(val);
-                }
-              },
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: Text(
-                  S.cancel,
-                  style: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    color: AppColors.mutedText,
-                    fontSize: AppTextStyles.body,
-                  ),
-                ),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.actionAccent,
-                  foregroundColor: Colors.black,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: AppRadius.smBorder,
-                  ),
-                ),
-                onPressed: () {
-                  final val = double.tryParse(
-                    ctrl.text.replaceAll(' ', '').replaceAll(',', '.').trim(),
-                  );
-                  if (val != null && val > 0) {
-                    Navigator.of(ctx).pop(val);
-                  }
-                },
-                child: Text(
-                  S.add,
-                  style: const TextStyle(
-                    fontFamily: AppFonts.dmSans,
-                    fontWeight: FontWeight.w800,
-                    fontSize: AppTextStyles.body,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      );
-    } finally {
-      ctrl.dispose();
-    }
-
-    if (added == null || added <= 0 || !mounted) return;
-
-    final entries = decodeEarnings(
-      prefs.getString(kEarningsHistoryKey),
-      onCorrupt: (raw) => prefs.setString(kEarningsCorruptBackupKey, raw),
-    )..sort((a, b) => b.weekStart.compareTo(a.weekStart));
-
-    final currentMonday = weekStartForOffset(0);
-    final currentSunday = weekEndForStart(currentMonday);
-
-    WeekEarning? currentEntry;
-    int entryIndex = -1;
-    for (int i = 0; i < entries.length; i++) {
-      if (isSameDate(entries[i].weekStart, currentMonday)) {
-        currentEntry = entries[i];
-        entryIndex = i;
-        break;
-      }
-    }
-
-    final newReceipt = FuelReceipt(
-      timestamp: DateTime.now(),
-      amountPaid: added,
-    );
-
-    final List<WeekEarning> nextEntries = List.of(entries);
-    final int newCount;
-    if (currentEntry != null) {
-      final updatedReceipts = capFuelReceipts([
-        ...currentEntry.fuelReceipts,
-        newReceipt,
-      ]);
-      newCount = updatedReceipts.length;
-      nextEntries[entryIndex] = currentEntry.copyWith(
-        fuelReceipts: updatedReceipts,
-      );
-    } else {
-      newCount = 1;
-      final driverMode = DriverMode.parse(prefs.getString(DriverMode.key));
-      nextEntries.insert(
-        0,
-        WeekEarning(
-          id: '${currentMonday.millisecondsSinceEpoch}_${currentSunday.millisecondsSinceEpoch}',
-          weekStart: currentMonday,
-          weekEnd: currentSunday,
-          driverMode: driverMode,
-          netIncome: 0,
-          cashReceived: 0,
-          onlineHours: 0,
-          driverTripCount: 0,
-          hasRentalDiscount: true,
-          fuelReceipts: [newReceipt],
-        ),
-      );
-    }
-
-    await prefs.setString(kEarningsHistoryKey, encodeEarnings(nextEntries));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          S.fuelAddedConfirmation(added.toStringAsFixed(2), newCount),
-          style: const TextStyle(fontFamily: AppFonts.dmSans),
-        ),
-        duration: const Duration(seconds: 3),
-      ),
-    );
   }
 
   Widget _buildDesignerSignature() {
