@@ -3,6 +3,7 @@ package com.ratehelper.app
 import android.Manifest
 import android.annotation.SuppressLint
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.ComponentName
@@ -22,6 +23,7 @@ import android.os.CancellationSignal
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.provider.OpenableColumns
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
 import androidx.core.app.ActivityCompat
@@ -32,6 +34,7 @@ import flutter.overlay.window.flutter_overlay_window.OverlayService
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
@@ -44,6 +47,12 @@ class MainActivity : FlutterActivity() {
         private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
         private const val REQUEST_POST_NOTIFICATIONS = 4711
         private const val REQUEST_LOCATION = 4712
+        private const val REQUEST_SAVE_BACKUP = 4713
+        private const val REQUEST_OPEN_BACKUP = 4714
+        private const val REQUEST_PICK_SCREENSHOT = 4715
+        private const val MAX_BACKUP_BYTES = 5 * 1024 * 1024
+        private const val MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024
+        private const val BUG_SCREENSHOT_DIR = "bug_reports"
         private const val LOCATION_TIMEOUT_MS = 10_000L
         private const val LAST_KNOWN_MAX_AGE_MS = 2 * 60_000L
         private val LOCATION_DENIED = mapOf("error" to "denied")
@@ -55,6 +64,10 @@ class MainActivity : FlutterActivity() {
     private var methodChannel: MethodChannel? = null
     private var pendingNotificationPermission: MethodChannel.Result? = null
     private var pendingLocation: MethodChannel.Result? = null
+    private var pendingSaveBackupResult: MethodChannel.Result? = null
+    private var pendingSaveBackupContent: String? = null
+    private var pendingOpenBackupResult: MethodChannel.Result? = null
+    private var pendingPickScreenshotResult: MethodChannel.Result? = null
 
     private val mediaKeyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -85,9 +98,278 @@ class MainActivity : FlutterActivity() {
         pendingNotificationPermission = null
         pendingLocation?.let { runCatching { it.success(LOCATION_UNAVAILABLE) } }
         pendingLocation = null
+        pendingSaveBackupResult?.let { runCatching { it.success("cancelled") } }
+        pendingSaveBackupResult = null
+        pendingSaveBackupContent = null
+        pendingOpenBackupResult?.let {
+            runCatching { it.success(mapOf("status" to "cancelled")) }
+        }
+        pendingOpenBackupResult = null
+        pendingPickScreenshotResult?.let {
+            runCatching { it.success(mapOf("status" to "cancelled")) }
+        }
+        pendingPickScreenshotResult = null
         super.onDestroy()
         runCatching { unregisterReceiver(mediaKeyReceiver) }
         methodChannel = null
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        when (requestCode) {
+            REQUEST_SAVE_BACKUP -> {
+                val result = pendingSaveBackupResult ?: return
+                val content = pendingSaveBackupContent
+                pendingSaveBackupResult = null
+                pendingSaveBackupContent = null
+                val uri = data?.data
+                if (resultCode != Activity.RESULT_OK || uri == null || content == null) {
+                    result.success("cancelled")
+                    return
+                }
+                val saved = runCatching {
+                    val stream = runCatching {
+                        contentResolver.openOutputStream(uri, "wt")
+                    }.getOrNull() ?: contentResolver.openOutputStream(uri)
+                    if (stream == null) {
+                        false
+                    } else {
+                        stream.use { out ->
+                            out.write(content.toByteArray(Charsets.UTF_8))
+                            out.flush()
+                        }
+                        true
+                    }
+                }.getOrDefault(false)
+                result.success(if (saved) "saved" else "failed")
+            }
+            REQUEST_OPEN_BACKUP -> {
+                val result = pendingOpenBackupResult ?: return
+                pendingOpenBackupResult = null
+                val uri = data?.data
+                if (resultCode != Activity.RESULT_OK || uri == null) {
+                    result.success(mapOf("status" to "cancelled"))
+                    return
+                }
+                val reply = readBackupUri(uri)
+                result.success(reply)
+            }
+            REQUEST_PICK_SCREENSHOT -> {
+                val result = pendingPickScreenshotResult ?: return
+                pendingPickScreenshotResult = null
+                val uri = data?.data
+                if (resultCode != Activity.RESULT_OK || uri == null) {
+                    result.success(mapOf("status" to "cancelled"))
+                    return
+                }
+                val reply = copyScreenshotUriToCache(uri)
+                result.success(reply)
+            }
+        }
+    }
+
+    private fun readBackupUri(uri: Uri): Map<String, Any> {
+        return runCatching {
+            contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.SIZE),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (idx >= 0 && !cursor.isNull(idx)) {
+                        val size = cursor.getLong(idx)
+                        if (size > MAX_BACKUP_BYTES) {
+                            return mapOf("status" to "too_large")
+                        }
+                    }
+                }
+            }
+            val input = contentResolver.openInputStream(uri)
+                ?: return mapOf("status" to "failed")
+            input.use { stream ->
+                val buffer = ByteArrayOutputStream()
+                val chunk = ByteArray(16 * 1024)
+                var total = 0
+                while (true) {
+                    val read = stream.read(chunk)
+                    if (read <= 0) break
+                    total += read
+                    if (total > MAX_BACKUP_BYTES) {
+                        return mapOf("status" to "too_large")
+                    }
+                    buffer.write(chunk, 0, read)
+                }
+                val text = buffer.toByteArray().toString(Charsets.UTF_8)
+                mapOf("status" to "ok", "content" to text)
+            }
+        }.getOrElse {
+            mapOf("status" to "failed")
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun saveBackupFile(fileName: String?, content: String?, result: MethodChannel.Result) {
+        if (fileName.isNullOrBlank() || content == null) {
+            result.success("failed")
+            return
+        }
+        pendingSaveBackupResult?.success("cancelled")
+        pendingSaveBackupResult = result
+        pendingSaveBackupContent = content
+        val launched = runCatching {
+            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/json"
+                putExtra(Intent.EXTRA_TITLE, fileName)
+            }
+            startActivityForResult(intent, REQUEST_SAVE_BACKUP)
+            true
+        }.getOrDefault(false)
+        if (!launched) {
+            pendingSaveBackupResult = null
+            pendingSaveBackupContent = null
+            result.success("failed")
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun pickBackupFile(result: MethodChannel.Result) {
+        pendingOpenBackupResult?.success(mapOf("status" to "cancelled"))
+        pendingOpenBackupResult = result
+        val launched = runCatching {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(
+                    Intent.EXTRA_MIME_TYPES,
+                    arrayOf("application/json", "text/plain", "application/octet-stream"),
+                )
+            }
+            startActivityForResult(intent, REQUEST_OPEN_BACKUP)
+            true
+        }.getOrDefault(false)
+        if (!launched) {
+            pendingOpenBackupResult = null
+            result.success(mapOf("status" to "failed"))
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun pickBugScreenshot(result: MethodChannel.Result) {
+        pendingPickScreenshotResult?.success(mapOf("status" to "cancelled"))
+        pendingPickScreenshotResult = result
+        val launched = runCatching {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "image/*"
+                putExtra(
+                    Intent.EXTRA_MIME_TYPES,
+                    arrayOf("image/png", "image/jpeg"),
+                )
+            }
+            startActivityForResult(intent, REQUEST_PICK_SCREENSHOT)
+            true
+        }.getOrDefault(false)
+        if (!launched) {
+            pendingPickScreenshotResult = null
+            result.success(mapOf("status" to "failed"))
+        }
+    }
+
+    private fun copyScreenshotUriToCache(uri: Uri): Map<String, Any> {
+        return runCatching {
+            val mimeType = contentResolver.getType(uri)?.lowercase()
+                ?: return mapOf("status" to "failed")
+            if (mimeType !in setOf("image/png", "image/jpeg", "image/jpg")) {
+                return mapOf("status" to "failed")
+            }
+            var displayName = "screenshot.png"
+            contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val sizeIdx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (sizeIdx >= 0 && !cursor.isNull(sizeIdx)) {
+                        val size = cursor.getLong(sizeIdx)
+                        if (size > MAX_SCREENSHOT_BYTES) {
+                            return mapOf("status" to "too_large")
+                        }
+                    }
+                    val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (nameIdx >= 0 && !cursor.isNull(nameIdx)) {
+                        val rawName = cursor.getString(nameIdx)?.trim().orEmpty()
+                        if (rawName.isNotEmpty()) {
+                            displayName = rawName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+                        }
+                    }
+                }
+            }
+            val ext = when (mimeType.lowercase()) {
+                "image/jpeg", "image/jpg" -> "jpg"
+                else -> "png"
+            }
+            val dir = File(cacheDir, BUG_SCREENSHOT_DIR).apply { mkdirs() }
+            dir.listFiles()?.forEach { runCatching { it.delete() } }
+            val outFile = File(dir, "bug_screenshot.$ext")
+            val input = contentResolver.openInputStream(uri)
+                ?: return mapOf("status" to "failed")
+            input.use { stream ->
+                outFile.outputStream().use { out ->
+                    val chunk = ByteArray(16 * 1024)
+                    var total = 0
+                    while (true) {
+                        val read = stream.read(chunk)
+                        if (read <= 0) break
+                        total += read
+                        if (total > MAX_SCREENSHOT_BYTES) {
+                            runCatching { outFile.delete() }
+                            return mapOf("status" to "too_large")
+                        }
+                        out.write(chunk, 0, read)
+                    }
+                    out.flush()
+                }
+            }
+            mapOf(
+                "status" to "ok",
+                "path" to outFile.absolutePath,
+                "name" to displayName,
+                "mimeType" to mimeType,
+            )
+        }.getOrElse {
+            mapOf("status" to "failed")
+        }
+    }
+
+    private fun deviceDiagnostics(): Map<String, Any> {
+        val pkgInfo = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getPackageInfo(
+                    packageName,
+                    PackageManager.PackageInfoFlags.of(0),
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, 0)
+            }
+        }.getOrNull()
+        val versionName = pkgInfo?.versionName ?: ""
+        val buildNumber = pkgInfo?.longVersionCode?.toString() ?: ""
+        return mapOf(
+            "manufacturer" to (Build.MANUFACTURER ?: ""),
+            "model" to (Build.MODEL ?: ""),
+            "androidRelease" to (Build.VERSION.RELEASE ?: ""),
+            "sdkInt" to Build.VERSION.SDK_INT,
+            "appVersion" to versionName,
+            "buildNumber" to buildNumber,
+        )
     }
 
     override fun onRequestPermissionsResult(
@@ -373,6 +655,46 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(mapOf("accepted" to accepted, "rejected" to rejected))
                 }
+
+                "peekPendingTaps" -> {
+                    val prefs = getSharedPreferences(
+                        TapDelivery.PENDING_TAPS_PREFS,
+                        Context.MODE_PRIVATE
+                    )
+                    val accepted = prefs.getInt("accepted", 0)
+                    val rejected = prefs.getInt("rejected", 0)
+                    result.success(mapOf("accepted" to accepted, "rejected" to rejected))
+                }
+
+                "ackPendingTaps" -> {
+                    val ackAccepted = (call.argument<Int>("accepted") ?: 0).coerceAtLeast(0)
+                    val ackRejected = (call.argument<Int>("rejected") ?: 0).coerceAtLeast(0)
+                    val prefs = getSharedPreferences(
+                        TapDelivery.PENDING_TAPS_PREFS,
+                        Context.MODE_PRIVATE
+                    )
+                    val curAccepted = prefs.getInt("accepted", 0)
+                    val curRejected = prefs.getInt("rejected", 0)
+                    val ok = prefs.edit()
+                        .putInt("accepted", (curAccepted - ackAccepted).coerceAtLeast(0))
+                        .putInt("rejected", (curRejected - ackRejected).coerceAtLeast(0))
+                        .commit()
+                    result.success(ok)
+                }
+
+                "saveBackupFile" -> {
+                    saveBackupFile(
+                        call.argument<String>("fileName"),
+                        call.argument<String>("content"),
+                        result,
+                    )
+                }
+
+                "pickBackupFile" -> pickBackupFile(result)
+
+                "pickBugScreenshot" -> pickBugScreenshot(result)
+
+                "deviceDiagnostics" -> result.success(deviceDiagnostics())
 
                 "canInstallPackages" -> result.success(canInstallPackages())
 

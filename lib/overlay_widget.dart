@@ -12,6 +12,7 @@ import 'app_text_styles.dart';
 import 'l10n.dart';
 import 'log.dart';
 import 'overlay_sync.dart';
+import 'services/backup_service.dart';
 import 'shade_controls.dart';
 import 'shift_counter_store.dart';
 import 'tap_history_store.dart';
@@ -341,6 +342,7 @@ class _OverlayWidgetState extends State<OverlayWidget>
       // Rapid taps must never call reload() — overlapping reload() on the
       // same isolate instance can stall and freeze every later read/write.
       await prefs.reload();
+      await BackupService.recoverPendingRestoreIfNeeded(prefs: prefs);
       unawaited(TapHistoryStore.instance.migrateFromPrefs(prefs));
       await ShiftCounterStore.instance.migrateFromPrefs(prefs);
       if (!mounted) return;

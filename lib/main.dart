@@ -17,14 +17,13 @@ import 'github_consent_dialog.dart';
 import 'home_screen.dart';
 import 'crash_logger.dart';
 import 'fonts.dart';
-import 'l10n.dart';
 import 'log.dart';
 import 'onboarding_screen.dart';
 import 'overlay_widget.dart';
+import 'services/backup_service.dart';
 import 'services/github_access.dart';
 import 'shade_controls.dart';
-
-const _kKeyOnboardingComplete = 'onboardingComplete';
+import 'startup_language.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,30 +39,19 @@ Future<void> main() async {
   SharedPreferences? prefs;
   try {
     prefs = await SharedPreferences.getInstance();
+    await BackupService.recoverPendingRestoreIfNeeded(prefs: prefs);
   } catch (_) {
     /* run with defaults; HomeScreen re-tries lazily */
   }
 
-  final bool seenOnboarding = prefs?.getBool(_kKeyOnboardingComplete) ?? false;
+  // Saved language first; only a fresh install follows the Android device
+  // locale. Unsupported device languages fall back to English.
+  await loadStartupLanguage(
+    prefs: prefs,
+    deviceLocale: PlatformDispatcher.instance.locale,
+  );
 
-  final savedLangStr = prefs?.getString('appLanguage');
-  if (savedLangStr != null) {
-    for (final l in AppLang.values) {
-      if (l.name == savedLangStr) {
-        S.setLang(l);
-        break;
-      }
-    }
-  } else {
-    final deviceLocale = PlatformDispatcher.instance.locale;
-    final initialLang = S.langFromLocale(deviceLocale);
-    S.setLang(initialLang);
-    try {
-      await prefs?.setString('appLanguage', initialLang.name);
-    } catch (_) {}
-  }
-
-  runApp(RateHelperApp(showOnboarding: !seenOnboarding));
+  runApp(RateHelperApp(showOnboarding: shouldShowOnboarding(prefs)));
 }
 
 @pragma('vm:entry-point')
@@ -109,6 +97,9 @@ void overlayMain() {
         final prefs = await SharedPreferences.getInstance().timeout(
           const Duration(milliseconds: 400),
         );
+        await BackupService.recoverPendingRestoreIfNeeded(
+          prefs: prefs,
+        ).timeout(const Duration(milliseconds: 400));
         final layout = OverlayWidget.layoutFromPrefs(prefs);
         startOrientation = layout.orientation;
         startShowCancel = layout.showCancel;
@@ -229,7 +220,7 @@ class _RateHelperAppState extends State<RateHelperApp> {
 
   Future<void> _completeOnboarding() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kKeyOnboardingComplete, true);
+    await prefs.setBool(kOnboardingCompletePrefsKey, true);
     if (!mounted) return;
     setState(() => _needsOnboarding = false);
   }

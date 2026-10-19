@@ -12,6 +12,7 @@ import 'earnings_models.dart';
 import 'earnings_pdf_export.dart';
 import 'l10n.dart';
 import 'log.dart';
+import 'services/backup_service.dart';
 
 const kDriverNameKey = 'driver_name';
 
@@ -848,6 +849,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
   Future<void> _load() async {
     final prefs = await _getPrefs();
     await prefs.reload();
+    await BackupService.recoverPendingRestoreIfNeeded(prefs: prefs);
     final entries = decodeEarnings(
       prefs.getString(kEarningsHistoryKey),
       onCorrupt: (raw) => prefs.setString(kEarningsCorruptBackupKey, raw),

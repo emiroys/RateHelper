@@ -36,17 +36,20 @@ class OrlenStation {
   final double lat;
   final double lng;
 
-  /// False only where OpenStreetMap records `fuel:lpg=no`.
+  /// False where OpenStreetMap records `fuel:lpg=no`, or where LPG
+  /// availability could not be confirmed from a current station listing.
   final bool sellsLpg;
 
   bool sells(FuelType fuel) => fuel == FuelType.pb95 || sellsLpg;
 }
 
-/// Orlen stations inside Kraków city limits.
+/// Orlen fuel stations inside Kraków city limits.
 ///
-/// Coordinates come from OpenStreetMap (brand=Orlen, ODbL), checked against
-/// Nominatim in October 2026. Entries without a house number had none in
-/// OSM; the street is the one the station sits on.
+/// Coordinates come from OpenStreetMap (brand=Orlen, ODbL) and were
+/// cross-checked against Google Maps, ORLEN's station list and current
+/// Kraków station directories in October 2026. Non-fuel ORLEN points
+/// (ORLEN Paczka, car washes, EV-only sites and convenience stores) are
+/// deliberately excluded.
 const List<OrlenStation> krakowOrlenStations = [
   OrlenStation(
     id: 'nowohucka-71',
@@ -169,50 +172,50 @@ const List<OrlenStation> krakowOrlenStations = [
   ),
   OrlenStation(
     id: 'andersa',
-    name: 'ORLEN Andersa',
-    address: 'al. Gen. Władysława Andersa',
+    name: 'ORLEN Strusia',
+    address: 'os. Józefa Strusia 24',
     lat: 50.0879871,
     lng: 20.0055144,
   ),
   OrlenStation(
     id: 'palacha',
-    name: 'ORLEN Palacha',
-    address: 'ul. Jana Palacha',
+    name: 'ORLEN Opolska',
+    address: 'ul. Opolska 5',
     lat: 50.0898011,
     lng: 19.9180492,
   ),
   OrlenStation(
     id: 'mogilska',
     name: 'ORLEN Mogilska',
-    address: 'ul. Mogilska',
+    address: 'ul. Mogilska 122',
     lat: 50.0689480,
     lng: 19.9794727,
   ),
   OrlenStation(
     id: 'bulwarowa',
-    name: 'ORLEN Bulwarowa',
-    address: 'ul. Bulwarowa',
+    name: 'ORLEN Wandy',
+    address: 'os. Wandy 30A',
     lat: 50.0690823,
     lng: 20.0525792,
   ),
   OrlenStation(
     id: 'igolomska',
     name: 'ORLEN Igołomska',
-    address: 'ul. Igołomska',
+    address: 'ul. Igołomska 30L',
     lat: 50.0747437,
     lng: 20.1404703,
   ),
   OrlenStation(
     id: 'daszynskiego',
     name: 'ORLEN Daszyńskiego',
-    address: 'al. Ignacego Daszyńskiego',
+    address: 'al. Ignacego Daszyńskiego 33',
     lat: 50.0518180,
     lng: 19.9542534,
   ),
   OrlenStation(
     id: 'wloczkow',
     name: 'ORLEN Włóczków',
-    address: 'ul. Włóczków',
+    address: 'ul. Włóczków 3',
     lat: 50.0551220,
     lng: 19.9251924,
     sellsLpg: false,
@@ -220,30 +223,47 @@ const List<OrlenStation> krakowOrlenStations = [
   OrlenStation(
     id: 'wioslarska',
     name: 'ORLEN Wioślarska',
-    address: 'ul. Wioślarska',
+    address: 'ul. Wioślarska 1',
     lat: 50.0479792,
     lng: 19.9024110,
   ),
   OrlenStation(
     id: 'zamknieta',
-    name: 'ORLEN Zamknięta',
-    address: 'ul. Zamknięta',
+    name: 'ORLEN Wielicka',
+    address: 'ul. Wielicka 31',
     lat: 50.0398860,
     lng: 19.9625541,
   ),
   OrlenStation(
     id: 'jerzmanowskiego',
     name: 'ORLEN Jerzmanowskiego',
-    address: 'ul. Erazma Jerzmanowskiego',
+    address: 'ul. Erazma Jerzmanowskiego 39',
     lat: 50.0105966,
     lng: 20.0096518,
   ),
   OrlenStation(
     id: 'bunscha',
     name: 'ORLEN Bunscha',
-    address: 'ul. Karola Bunscha',
+    address: 'ul. Karola Bunscha 68',
     lat: 50.0082233,
     lng: 19.8805957,
+  ),
+  OrlenStation(
+    id: 'kazimierza-wielkiego-121',
+    name: 'ORLEN Kazimierza Wielkiego',
+    address: 'ul. Kazimierza Wielkiego 121',
+    lat: 50.0748591,
+    lng: 19.9102511,
+  ),
+  OrlenStation(
+    id: 'kolorowe-10a',
+    name: 'ORLEN Kolorowe',
+    address: 'os. Kolorowe 10A',
+    lat: 50.0727647,
+    lng: 20.0291219,
+    // No explicit LPG listing found for this station; keep the restriction
+    // conservative until it is confirmed onsite.
+    sellsLpg: false,
   ),
 ];
 

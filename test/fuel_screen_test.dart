@@ -168,7 +168,7 @@ void main() {
     });
 
     test('every station is inside Kraków with a name and address', () {
-      expect(krakowOrlenStations.length, greaterThanOrEqualTo(25));
+      expect(krakowOrlenStations.length, 30);
       for (final s in krakowOrlenStations) {
         expect(s.lat, inInclusiveRange(49.96, 50.13), reason: s.id);
         expect(s.lng, inInclusiveRange(19.78, 20.23), reason: s.id);
@@ -193,24 +193,84 @@ void main() {
       }
     });
 
-    test('the Worker lists exactly the same stations', () {
-      final js = File(
-        'backend/orlen-worker/src/stations.js',
-      ).readAsStringSync();
-      final workerIds = RegExp(
-        r"^\s*'([a-z0-9-]+)':\s*\{",
-        multiLine: true,
-      ).allMatches(js).map((m) => m.group(1)).toSet();
-      expect(workerIds, krakowOrlenStations.map((s) => s.id).toSet());
+    test('Google Maps audit corrected the known station addresses', () {
+      final byId = {for (final s in krakowOrlenStations) s.id: s};
+      expect(byId['bunscha']!.address, 'ul. Karola Bunscha 68');
+      expect(byId['igolomska']!.address, 'ul. Igołomska 30L');
+      expect(byId['mogilska']!.address, 'ul. Mogilska 122');
+      expect(byId['daszynskiego']!.address, 'al. Ignacego Daszyńskiego 33');
+      expect(byId['wloczkow']!.address, 'ul. Włóczków 3');
+      expect(byId['wioslarska']!.address, 'ul. Wioślarska 1');
+      expect(byId['jerzmanowskiego']!.address, 'ul. Erazma Jerzmanowskiego 39');
+      // These candidates resolved to existing stations by coordinates;
+      // their addresses were corrected without adding duplicate records.
+      expect(byId['andersa']!.address, 'os. Józefa Strusia 24');
+      expect(byId['bulwarowa']!.address, 'os. Wandy 30A');
+      expect(byId['zamknieta']!.address, 'ul. Wielicka 31');
+      expect(byId['palacha']!.address, 'ul. Opolska 5');
+    });
 
-      final noLpg = RegExp(
-        r"^\s*'([a-z0-9-]+)':.*lpg: false",
-        multiLine: true,
-      ).allMatches(js).map((m) => m.group(1)).toSet();
+    test('adds only confirmed fuel stations and keeps non-fuel points out', () {
+      final byId = {for (final s in krakowOrlenStations) s.id: s};
       expect(
-        noLpg,
-        krakowOrlenStations.where((s) => !s.sellsLpg).map((s) => s.id).toSet(),
+        byId['kazimierza-wielkiego-121']!.address,
+        'ul. Kazimierza Wielkiego 121',
       );
+      expect(byId['kolorowe-10a']!.address, 'os. Kolorowe 10A');
+      expect(byId['kazimierza-wielkiego-121']!.sellsLpg, isTrue);
+      expect(byId['kolorowe-10a']!.sellsLpg, isFalse);
+      expect(byId['wloczkow']!.sellsLpg, isFalse);
+      expect(byId.containsKey('opolska-5'), isFalse);
+      expect(byId.containsKey('kolorowe-9f'), isFalse);
+      expect(byId.containsKey('strusia-24'), isFalse);
+      expect(byId.containsKey('wandy-30a'), isFalse);
+      expect(byId.containsKey('wielicka-31'), isFalse);
+      expect(byId.keys.any((id) => id.contains('paczka')), isFalse);
+    });
+
+    test('contains no near-duplicate station coordinates', () {
+      for (var i = 0; i < krakowOrlenStations.length; i++) {
+        for (var j = i + 1; j < krakowOrlenStations.length; j++) {
+          final a = krakowOrlenStations[i];
+          final b = krakowOrlenStations[j];
+          final distance = haversineKm(
+            GeoPoint(a.lat, a.lng),
+            GeoPoint(b.lat, b.lng),
+          );
+          expect(
+            distance,
+            greaterThanOrEqualTo(0.05),
+            reason:
+                '${a.id} and ${b.id} are only ${distance.toStringAsFixed(3)} km apart',
+          );
+        }
+      }
+    });
+
+    test('the Worker and dashboard bundle list exactly the same stations', () {
+      final expectedIds = krakowOrlenStations.map((s) => s.id).toSet();
+      final expectedNoLpg = krakowOrlenStations
+          .where((s) => !s.sellsLpg)
+          .map((s) => s.id)
+          .toSet();
+
+      for (final path in [
+        'backend/orlen-worker/src/stations.js',
+        'backend/orlen-worker/dashboard-worker.js',
+      ]) {
+        final js = File(path).readAsStringSync();
+        final workerIds = RegExp(
+          r"^\s*'([a-z0-9-]+)':\s*\{",
+          multiLine: true,
+        ).allMatches(js).map((m) => m.group(1)).toSet();
+        expect(workerIds, expectedIds, reason: path);
+
+        final noLpg = RegExp(
+          r"^\s*'([a-z0-9-]+)':.*lpg: false",
+          multiLine: true,
+        ).allMatches(js).map((m) => m.group(1)).toSet();
+        expect(noLpg, expectedNoLpg, reason: path);
+      }
     });
 
     test('FuelType wire names are stable', () {

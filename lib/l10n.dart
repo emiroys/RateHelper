@@ -607,6 +607,334 @@ class S {
     'W ustawieniach baterii telefonu znajdź "RateHelper" i wyłącz optymalizację lub oznacz jako "Bez ograniczeń".',
   );
 
+  // --- First-run onboarding wizard ---
+
+  static String onboardingStepOf(int step, int total) =>
+      _p('Adım $step / $total', 'Step $step of $total', 'Krok $step z $total');
+
+  static String get onboardingContinue => _p('DEVAM', 'CONTINUE', 'DALEJ');
+  static String get onboardingBack => _p('GERİ', 'BACK', 'WSTECZ');
+  static String get onboardingOpenRateHelper =>
+      _p('RATEHELPER’I AÇ', 'OPEN RATEHELPER', 'OTWÓRZ RATEHELPER');
+  static String get onboardingCloseGuide => _p('KAPAT', 'CLOSE', 'ZAMKNIJ');
+  static String get onboardingLanguageSelector =>
+      _p('Dil seç', 'Choose language', 'Wybierz język');
+
+  static String languageName(AppLang lang) => switch (lang) {
+    AppLang.tr => 'Türkçe',
+    AppLang.en => 'English',
+    AppLang.pl => 'Polski',
+  };
+
+  // Welcome step
+  static String get onboardingWelcomeTitle => _p(
+    'RateHelper’e hoş geldin',
+    'Welcome to RateHelper',
+    'Witaj w RateHelper',
+  );
+  static String get onboardingWelcomeLead => _p(
+    'Vardiyanı tek ekrandan yönet: istekler, oranlar, kazanç ve pratik araçlar.',
+    'Run your shift from one screen: requests, rates, earnings and handy tools.',
+    'Zarządzaj zmianą z jednego ekranu: zlecenia, wskaźniki, zarobki i przydatne narzędzia.',
+  );
+  static String get onboardingFeatureRequestsTitle =>
+      _p('İstekleri takip et', 'Track every request', 'Śledź każde zlecenie');
+  static String get onboardingFeatureRequestsBody => _p(
+    'Kabul edilen, reddedilen, tamamlanan ve iptal edilen istekleri tek dokunuşla kaydet.',
+    'Log accepted, rejected, completed and cancelled requests with a single tap.',
+    'Zapisuj zaakceptowane, odrzucone, ukończone i anulowane zlecenia jednym dotknięciem.',
+  );
+  static String get onboardingFeatureRatesTitle =>
+      _p('Oranlarını izle', 'Monitor your rates', 'Kontroluj wskaźniki');
+  static String get onboardingFeatureRatesBody => _p(
+    'Kabul ve iptal yüzdelerini anlık gör; hedefinin altına düşmeden takip et.',
+    'See acceptance and cancellation percentages live, before they drop below your target.',
+    'Widz na bieżąco wskaźniki akceptacji i anulowań, zanim spadną poniżej celu.',
+  );
+  static String get onboardingFeatureOverlayTitle => _p(
+    'Uygulamanın üzerinde kontrol',
+    'Controls over your app',
+    'Sterowanie nad aplikacją',
+  );
+  static String get onboardingFeatureOverlayBody => _p(
+    'Uber Driver veya Bolt Driver açıkken yüzen baloncuk ile saymaya devam et.',
+    'Keep counting with the floating pill while Uber Driver or Bolt Driver is open.',
+    'Licz dalej przez pływający dymek, gdy Uber Driver lub Bolt Driver jest otwarte.',
+  );
+  static String get onboardingFeatureAltControlsTitle => _p(
+    'Direksiyon veya bildirim',
+    'Steering wheel or notifications',
+    'Kierownica lub powiadomienia',
+  );
+  static String get onboardingFeatureAltControlsBody => _p(
+    'İsteğe bağlı olarak direksiyon tuşlarını veya bildirim panelindeki butonları kullan.',
+    'Optionally count with steering-wheel buttons or the notification-shade buttons.',
+    'Opcjonalnie licz przyciskami kierownicy lub przyciskami w panelu powiadomień.',
+  );
+  static String get onboardingFeatureToolsTitle => _p(
+    'Yakıt, kazanç, kayıt ve Radar',
+    'Fuel, earnings, records and Radar',
+    'Paliwo, zarobki, zapisy i Radar',
+  );
+  static String get onboardingFeatureToolsBody => _p(
+    'Orlen yakıt fiyatları, kazanç takibi, haftalık kayıtlar ve etkinlik radarı bir arada.',
+    'Orlen fuel prices, earnings tracking, weekly records and the event radar in one place.',
+    'Ceny paliw Orlen, śledzenie zarobków, zapisy tygodniowe i radar wydarzeń w jednym miejscu.',
+  );
+  static String get onboardingFeatureLocalTitle => _p(
+    'Verin cihazında kalır',
+    'Your data stays on your device',
+    'Dane zostają na urządzeniu',
+  );
+  static String get onboardingFeatureLocalBody => _p(
+    'Yolculuk ve kazanç kayıtları cihazda saklanır. Ağ ve paylaşım özellikleri senin kontrolünde çalışır.',
+    'Trip and earnings records are stored on this device. Network and sharing features run under your control.',
+    'Zapisy przejazdów i zarobków są przechowywane na urządzeniu. Funkcje sieciowe i udostępnianie działają pod Twoją kontrolą.',
+  );
+
+  // Overlay permission step
+  static String get onboardingOverlayTitle => _p(
+    'Yüzen kontroller için izin',
+    'Permission for floating controls',
+    'Uprawnienie do pływających kontrolek',
+  );
+  static String get onboardingOverlayLead => _p(
+    'RateHelper’in Uber Driver veya Bolt Driver ekranının üzerinde görünmesi için Android’in “Diğer uygulamaların üzerinde göster” iznine ihtiyacı var.',
+    'For RateHelper to appear over Uber Driver or Bolt Driver, Android needs the “Display over other apps” permission.',
+    'Aby RateHelper pojawiał się nad Uber Driver lub Bolt Driver, Android potrzebuje uprawnienia „Wyświetlanie nad innymi aplikacjami”.',
+  );
+  static String get onboardingOverlayWhatTitle =>
+      _p('Bu izin nedir?', 'What is this permission?', 'Co to za uprawnienie?');
+  static String get onboardingOverlayWhatBody => _p(
+    'Android’in küçük bir kontrol penceresinin başka bir uygulamanın üzerinde görünmesine izin verdiği ayardır. RateHelper diğer uygulamanın ekranını okumaz.',
+    'It is the Android setting that lets a small control window appear over another app. RateHelper does not read the other app’s screen.',
+    'To ustawienie Androida, które pozwala małemu okienku sterowania pojawić się nad inną aplikacją. RateHelper nie odczytuje ekranu innej aplikacji.',
+  );
+  static String get onboardingOverlayWhyTitle =>
+      _p('Neden gerekli?', 'Why is it needed?', 'Dlaczego jest potrzebne?');
+  static String get onboardingOverlayWhyBody => _p(
+    'Baloncuk ancak bu izinle Uber/Bolt ekranının üzerinde kalabilir. İzin verilmezse sayaçlar ve diğer bölümler yine çalışır; yalnızca yüzen kontroller görünmez.',
+    'The pill can stay over Uber/Bolt only with this permission. Without it, counters and the rest of the app still work; only the floating controls are hidden.',
+    'Dymek może pozostać nad Uber/Bolt tylko z tym uprawnieniem. Bez niego liczniki i reszta aplikacji nadal działają; ukryte są tylko pływające kontrolki.',
+  );
+  static String get onboardingOverlayHowTitle =>
+      _p('Nasıl açılır?', 'How to enable it', 'Jak je włączyć');
+  static String get onboardingOverlayHowStep1 => _p(
+    'Aşağıdaki butona dokun.',
+    'Tap the button below.',
+    'Dotknij przycisku poniżej.',
+  );
+  static String get onboardingOverlayHowStep2 => _p(
+    'Açılan listede RateHelper’i bul.',
+    'In the list that opens, find RateHelper.',
+    'Na otwartej liście znajdź RateHelper.',
+  );
+  static String get onboardingOverlayHowStep3 => _p(
+    '“Diğer uygulamaların üzerinde göster” seçeneğini aç.',
+    'Turn on “Display over other apps”.',
+    'Włącz „Wyświetlanie nad innymi aplikacjami”.',
+  );
+  static String get onboardingOverlayHowStep4 => _p(
+    'RateHelper’e geri dön; izin durumu otomatik yenilenir.',
+    'Return to RateHelper; the permission status refreshes automatically.',
+    'Wróć do RateHelper; status uprawnienia odświeży się automatycznie.',
+  );
+  static String get onboardingPermissionGranted =>
+      _p('İzin verildi', 'Permission granted', 'Uprawnienie nadane');
+  static String get onboardingPermissionGrantedBody => _p(
+    'Yüzen kontrolleri Uber ve Bolt üzerinde kullanabilirsin.',
+    'You can now use the floating controls over Uber and Bolt.',
+    'Możesz teraz używać pływających kontrolek nad Uberem i Boltem.',
+  );
+  static String get onboardingPermissionMissing =>
+      _p('İzin verilmedi', 'Permission not granted', 'Brak uprawnienia');
+  static String get onboardingPermissionMissingBody => _p(
+    'Yüzen kontroller görünmeyecek. İzni açtıktan sonra bu ekrana dön; durum otomatik yenilenir.',
+    'Floating controls will not appear. After enabling the permission, return to this screen; the status refreshes automatically.',
+    'Pływające kontrolki się nie pojawią. Po włączeniu uprawnienia wróć na ten ekran; status odświeży się automatycznie.',
+  );
+  static String get onboardingPermissionChecking => _p(
+    'İzin durumu kontrol ediliyor…',
+    'Checking permission…',
+    'Sprawdzanie uprawnienia…',
+  );
+  static String get onboardingOpenPermissionSettings =>
+      _p('AYARLARI AÇ', 'OPEN SETTINGS', 'OTWÓRZ USTAWIENIA');
+  static String get onboardingOverlayUnavailable => _p(
+    'İzin yokken yüzen baloncuk ve yalnızca bildirim paneli modu kullanılamaz.',
+    'Without the permission, the floating pill and shade-only mode are unavailable.',
+    'Bez uprawnienia pływający dymek i tryb tylko z powiadomień są niedostępne.',
+  );
+
+  // Battery reliability step
+  static String get onboardingBatteryTitle => _p(
+    'Arka planda güvenilirlik',
+    'Background reliability',
+    'Niezawodność w tle',
+  );
+  static String get onboardingBatteryLead => _p(
+    'Android’in pil tasarrufu, yüzen kontrolleri veya arka plan sayaçlarını durdurabilir. Vardiya sırasında kapanmaması için telefonunun ayarını bir kez kontrol et.',
+    'Android battery saving can stop the floating controls or background counters. Check your phone’s setting once so it keeps working during a shift.',
+    'Oszczędzanie baterii Androida może zatrzymać pływające kontrolki lub liczniki w tle. Sprawdź raz ustawienie telefonu, aby działało podczas zmiany.',
+  );
+  static String get onboardingBatterySystemStatus =>
+      _p('SİSTEM DURUMU', 'SYSTEM STATUS', 'STATUS SYSTEMU');
+  static String get onboardingBatteryVerified => _p(
+    'Pil optimizasyonu kapalı görünüyor',
+    'Battery optimization is unrestricted',
+    'Optymalizacja baterii wyłączona',
+  );
+  static String get onboardingBatteryVerifiedBody => _p(
+    'Android, bu uygulama için pil optimizasyonunu kapalı bildiriyor. Üreticiye özel arka plan kısıtlamaları yine açık olabilir; aşağıdaki adımları da kontrol et.',
+    'Android reports battery optimization is off for this app. Manufacturer-specific background limits may still apply, so also check the steps below.',
+    'Android zgłasza, że optymalizacja baterii jest wyłączona dla tej aplikacji. Ograniczenia producenta mogą nadal działać, więc sprawdź też kroki poniżej.',
+  );
+  static String get onboardingBatteryNotVerified => _p(
+    'Pil ayarı doğrulanmadı',
+    'Battery setting not confirmed',
+    'Ustawienie baterii niepotwierdzone',
+  );
+  static String get onboardingBatteryNotVerifiedBody => _p(
+    'Android, bu uygulamayı hâlâ pil optimizasyonuna tabi tutuyor olabilir. Aşağıdaki adımlarla ayarı kendin kontrol et.',
+    'Android may still be optimizing this app. Check the setting yourself with the steps below.',
+    'Android może nadal optymalizować tę aplikację. Sprawdź ustawienie samodzielnie, wykonując kroki poniżej.',
+  );
+  static String get onboardingBatteryChecking => _p(
+    'Pil durumu kontrol ediliyor…',
+    'Checking battery status…',
+    'Sprawdzanie stanu baterii…',
+  );
+  static String get onboardingBatteryBrandLabel => _p(
+    'Telefon markanı seç',
+    'Choose your phone brand',
+    'Wybierz markę telefonu',
+  );
+  static String get onboardingBatteryBrandNote => _p(
+    'Marka seçimi yalnızca doğru talimatları gösterir; ayarın tamamlandığını kanıtlamaz.',
+    'Choosing a brand only shows the right instructions; it does not prove the setting is complete.',
+    'Wybór marki pokazuje tylko właściwe instrukcje; nie potwierdza wykonania ustawienia.',
+  );
+  static String get onboardingBatteryManualNote => _p(
+    'Ayarları açtıktan sonra listede RateHelper’i bul ve kısıtlamayı kaldır. Geri döndüğünde sistem durumu yeniden kontrol edilir.',
+    'After opening settings, find RateHelper in the list and remove the restriction. When you return, the system status is checked again.',
+    'Po otwarciu ustawień znajdź RateHelper na liście i usuń ograniczenie. Po powrocie status systemu zostanie sprawdzony ponownie.',
+  );
+  static String get onboardingBatteryOpenSettings =>
+      _p('PİL AYARLARI', 'BATTERY SETTINGS', 'USTAWIENIA BATERII');
+  static String get onboardingOpenAppInfo =>
+      _p('UYGULAMA BİLGİSİ', 'APP INFO', 'INFORMACJE O APLIKACJI');
+
+  // Optional features step
+  static String get onboardingOptionalTitle =>
+      _p('İsteğe bağlı özellikler', 'Optional features', 'Funkcje opcjonalne');
+  static String get onboardingOptionalLead => _p(
+    'Bu adımdaki hiçbir şey zorunlu değil. İstediğin özelliği daha sonra Ayarlar’dan açıp kapatabilirsin.',
+    'Nothing on this step is required. You can turn any feature on or off later in Settings.',
+    'Nic na tym etapie nie jest wymagane. Każdą funkcję możesz później włączyć lub wyłączyć w Ustawieniach.',
+  );
+  static String get onboardingOptionalBadge =>
+      _p('İSTEĞE BAĞLI', 'OPTIONAL', 'OPCJONALNE');
+  static String get onboardingOptionalSteeringTitle => _p(
+    'Direksiyon tuşları',
+    'Steering-wheel buttons',
+    'Przyciski kierownicy',
+  );
+  static String get onboardingOptionalSteeringBody => _p(
+    'Direksiyondaki sonraki şarkı tuşuna basılı tutarak sayabilirsin. Android Erişilebilirlik izni gerekir; izin yalnızca Ayarlar’dan bu özelliği açtığında istenir.',
+    'Count by holding the next-track button on the steering wheel. This needs Android Accessibility permission, requested only when you enable the feature in Settings.',
+    'Licz, przytrzymując przycisk następnego utworu na kierownicy. Wymaga to uprawnienia dostępności Androida, o które aplikacja poprosi dopiero po włączeniu funkcji w Ustawieniach.',
+  );
+  static String get onboardingOptionalNotificationsTitle =>
+      _p('Bildirim paneli', 'Notification shade', 'Panel powiadomień');
+  static String get onboardingOptionalNotificationsBody => _p(
+    'Bildirim panelinden Kabul +1 / Red +1 kullanabilirsin. Android bildirim izni yalnızca bu ayarı açtığında istenir.',
+    'Use Accept +1 / Reject +1 from the notification shade. Android notification permission is requested only when you turn this on.',
+    'Używaj Akceptuj +1 / Odrzuć +1 z panelu powiadomień. Uprawnienie do powiadomień jest wymagane tylko po włączeniu tej opcji.',
+  );
+  static String get onboardingOptionalPillTitle =>
+      _p('Baloncuk görünümü', 'Pill appearance', 'Wygląd dymka');
+  static String get onboardingOptionalPillBody => _p(
+    'Yatay veya dikey yönü ve iptal butonunu Ayarlar → Baloncuk bölümünden seç.',
+    'Choose horizontal or vertical orientation and the cancel button in Settings → Overlay.',
+    'Wybierz kierunek poziomy lub pionowy oraz przycisk anulowania w Ustawieniach → Dymek.',
+  );
+  static String get onboardingOptionalToolsTitle => _p(
+    'Yakıt, kazanç ve kayıtlar',
+    'Fuel, earnings and records',
+    'Paliwo, zarobki i zapisy',
+  );
+  static String get onboardingOptionalToolsBody => _p(
+    'Orlen yakıt fiyatları, kazanç hesapları ve haftalık kayıtlar alt menüden açılır.',
+    'Orlen fuel prices, earnings calculations and weekly records open from the bottom bar.',
+    'Ceny paliw Orlen, obliczenia zarobków i zapisy tygodniowe otwierają się z dolnego paska.',
+  );
+  static String get onboardingOptionalRadarTitle =>
+      _p('Etkinlik Radarı', 'Event Radar', 'Radar wydarzeń');
+  static String get onboardingOptionalRadarBody => _p(
+    'Kraków’daki etkinlikleri ve yoğun talep dönemlerini görmek için Radar’ı kullan.',
+    'Use Radar to see events and high-demand periods in Kraków.',
+    'Użyj Radaru, aby zobaczyć wydarzenia i okresy dużego popytu w Krakowie.',
+  );
+
+  // Ready step
+  static String get onboardingReadyTitle =>
+      _p('Sürüşe hazırsın', 'Ready to drive', 'Gotowy do jazdy');
+  static String get onboardingReadyLead => _p(
+    'Kurulum özetin aşağıda. Eksik kalan bir şey varsa sonra Ayarlar’dan tamamlayabilirsin.',
+    'Here is your setup summary. If anything is missing, you can finish it later in Settings.',
+    'Oto podsumowanie konfiguracji. Jeśli czegoś brakuje, możesz to dokończyć później w Ustawieniach.',
+  );
+  static String get onboardingSummaryTitle =>
+      _p('Kurulum özeti', 'Setup summary', 'Podsumowanie konfiguracji');
+  static String get onboardingSummaryOverlay =>
+      _p('Yüzen kontroller', 'Floating controls', 'Pływające kontrolki');
+  static String get onboardingSummaryBattery => _p(
+    'Arka plan güvenilirliği',
+    'Background reliability',
+    'Niezawodność w tle',
+  );
+  static String get onboardingSummaryOptional =>
+      _p('İsteğe bağlı özellikler', 'Optional features', 'Funkcje opcjonalne');
+  static String get onboardingSummaryGranted =>
+      _p('İzin verildi', 'Granted', 'Nadano');
+  static String get onboardingSummaryNotGranted =>
+      _p('İzin yok', 'Not granted', 'Brak uprawnienia');
+  static String get onboardingSummaryBatteryVerified =>
+      _p('Optimizasyon kapalı', 'Unrestricted', 'Bez ograniczeń');
+  static String get onboardingSummaryBatteryUnverified =>
+      _p('Manuel kontrol et', 'Check manually', 'Sprawdź ręcznie');
+  static String get onboardingSummaryOptionalValue => _p(
+    'Ayarlar’dan açılabilir',
+    'Available in Settings',
+    'Dostępne w Ustawieniach',
+  );
+  static String get onboardingReadySettingsHint => _p(
+    'Ayarlar’a ana ekrandaki dişli simgesinden ulaşabilirsin. Bu rehberi daha sonra Ayarlar → Kurulum Rehberi’nden yeniden açabilirsin.',
+    'Open Settings from the gear icon on the home screen. You can reopen this guide later from Settings → Setup Guide.',
+    'Otwórz Ustawienia ikoną koła zębatego na ekranie głównym. Ten przewodnik możesz ponownie otworzyć w Ustawieniach → Przewodnik konfiguracji.',
+  );
+
+  // Skip confirmation
+  static String get onboardingSkipTitle => _p(
+    'Kurulumu şimdi atla?',
+    'Skip setup for now?',
+    'Pominąć konfigurację?',
+  );
+  static String get onboardingSkipOverlayBody => _p(
+    'Yüzen kontroller için izin verilmedi. Kurulumu atlarsan baloncuk Uber/Bolt üzerinde görünmez. Daha sonra Ayarlar → Kurulum Rehberi’nden izni açabilirsin.',
+    'The floating-controls permission is not granted. If you skip setup, the pill will not appear over Uber/Bolt. You can enable it later from Settings → Setup Guide.',
+    'Nie nadano uprawnienia do pływających kontrolek. Jeśli pominiesz konfigurację, dymek nie pojawi się nad Uber/Bolt. Możesz włączyć je później w Ustawieniach → Przewodnik konfiguracji.',
+  );
+  static String get onboardingSkipBatteryBody => _p(
+    'Pil optimizasyonu doğrulanmadı. Android arka plan kontrollerini durdurabilir. Daha sonra Ayarlar → Kurulum Rehberi’nden kontrol edebilirsin.',
+    'Battery optimization is not confirmed. Android may stop the background controls. You can check it later from Settings → Setup Guide.',
+    'Optymalizacja baterii nie została potwierdzona. Android może zatrzymać kontrolki w tle. Możesz sprawdzić to później w Ustawieniach → Przewodnik konfiguracji.',
+  );
+  static String get onboardingSkipStay =>
+      _p('KURULUMA DÖN', 'BACK TO SETUP', 'WRÓĆ DO KONFIGURACJI');
+  static String get onboardingSkipConfirm =>
+      _p('YİNE DE ATLA', 'SKIP ANYWAY', 'POMIŃ MIMO TO');
+
   static String get crashLogTitle =>
       _p('Çökme Kayıtları', 'Crash Log', 'Dziennik awarii');
   static String get crashLogEmpty => _p(
@@ -1194,6 +1522,227 @@ class S {
       _p('Bilinmeyen Etkinlik', 'Unknown Event', 'Nieznane wydarzenie');
   static String get unknownVenue =>
       _p('Bilinmeyen Mekan', 'Unknown Venue', 'Nieznane miejsce');
+
+  // --- Backup & Restore ---
+  static String get backupMyData =>
+      _p('Verilerimi Yedekle', 'Back Up My Data', 'Utwórz kopię zapasową');
+  static String get backupMyDataSubtitle => _p(
+    'Vardiya, arşiv, kazanç ve ayarları dışa aktar',
+    'Export shift counters, archives, earnings and settings',
+    'Eksportuj liczniki, archiwa, zarobki i ustawienia',
+  );
+  static String get restoreFromBackup => _p(
+    'Yedekten Geri Yükle',
+    'Restore From Backup',
+    'Przywróć z kopii zapasowej',
+  );
+  static String get restoreFromBackupSubtitle => _p(
+    'Kaydedilmiş bir yedek dosyasından geri yükle',
+    'Restore from a saved backup file',
+    'Przywróć dane z zapisanego pliku kopii',
+  );
+  static String get restorePreviewTitle =>
+      _p('Yedeği Geri Yükle', 'Restore Backup', 'Przywróć kopię zapasową');
+  static String get restorePreviewSubtitle => _p(
+    'Bu işlem mevcut verilerinizin üzerine yazacaktır. Devam etmeden önce yedek içeriğini kontrol edin:',
+    'This will overwrite your current data. Review the backup contents before continuing:',
+    'To zastąpi Twoje obecne dane. Sprawdź zawartość kopii przed kontynuowaniem:',
+  );
+  static String get restoreBackupDateLabel =>
+      _p('Yedek Tarihi', 'Backup Date', 'Data kopii');
+  static String get restoreShiftCountersLabel =>
+      _p('Vardiya Sayaçları', 'Shift Counters', 'Liczniki zmiany');
+  static String get restoreWeeklyArchiveLabel =>
+      _p('Haftalık Arşiv', 'Weekly Archive', 'Archiwum tygodniowe');
+  static String get restoreEarningsLabel =>
+      _p('Kazanç Kayıtları', 'Earnings Records', 'Zapisy zarobków');
+  static String get restoreFuelReceiptsLabel =>
+      _p('Yakıt Fişleri', 'Fuel Receipts', 'Paragony paliwowe');
+  static String get restoreLifetimeTripsLabel =>
+      _p('Toplam Yolculuk Sayacı', 'Lifetime Trips', 'Suma kursów');
+  static String get restoreTapHistoryLabel =>
+      _p('Dokunma Geçmişi', 'Tap History', 'Historia dotknięć');
+  static String get restoreSettingsLabel =>
+      _p('Uygulama Ayarları', 'App Settings', 'Ustawienia aplikacji');
+  static String restoreOlderWeekNotice(String weekRange) => _p(
+    'Bu yedek geçmiş bir haftaya ($weekRange) ait. Yedekteki vardiya sayaçları o haftanın arşivine kaydedilecek ve bu haftanın sayaçları 0 olarak başlayacaktır.',
+    'This backup is from a past week ($weekRange). Its shift counters will be archived under that week, and this week’s counters will start at 0.',
+    'Ta kopia pochodzi z poprzedniego tygodnia ($weekRange). Liczniki zmiany zostaną zapisane w archiwum tamtego tygodnia, a liczniki bieżącego tygodnia zaczną się od 0.',
+  );
+  static String get restoreConfirmAction =>
+      _p('Geri Yükle', 'Restore', 'Przywróć');
+  static String restoreWeekCount(int count) =>
+      _p('$count hafta', '$count weeks', '$count tyg.');
+  static String restoreItemCount(int count) =>
+      _p('$count kayıt', '$count entries', '$count wpisów');
+  static String restoreReceiptCount(int count) =>
+      _p('$count fiş', '$count receipts', '$count paragonów');
+  static String get backupSuccess => _p(
+    'Yedek dosyası kaydedildi',
+    'Backup file saved',
+    'Zapisano plik kopii zapasowej',
+  );
+  static String get backupFailed => _p(
+    'Yedekleme tamamlanamadı. Lütfen tekrar deneyin.',
+    'Backup could not be completed. Please try again.',
+    'Nie udało się utworzyć kopii zapasowej. Spróbuj ponownie.',
+  );
+  static String get restoreSuccess => _p(
+    'Veriler başarıyla geri yüklendi',
+    'Data restored successfully',
+    'Dane zostały pomyślnie przywrócone',
+  );
+  static String get restoreFailed => _p(
+    'Geri yükleme başarısız oldu. Mevcut verileriniz korundu.',
+    'Restore failed. Your existing data was preserved.',
+    'Przywracanie nie powiodło się. Obecne dane zostały zachowane.',
+  );
+  static String get backupInvalidFile => _p(
+    'Geçersiz veya bozuk yedek dosyası.',
+    'Invalid or corrupted backup file.',
+    'Nieprawidłowy lub uszkodzony plik kopii zapasowej.',
+  );
+  static String get backupUnsupportedVersion => _p(
+    'Bu yedek dosyası daha yeni bir uygulama sürümü gerektiriyor.',
+    'This backup file requires a newer app version.',
+    'Ten plik kopii wymaga nowszej wersji aplikacji.',
+  );
+  static String get backupFileTooLarge => _p(
+    'Yedek dosyası çok büyük (maksimum 5 MB).',
+    'Backup file is too large (max 5 MB).',
+    'Plik kopii jest za duży (maks. 5 MB).',
+  );
+  static String get backupOverlayBusyError => _p(
+    'Üst pencere veya bekleyen sayaç kaydı kapatılamadığı için işlem durduruldu.',
+    'Operation aborted because the overlay or pending counter writes could not be safely settled.',
+    'Operacja przerwana, ponieważ nie udało się bezpiecznie zamknąć dymka lub zapisać liczników.',
+  );
+
+  // --- Bug Reporting ---
+  static String get reportProblem =>
+      _p('Sorun Bildir', 'Report a Problem', 'Zgłoś problem');
+  static String get reportProblemSubtitle => _p(
+    'Hata raporu oluştur ve geliştiriciye gönder',
+    'Create and send a bug report to the developer',
+    'Utwórz i wyślij raport o błędzie do dewelopera',
+  );
+  static String get reportCategoryEyebrow =>
+      _p('SORUN KATEGORİSİ', 'ISSUE CATEGORY', 'KATEGORIA PROBLEMU');
+  static String get reportCatOverlay =>
+      _p('Baloncuk (Overlay)', 'Overlay', 'Dymek (Overlay)');
+  static String get reportCatCounters => _p('Sayaçlar', 'Counters', 'Liczniki');
+  static String get reportCatEarningsFuel =>
+      _p('Kazanç / Yakıt', 'Earnings / Fuel', 'Zarobki / Paliwo');
+  static String get reportCatSteeringNotification => _p(
+    'Direksiyon / Bildirim',
+    'Steering Wheel / Notification',
+    'Kierownica / Powiadomienia',
+  );
+  static String get reportCatOther => _p('Diğer', 'Other', 'Inne');
+  static String get reportDescriptionEyebrow =>
+      _p('SORUN AÇIKLAMASI', 'PROBLEM DESCRIPTION', 'OPIS PROBLEMU');
+  static String get reportDescriptionHint => _p(
+    'Ne olduğunu ve sorunu nasıl tekrarlayabileceğimizi kısaca yazın…',
+    'Briefly describe what happened and how to reproduce it…',
+    'Krótko opisz, co się stało i jak odtworzyć problem…',
+  );
+  static String get reportDescriptionEmptyError => _p(
+    'Lütfen kısa bir sorun açıklaması yazın.',
+    'Please enter a short problem description.',
+    'Wpisz krótki opis problemu.',
+  );
+  static String get reportScreenshotEyebrow => _p(
+    'EKRAN GÖRÜNTÜSÜ (İSTEĞE BAĞLI)',
+    'SCREENSHOT (OPTIONAL)',
+    'ZRZUT EKRANU (OPCJONALNIE)',
+  );
+  static String get reportAttachScreenshot =>
+      _p('Ekran Görüntüsü Ekle', 'Attach Screenshot', 'Dodaj zrzut ekranu');
+  static String get reportRemoveScreenshot => _p('Kaldır', 'Remove', 'Usuń');
+  static String get reportScreenshotTooLarge => _p(
+    'Görsel çok büyük (maksimum 5 MB).',
+    'Image is too large (max 5 MB).',
+    'Obraz jest za duży (maks. 5 MB).',
+  );
+  static String get reportScreenshotFailed => _p(
+    'Görsel eklenemedi.',
+    'Could not attach image.',
+    'Nie udało się dodać obrazu.',
+  );
+  static String get reportOptionsEyebrow => _p(
+    'TANI VE HATA BİLGİLERİ',
+    'DIAGNOSTICS & LOGS',
+    'DIAGNOSTYKA I DZIENNIKI',
+  );
+  static String get reportIncludeDiagnostics => _p(
+    'Cihaz ve uygulama tanı bilgilerini ekle',
+    'Include device & app diagnostics',
+    'Dołącz dane diagnostyczne urządzenia i aplikacji',
+  );
+  static String get reportIncludeDiagnosticsSub => _p(
+    'Sürüm, Android modeli ve baloncuk ayarları (kazanç veya konum içermez)',
+    'App version, Android model and overlay settings (no earnings or location)',
+    'Wersja aplikacji, model Androida i ustawienia dymka (bez zarobków i lokalizacji)',
+  );
+  static String get reportIncludeCrashLogs => _p(
+    'Son hata kayıtlarını ekle (Maskelenmiş)',
+    'Include recent error logs (Sanitized)',
+    'Dołącz ostatnie dzienniki błędów (Zanonimizowane)',
+  );
+  static String get reportIncludeCrashLogsSub => _p(
+    'Varsayılan olarak kapalıdır. Yalnızca son hatalar kişisel veriler maskelenerek eklenir.',
+    'Off by default. Only recent errors are included with private data masked.',
+    'Domyślnie wyłączone. Dołączane są tylko ostatnie błędy po zamaskowaniu danych.',
+  );
+  static String get reportPreviewEyebrow => _p(
+    'GÖNDERİLECEK RAPOR ÖNİZLEMESİ',
+    'REPORT PREVIEW BEFORE SENDING',
+    'PODGLĄD RAPORTU PRZED WYSŁANIEM',
+  );
+  static String get reportDeliveryNotice => _p(
+    'Rapor, güvenli sunucu üzerinden geliştiriciye Telegram ile gönderilir. Telegram hesabı veya uygulaması gerekmez.',
+    'The report is sent to the developer through a secure server and Telegram. No Telegram account or app is required.',
+    'Raport jest wysyłany do dewelopera przez bezpieczny serwer i Telegram. Konto ani aplikacja Telegram nie są potrzebne.',
+  );
+  static String get reportPrivacyNotice => _p(
+    'Gizlilik: Kazançlarınız, yakıt fişleriniz, konumunuz, telefon numaranız ve gizli anahtarlarınız asla rapora dahil edilmez.',
+    'Privacy: Your earnings, fuel receipts, location, phone number and secret keys are never included.',
+    'Prywatność: Twoje zarobki, paragony paliwowe, lokalizacja, numer telefonu ani klucze nigdy nie są dołączane.',
+  );
+  static String get reportSendAction =>
+      _p('Raporu Gönder', 'Send Report', 'Wyślij zgłoszenie');
+  static String get reportSending =>
+      _p('Gönderiliyor…', 'Sending…', 'Wysyłanie…');
+  static String get reportSendSuccess => _p(
+    'Rapor geliştiriciye gönderildi.',
+    'Report sent to the developer.',
+    'Raport został wysłany do dewelopera.',
+  );
+  static String get reportSendFailed => _p(
+    'Rapor gönderilemedi. Bilgileriniz korunuyor; tekrar deneyin.',
+    'Could not send the report. Your entries are preserved; please try again.',
+    'Nie udało się wysłać raportu. Dane zostały zachowane; spróbuj ponownie.',
+  );
+  static String get reportSendInvalid => _p(
+    'Rapor doğrulanamadı. Alanları ve ekran görüntüsünü kontrol edin.',
+    'The report could not be validated. Check the fields and screenshot.',
+    'Nie udało się zweryfikować raportu. Sprawdź pola i zrzut ekranu.',
+  );
+  static String get reportSendRateLimited => _p(
+    'Çok fazla rapor gönderildi. Lütfen daha sonra tekrar deneyin.',
+    'Too many reports were sent. Please try again later.',
+    'Wysłano zbyt wiele raportów. Spróbuj ponownie później.',
+  );
+  static String get reportSendDuplicate => _p(
+    'Bu rapor kısa süre önce gönderildi.',
+    'This report was sent recently.',
+    'Ten raport został niedawno wysłany.',
+  );
+  static String get reportSendUnavailable => _p(
+    'Rapor servisi bu sürümde ayarlı değil.',
+    'The report service is not configured in this build.',
+    'Usługa zgłoszeń nie jest skonfigurowana w tej wersji.',
+  );
 
   static List<String> get months {
     switch (_lang) {

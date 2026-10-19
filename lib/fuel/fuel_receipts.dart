@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../earnings_models.dart';
+import '../services/backup_service.dart';
 
 /// The current week's fuel receipts inside the earnings history, the same
 /// rows the Earnings screen edits.
@@ -8,6 +9,7 @@ abstract final class FuelReceiptStore {
   static Future<List<FuelReceipt>> currentWeek({DateTime? now}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
+    await BackupService.recoverPendingRestoreIfNeeded(prefs: prefs);
     final monday = weekStartForOffset(0, now: now);
     for (final entry in _decode(prefs)) {
       if (isSameDate(entry.weekStart, monday)) {
@@ -22,6 +24,7 @@ abstract final class FuelReceiptStore {
   static Future<int> add(double amount, {DateTime? now}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
+    await BackupService.recoverPendingRestoreIfNeeded(prefs: prefs);
     final clock = now ?? DateTime.now();
     final entries = _decode(prefs)
       ..sort((a, b) => b.weekStart.compareTo(a.weekStart));

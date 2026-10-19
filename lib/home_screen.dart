@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:rate_helper/fonts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -26,6 +29,7 @@ import 'l10n.dart';
 import 'log.dart';
 import 'overlay_sync.dart';
 import 'settings_screen.dart';
+import 'services/backup_service.dart';
 import 'services/event_service.dart';
 import 'services/github_access.dart';
 import 'services/update_service.dart';
@@ -33,6 +37,7 @@ import 'overlay_widget.dart';
 import 'radar_screen.dart';
 import 'shade_controls.dart';
 import 'shift_counter_store.dart';
+import 'startup_language.dart';
 import 'tap_history_store.dart';
 import 'update_dialog.dart';
 
@@ -211,6 +216,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     onDriverModeChanged: () {
       if (mounted) setState(() {});
     },
+    onBackupData: _backupData,
+    onRestoreData: _restoreData,
   );
   final _accepted = ValueNotifier<int>(0);
   final _rejected = ValueNotifier<int>(0);
@@ -272,6 +279,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _pendingSteeringWheelEnable = false;
 
   bool _isLoadingOrResetting = false;
+  bool _backupRestoreInFlight = false;
 
   /// False until the first [_loadAndCheckReset] settles. Until then the hero
   /// numbers are skeletons: `build` runs before the shift is read from disk, so
@@ -330,7 +338,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _bindOverlayListener();
     _kSysChannel.setMethodCallHandler((call) async {
       if (call.method == 'onMediaKeyIncrement') {
-        _drainPendingTaps();
+        if (!_backupRestoreInFlight) {
+          _drainPendingTaps();
+        }
       }
     });
     HomeScreen._interactionSink = _onUserInteraction;
@@ -348,20 +358,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     try {
       final prefs = await prefsFuture;
-      final AppLang lang;
-      if (prefs.containsKey(_keyLang)) {
-        final langStr = prefs.getString(_keyLang)!;
-        lang = AppLang.values.firstWhere(
-          (l) => l.name == langStr,
-          orElse: () => AppLang.en,
-        );
-      } else {
-        lang = S.langFromLocale(
-          WidgetsBinding.instance.platformDispatcher.locale,
-        );
-        await prefs.setString(_keyLang, lang.name);
-      }
-      S.setLang(lang);
+      await BackupService.recoverPendingRestoreIfNeeded(prefs: prefs);
+      final lang = await loadStartupLanguage(
+        prefs: prefs,
+        deviceLocale: WidgetsBinding.instance.platformDispatcher.locale,
+      );
       if (mounted) setState(() => _currentLang = lang);
       _publishSettings();
     } catch (e, s) {
@@ -581,6 +582,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _onOverlayMessage(Object? event) {
+    if (_backupRestoreInFlight) return;
     OverlaySync.deliver(
       event,
       onCounters: (counters) {
@@ -704,30 +706,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  tz.TZDateTime _lastMonday4amWarsaw(tz.TZDateTime now) {
-    final daysFromMonday = (now.weekday - DateTime.monday) % 7;
-    final monday = tz.TZDateTime(
-      _warsaw,
-      now.year,
-      now.month,
-      now.day - daysFromMonday,
-      4,
-      0,
-      0,
-    );
-    if (now.isBefore(monday)) {
-      return tz.TZDateTime(
-        _warsaw,
-        monday.year,
-        monday.month,
-        monday.day - 7,
-        4,
-        0,
-        0,
-      );
-    }
-    return monday;
-  }
+  tz.TZDateTime _lastMonday4amWarsaw(tz.TZDateTime now) =>
+      BackupService.lastMonday4amWarsaw(now);
 
   tz.TZDateTime _nowWarsaw() => tz.TZDateTime.now(_warsaw);
 
@@ -737,6 +717,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     try {
       final prefs = await _getPrefs();
+      if (!mounted) return;
+
+      await BackupService.recoverPendingRestoreIfNeeded(prefs: prefs);
       if (!mounted) return;
 
       unawaited(TapHistoryStore.instance.migrateFromPrefs(prefs));
@@ -1061,7 +1044,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _undo() {
-    if (!_canUndo) return;
+    if (_backupRestoreInFlight || !_canUndo) return;
     acceptedRequests = _prevAccepted!;
     rejectedRequests = _prevRejected!;
     completedTrips = _prevCompleted!;
@@ -1071,6 +1054,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _change(String key, int delta) {
+    if (_backupRestoreInFlight) return;
     _snapshotUndo();
     switch (key) {
       case _keyAccepted:
@@ -1089,6 +1073,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _setCounter(String key, int value) {
+    if (_backupRestoreInFlight) return;
     _snapshotUndo();
     final clamped = value.clamp(0, 99999);
     switch (key) {
@@ -1252,7 +1237,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Showing/closing the native overlay round-trips through the platform
     // channel and the permission screen; without this guard the button just
     // sits there looking dead and re-fires on every impatient tap.
-    if (_overlayToggleBusy) return;
+    if (_overlayToggleBusy || _backupRestoreInFlight) return;
     setState(() => _overlayToggleBusy = true);
     try {
       final active = await FlutterOverlayWindow.isActive();
@@ -1397,6 +1382,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _showManualResetDialog() async {
+    if (_backupRestoreInFlight) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1446,6 +1432,354 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (confirmed == true) {
       final prefs = await _getPrefs();
       await _performReset(prefs);
+    }
+  }
+
+  void _showBackupSnackBar(ScaffoldMessengerState? messenger, String message) {
+    final target =
+        messenger ?? (mounted ? ScaffoldMessenger.maybeOf(context) : null);
+    if (target == null) return;
+    target.showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: AppColors.card),
+    );
+  }
+
+  /// Safely settles the overlay, debounced Home counter writes, and native
+  /// pending steering-wheel taps before any backup or restore operation.
+  ///
+  /// Returns `false` if any component cannot be safely quiesced or persisted,
+  /// so the caller aborts without risking data loss.
+  Future<bool> _quiesceForBackupOrRestore() async {
+    try {
+      // 1. Flush any debounced or unpersisted Home counter delta to disk with
+      //    read-back verification BEFORE reading back from disk or closing the
+      //    overlay.
+      final hadDebounce = _saveDebounce?.isActive ?? false;
+      _saveDebounce?.cancel();
+      final acceptedDelta = acceptedRequests - _baselineAccepted;
+      final rejectedDelta = rejectedRequests - _baselineRejected;
+      final completedDelta = completedTrips - _baselineCompleted;
+      final canceledDelta = canceledTrips - _baselineCanceled;
+      if (hadDebounce ||
+          acceptedDelta != 0 ||
+          rejectedDelta != 0 ||
+          completedDelta != 0 ||
+          canceledDelta != 0) {
+        final saved = await ShiftCounterStore.instance.applyDeltaVerified(
+          acceptedDelta: acceptedDelta,
+          rejectedDelta: rejectedDelta,
+          completedDelta: completedDelta,
+          canceledDelta: canceledDelta,
+        );
+        if (mounted) {
+          acceptedRequests = saved.accepted;
+          rejectedRequests = saved.rejected;
+          completedTrips = saved.completed;
+          canceledTrips = saved.canceled;
+          _syncBaseline();
+        }
+      }
+
+      // 2. If the overlay is active, close it (which triggers the native
+      //    flush-request handshake) and verify it is no longer active.
+      bool overlayWasActive = false;
+      try {
+        overlayWasActive = await FlutterOverlayWindow.isActive();
+      } on MissingPluginException {
+        overlayWasActive = false;
+      }
+      if (overlayWasActive) {
+        bool? closed;
+        bool stillActive = false;
+        try {
+          closed = await FlutterOverlayWindow.closeOverlay();
+          stillActive = await FlutterOverlayWindow.isActive();
+        } on MissingPluginException {
+          closed = true;
+          stillActive = false;
+        }
+        if (closed == false || stillActive) {
+          return false;
+        }
+        if (mounted) {
+          setState(() => _overlayActive = false);
+        } else {
+          _overlayActive = false;
+        }
+      }
+
+      // Reload stored counters so any final flush from the overlay is in memory.
+      await _applyStoredCounters();
+
+      // 3. Reconcile native pending steering-wheel taps using a two-phase
+      //    peek -> verified disk write -> synchronous commit ack.
+      Map<dynamic, dynamic>? peeked;
+      try {
+        peeked = await _kSysChannel.invokeMethod<Map<dynamic, dynamic>>(
+          'peekPendingTaps',
+        );
+      } on MissingPluginException {
+        peeked = null;
+      }
+      if (peeked != null) {
+        final int pendingAcc = (peeked['accepted'] as int? ?? 0).clamp(
+          0,
+          99999,
+        );
+        final int pendingRej = (peeked['rejected'] as int? ?? 0).clamp(
+          0,
+          99999,
+        );
+        if (pendingAcc > 0 || pendingRej > 0) {
+          final int pendingComp = (_autoCompleteTrips && pendingAcc > 0)
+              ? pendingAcc
+              : 0;
+          final saved = await ShiftCounterStore.instance.applyDeltaVerified(
+            acceptedDelta: pendingAcc,
+            rejectedDelta: pendingRej,
+            completedDelta: pendingComp,
+          );
+          bool? acked;
+          try {
+            acked = await _kSysChannel.invokeMethod<bool>('ackPendingTaps', {
+              'accepted': pendingAcc,
+              'rejected': pendingRej,
+            });
+          } catch (_) {
+            acked = false;
+          }
+          if (acked != true) {
+            // Roll back the disk delta so the unacknowledged native taps are
+            // not double-counted later, then abort.
+            try {
+              final reverted = await ShiftCounterStore.instance
+                  .applyDeltaVerified(
+                    acceptedDelta: -pendingAcc,
+                    rejectedDelta: -pendingRej,
+                    completedDelta: -pendingComp,
+                  );
+              if (mounted) {
+                acceptedRequests = reverted.accepted;
+                rejectedRequests = reverted.rejected;
+                completedTrips = reverted.completed;
+                canceledTrips = reverted.canceled;
+                _syncBaseline();
+              }
+            } catch (_) {}
+            return false;
+          }
+          if (mounted) {
+            acceptedRequests = saved.accepted;
+            rejectedRequests = saved.rejected;
+            completedTrips = saved.completed;
+            canceledTrips = saved.canceled;
+            _syncBaseline();
+          }
+        }
+      }
+
+      return true;
+    } catch (e, s) {
+      loge(
+        'quiesce for backup/restore failed',
+        name: 'home',
+        error: e,
+        stack: s,
+      );
+      return false;
+    }
+  }
+
+  static String _formatBackupFileName(DateTime now) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return 'ratehelper_backup_${now.year}${two(now.month)}${two(now.day)}_'
+        '${two(now.hour)}${two(now.minute)}.json';
+  }
+
+  Future<void> _backupData(BuildContext settingsContext) async {
+    if (_backupRestoreInFlight) return;
+    _backupRestoreInFlight = true;
+    final messenger = settingsContext.mounted
+        ? ScaffoldMessenger.maybeOf(settingsContext)
+        : null;
+    try {
+      final ready = await _quiesceForBackupOrRestore();
+      if (!ready) {
+        _showBackupSnackBar(messenger, S.backupOverlayBusyError);
+        return;
+      }
+
+      // Run overdue Monday 04:00 reset check before snapshotting so an ended
+      // week's counters are archived cleanly before export.
+      await _loadAndCheckReset();
+      final prefs = await _getPrefs();
+      final now = _nowWarsaw();
+      final jsonContent = await BackupService.createBackupJson(
+        prefs: prefs,
+        appVersion: _appVersion ?? '5.0.5',
+        now: now,
+      );
+      final fileName = _formatBackupFileName(now);
+
+      String? saveStatus;
+      try {
+        saveStatus = await _kSysChannel.invokeMethod<String>('saveBackupFile', {
+          'fileName': fileName,
+          'content': jsonContent,
+        });
+      } on MissingPluginException {
+        saveStatus = null;
+      }
+
+      if (saveStatus == 'saved') {
+        _showBackupSnackBar(messenger, S.backupSuccess);
+        return;
+      }
+      if (saveStatus == 'cancelled') {
+        return;
+      }
+
+      // Fallback when DocumentsUI is unavailable on the device: share the
+      // portable JSON file via the Android system share sheet.
+      try {
+        final tempDir = await getTemporaryDirectory();
+        final file = File('${tempDir.path}${Platform.pathSeparator}$fileName');
+        await file.writeAsString(jsonContent, flush: true);
+        final res = await SharePlus.instance.share(
+          ShareParams(
+            files: [XFile(file.path, mimeType: 'application/json')],
+            subject: fileName,
+          ),
+        );
+        if (res.status == ShareResultStatus.success) {
+          _showBackupSnackBar(messenger, S.backupSuccess);
+        }
+      } catch (e, s) {
+        loge('backup share fallback failed', name: 'home', error: e, stack: s);
+        _showBackupSnackBar(messenger, S.backupFailed);
+      }
+    } catch (e, s) {
+      loge('backup failed', name: 'home', error: e, stack: s);
+      _showBackupSnackBar(messenger, S.backupFailed);
+    } finally {
+      _backupRestoreInFlight = false;
+    }
+  }
+
+  Future<void> _restoreData(BuildContext settingsContext) async {
+    if (_backupRestoreInFlight) return;
+    _backupRestoreInFlight = true;
+    final messenger = settingsContext.mounted
+        ? ScaffoldMessenger.maybeOf(settingsContext)
+        : null;
+    try {
+      final ready = await _quiesceForBackupOrRestore();
+      if (!ready) {
+        _showBackupSnackBar(messenger, S.backupOverlayBusyError);
+        return;
+      }
+
+      Map<dynamic, dynamic>? pickReply;
+      try {
+        pickReply = await _kSysChannel.invokeMethod<Map<dynamic, dynamic>>(
+          'pickBackupFile',
+        );
+      } catch (e, s) {
+        loge('pickBackupFile failed', name: 'home', error: e, stack: s);
+        _showBackupSnackBar(messenger, S.restoreFailed);
+        return;
+      }
+
+      if (pickReply == null) return;
+      final status = pickReply['status'] as String?;
+      if (status == 'cancelled') return;
+      if (status == 'too_large') {
+        _showBackupSnackBar(messenger, S.backupFileTooLarge);
+        return;
+      }
+      final rawContent = pickReply['content'];
+      if (status != 'ok' || rawContent is! String) {
+        _showBackupSnackBar(messenger, S.backupInvalidFile);
+        return;
+      }
+
+      final ValidatedBackup validated;
+      try {
+        validated = BackupService.validateBackupJson(
+          rawContent,
+          now: _nowWarsaw(),
+        );
+      } on BackupValidationException catch (e) {
+        final msg = switch (e.code) {
+          BackupErrorCode.unsupportedVersion => S.backupUnsupportedVersion,
+          BackupErrorCode.tooLarge => S.backupFileTooLarge,
+          _ => S.backupInvalidFile,
+        };
+        _showBackupSnackBar(messenger, msg);
+        return;
+      } catch (_) {
+        _showBackupSnackBar(messenger, S.backupInvalidFile);
+        return;
+      }
+
+      final bool confirmed;
+      if (settingsContext.mounted) {
+        confirmed = await showRestoreBackupPreviewDialog(
+          settingsContext,
+          validated.preview,
+        );
+      } else if (mounted) {
+        confirmed = await showRestoreBackupPreviewDialog(
+          context,
+          validated.preview,
+        );
+      } else {
+        return;
+      }
+      if (!confirmed) return;
+
+      // Re-verify quiescence right before committing the restore in case an
+      // external event occurred while the confirmation dialog was open.
+      final stillReady = await _quiesceForBackupOrRestore();
+      if (!stillReady) {
+        _showBackupSnackBar(messenger, S.backupOverlayBusyError);
+        return;
+      }
+
+      final prefs = await _getPrefs();
+      await BackupService.restoreBackup(
+        validated,
+        prefs: prefs,
+        now: _nowWarsaw(),
+      );
+
+      _clearUndo();
+      final savedLangStr = prefs.getString(_keyLang);
+      if (savedLangStr != null) {
+        final lang = AppLang.values.firstWhere(
+          (l) => l.name == savedLangStr,
+          orElse: () => _currentLang,
+        );
+        S.setLang(lang);
+        if (mounted) {
+          setState(() => _currentLang = lang);
+        } else {
+          _currentLang = lang;
+        }
+      }
+      activeDriverMode = DriverMode.parse(prefs.getString(DriverMode.key));
+      GithubAccess.publishLastCheck(GithubAccess.readLastCheck(prefs));
+
+      await _loadAndCheckReset();
+      unawaited(_syncSteeringWheelState());
+      unawaited(_syncNotificationControlsState());
+      _showBackupSnackBar(messenger, S.restoreSuccess);
+    } catch (e, s) {
+      loge('restore failed', name: 'home', error: e, stack: s);
+      await _loadAndCheckReset();
+      _showBackupSnackBar(messenger, S.restoreFailed);
+    } finally {
+      _backupRestoreInFlight = false;
     }
   }
 

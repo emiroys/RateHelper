@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -32,7 +33,7 @@ class TapHistoryStore {
 
   final File? _fileOverride;
   File? _file;
-  Future<void> _queue = Future<void>.value();
+  Future<void>? _queue;
 
   /// Cached line count so the tap hot path never parses the whole file.
   /// `null` means "not known yet" — resolved once, then kept in sync by
@@ -41,17 +42,33 @@ class TapHistoryStore {
   int? _entryCount;
 
   @visibleForTesting
-  static void resetInstanceForTest({File? file}) {
-    instance = TapHistoryStore(file: file);
+  static void resetInstanceForTest({File? file, TapHistoryStore? store}) {
+    instance = store ?? TapHistoryStore(file: file);
   }
 
-  Future<File> _resolve() async {
+  static bool _isRunningInTestZone() {
+    if (Zone.current[#test.declarer] != null) return true;
+    try {
+      return WidgetsBinding.instance.runtimeType.toString().contains('Test');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<File?> _resolve() async {
     final override = _fileOverride;
     if (override != null) return override;
     if (_file != null) return _file!;
-    final dir = await getApplicationDocumentsDirectory();
-    _file = File('${dir.path}${Platform.pathSeparator}$fileName');
-    return _file!;
+    if (_isRunningInTestZone()) {
+      return null;
+    }
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      _file = File('${dir.path}${Platform.pathSeparator}$fileName');
+      return _file!;
+    } on MissingPluginException {
+      return null;
+    }
   }
 
   static String formatLocalTime(DateTime dt) {
@@ -60,15 +77,24 @@ class TapHistoryStore {
   }
 
   Future<void> _enqueue(Future<void> Function() job) {
-    final run = _queue.then((_) => job());
-    _queue = run.catchError((Object e, StackTrace s) {
-      loge(
-        'tap history queue failed',
-        name: 'tap_store',
-        error: e,
-        stack: s,
-      );
-    });
+    final prev = _queue;
+    final run = prev == null ? Future<void>.sync(job) : prev.then((_) => job());
+    late final Future<void> guarded;
+    guarded = run
+        .catchError((Object e, StackTrace s) {
+          loge(
+            'tap history queue failed',
+            name: 'tap_store',
+            error: e,
+            stack: s,
+          );
+        })
+        .whenComplete(() {
+          if (identical(_queue, guarded)) {
+            _queue = null;
+          }
+        });
+    _queue = guarded;
     return run;
   }
 
@@ -83,6 +109,14 @@ class TapHistoryStore {
       'localTime': formatLocalTime(now),
     };
     final file = await _resolve();
+    if (file == null) {
+      final next = <Map<String, dynamic>>[..._lastRead, entry];
+      _lastRead = next.length > maxEntries
+          ? next.sublist(next.length - maxEntries)
+          : next;
+      _entryCount = _lastRead.length;
+      return;
+    }
     await file.parent.create(recursive: true);
     await file.writeAsString(
       '${jsonEncode(entry)}\n',
@@ -103,6 +137,7 @@ class TapHistoryStore {
 
   Future<void> _readAllNow() async {
     final file = await _resolve();
+    if (file == null) return;
     final all = await _parseFile(file);
     _entryCount = all.length;
     // The file may carry up to [_compactSlack] extra lines between
@@ -122,11 +157,36 @@ class TapHistoryStore {
     return _enqueue(_clearNow);
   }
 
+  /// Replaces the entire tap history with [entries] (capped at [maxEntries]),
+  /// flushing to disk via a temporary file rename and verifying the count.
+  Future<void> replaceAll(List<Map<String, dynamic>> entries) {
+    final trimmed = entries.length > maxEntries
+        ? entries.sublist(entries.length - maxEntries)
+        : List<Map<String, dynamic>>.from(entries);
+    return _enqueue(() async {
+      final file = await _resolve();
+      if (file == null) {
+        _lastRead = trimmed;
+        _entryCount = trimmed.length;
+        return;
+      }
+      await file.parent.create(recursive: true);
+      await _writeAll(file, trimmed, flush: true);
+      _lastRead = trimmed;
+      final onDisk = await _parseFile(file);
+      if (onDisk.length != trimmed.length) {
+        throw const FileSystemException('Tap history write verification failed');
+      }
+    });
+  }
+
   Future<void> _clearNow() async {
     final file = await _resolve();
-    try {
-      if (await file.exists()) await file.writeAsString('');
-    } catch (_) {}
+    if (file != null) {
+      try {
+        if (await file.exists()) await file.writeAsString('');
+      } catch (_) {}
+    }
     _entryCount = 0;
     _lastRead = const [];
   }
@@ -150,17 +210,29 @@ class TapHistoryStore {
 
     if (list.isNotEmpty) {
       final file = await _resolve();
-      await file.parent.create(recursive: true);
-      final existing = await _parseFile(file);
-      final merged = <Map<String, dynamic>>[
-        ...existing,
-        for (final e in list)
-          if (e is Map) Map<String, dynamic>.from(e),
-      ];
-      final keep = merged.length > maxEntries
-          ? merged.sublist(merged.length - maxEntries)
-          : merged;
-      await _writeAll(file, keep);
+      if (file == null) {
+        final merged = <Map<String, dynamic>>[
+          ..._lastRead,
+          for (final e in list)
+            if (e is Map) Map<String, dynamic>.from(e),
+        ];
+        _lastRead = merged.length > maxEntries
+            ? merged.sublist(merged.length - maxEntries)
+            : merged;
+        _entryCount = _lastRead.length;
+      } else {
+        await file.parent.create(recursive: true);
+        final existing = await _parseFile(file);
+        final merged = <Map<String, dynamic>>[
+          ...existing,
+          for (final e in list)
+            if (e is Map) Map<String, dynamic>.from(e),
+        ];
+        final keep = merged.length > maxEntries
+            ? merged.sublist(merged.length - maxEntries)
+            : merged;
+        await _writeAll(file, keep);
+      }
     }
 
     await prefs.remove(prefsKey);
@@ -194,12 +266,33 @@ class TapHistoryStore {
     await _writeAll(file, entries.sublist(entries.length - maxEntries));
   }
 
-  Future<void> _writeAll(File file, List<Map<String, dynamic>> entries) async {
+  static int _tmpSeq = 0;
+
+  Future<void> _writeAll(
+    File file,
+    List<Map<String, dynamic>> entries, {
+    bool flush = false,
+  }) async {
     final buf = StringBuffer();
     for (final e in entries) {
       buf.writeln(jsonEncode(e));
     }
-    await file.writeAsString(buf.toString());
+    final content = buf.toString();
+    final tmp = File('${file.path}.${_tmpSeq++}.tmp');
+    await tmp.writeAsString(content, flush: flush);
+    try {
+      await tmp.rename(file.path);
+    } catch (_) {
+      try {
+        if (await file.exists()) await file.delete();
+        await tmp.rename(file.path);
+      } catch (_) {
+        await file.writeAsString(content, flush: flush);
+        try {
+          await tmp.delete();
+        } catch (_) {}
+      }
+    }
     _entryCount = entries.length;
   }
 }

@@ -10,6 +10,7 @@ import 'app_colors.dart';
 import 'app_spacing.dart';
 import 'app_text_styles.dart';
 import 'app_widgets.dart';
+import 'bug_report_sheet.dart';
 import 'contact_developer.dart';
 import 'crash_logger.dart';
 import 'earnings_models.dart';
@@ -19,6 +20,7 @@ import 'fuel/fuel_screen.dart';
 import 'l10n.dart';
 import 'onboarding_screen.dart';
 import 'overlay_widget.dart';
+import 'services/backup_service.dart';
 import 'update_dialog.dart';
 
 /// Live mirror of the settings Home still owns.
@@ -115,6 +117,8 @@ class SettingsBindings {
     required this.setHidePill,
     required this.setLanguage,
     required this.onDriverModeChanged,
+    this.onBackupData,
+    this.onRestoreData,
   });
 
   final ValueListenable<SettingsSnapshot> snapshot;
@@ -130,6 +134,8 @@ class SettingsBindings {
   final Future<void> Function(bool enabled) setHidePill;
   final Future<void> Function(AppLang lang) setLanguage;
   final VoidCallback onDriverModeChanged;
+  final Future<void> Function(BuildContext context)? onBackupData;
+  final Future<void> Function(BuildContext context)? onRestoreData;
 }
 
 class SettingsScreen extends StatefulWidget {
@@ -297,12 +303,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     UpdateCheckTile(versionLabel: bindings.versionLabel()),
                     _ActionRow(
+                      key: const ValueKey('settings-backup-data'),
+                      icon: Icons.backup_outlined,
+                      title: S.backupMyData,
+                      value: S.backupMyDataSubtitle,
+                      onTap: () {
+                        final cb = bindings.onBackupData;
+                        if (cb != null) unawaited(cb(context));
+                      },
+                    ),
+                    _ActionRow(
+                      key: const ValueKey('settings-restore-data'),
+                      icon: Icons.settings_backup_restore_rounded,
+                      title: S.restoreFromBackup,
+                      value: S.restoreFromBackupSubtitle,
+                      onTap: () {
+                        final cb = bindings.onRestoreData;
+                        if (cb != null) unawaited(cb(context));
+                      },
+                    ),
+                    _ActionRow(
                       icon: Icons.menu_book_outlined,
                       title: S.setupGuide,
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute<void>(
-                            builder: (_) => const SetupGuideScreen(),
+                            builder: (_) => SetupGuideScreen(
+                              onLanguageChanged: bindings.setLanguage,
+                            ),
                           ),
                         );
                       },
@@ -318,6 +346,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: S.contactDeveloper,
                       value: ContactDeveloper.subtitle,
                       onTap: () => unawaited(_contactDeveloper(context)),
+                    ),
+                    _ActionRow(
+                      key: const ValueKey('settings-report-problem'),
+                      icon: Icons.rate_review_outlined,
+                      title: S.reportProblem,
+                      value: S.reportProblemSubtitle,
+                      onTap: () => unawaited(
+                        showBugReportSheet(
+                          context,
+                          snapshot: snapshot,
+                          versionLabel: bindings.versionLabel(),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -982,6 +1023,245 @@ class _LangOption extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+String _formatBackupDateTime(DateTime dt) {
+  final local = dt.toLocal();
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${two(local.day)}.${two(local.month)}.${local.year} '
+      '${two(local.hour)}:${two(local.minute)}';
+}
+
+String _formatBackupWeekRange(DateTime weekStart) {
+  final endInclusive = DateTime(
+    weekStart.year,
+    weekStart.month,
+    weekStart.day + 6,
+  );
+  final months = S.months;
+  if (weekStart.month == endInclusive.month &&
+      weekStart.year == endInclusive.year) {
+    return '${weekStart.day}–${endInclusive.day} '
+        '${months[endInclusive.month]} ${endInclusive.year}';
+  }
+  return '${weekStart.day} ${months[weekStart.month]} – '
+      '${endInclusive.day} ${months[endInclusive.month]} ${endInclusive.year}';
+}
+
+/// Shows a preview of a validated backup and asks for explicit confirmation
+/// before overwriting local data.
+Future<bool> showRestoreBackupPreviewDialog(
+  BuildContext context,
+  BackupPreview preview,
+) async {
+  final c = preview.shiftCounters;
+  final countersSummary =
+      '${c.accepted} / ${c.rejected} / ${c.completed} / ${c.canceled}';
+  final dateSummary =
+      '${_formatBackupDateTime(preview.createdAt)} (v${preview.appVersion})';
+  final weekRange = _formatBackupWeekRange(preview.shiftWeekStart);
+  final settingsSummary =
+      '${_driverModeValue(preview.driverMode)} · ${_langName(preview.language)}';
+
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.dialog,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(
+        S.restorePreviewTitle,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontFamily: AppFonts.dmSans,
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+          color: Colors.white,
+        ),
+      ),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                S.restorePreviewSubtitle,
+                style: const TextStyle(
+                  fontFamily: AppFonts.dmSans,
+                  fontSize: 13,
+                  color: AppColors.mutedText,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.inset,
+                  borderRadius: AppRadius.smBorder,
+                  border: Border.all(color: AppColors.hairline),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _BackupPreviewRow(
+                      label: S.restoreBackupDateLabel,
+                      value: dateSummary,
+                    ),
+                    const SizedBox(height: 8),
+                    _BackupPreviewRow(
+                      label: S.restoreShiftCountersLabel,
+                      value: countersSummary,
+                    ),
+                    const SizedBox(height: 8),
+                    _BackupPreviewRow(
+                      label: S.restoreWeeklyArchiveLabel,
+                      value: S.restoreWeekCount(preview.weeklyArchiveCount),
+                    ),
+                    const SizedBox(height: 8),
+                    _BackupPreviewRow(
+                      label: S.restoreEarningsLabel,
+                      value: S.restoreWeekCount(preview.earningsWeekCount),
+                    ),
+                    const SizedBox(height: 8),
+                    _BackupPreviewRow(
+                      label: S.restoreFuelReceiptsLabel,
+                      value: S.restoreReceiptCount(preview.fuelReceiptCount),
+                    ),
+                    const SizedBox(height: 8),
+                    _BackupPreviewRow(
+                      label: S.restoreLifetimeTripsLabel,
+                      value: '${preview.lifetimeTrips}',
+                    ),
+                    const SizedBox(height: 8),
+                    _BackupPreviewRow(
+                      label: S.restoreTapHistoryLabel,
+                      value: S.restoreItemCount(preview.tapHistoryCount),
+                    ),
+                    const SizedBox(height: 8),
+                    _BackupPreviewRow(
+                      label: S.restoreSettingsLabel,
+                      value: settingsSummary,
+                    ),
+                  ],
+                ),
+              ),
+              if (preview.isFromOlderWeek) ...[
+                const SizedBox(height: 12),
+                Container(
+                  key: const ValueKey('restore-older-week-banner'),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.amber.withValues(alpha: 0.12),
+                    borderRadius: AppRadius.smBorder,
+                    border: Border.all(
+                      color: AppColors.amber.withValues(alpha: 0.45),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.history_rounded,
+                        color: AppColors.amber,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          S.restoreOlderWeekNotice(weekRange),
+                          style: const TextStyle(
+                            fontFamily: AppFonts.dmSans,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: Text(
+            S.cancel,
+            style: const TextStyle(
+              fontFamily: AppFonts.dmSans,
+              color: AppColors.mutedText,
+            ),
+          ),
+        ),
+        TextButton(
+          key: const ValueKey('restore-confirm-button'),
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: Text(
+            S.restoreConfirmAction,
+            style: const TextStyle(
+              fontFamily: AppFonts.dmSans,
+              color: AppColors.amber,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+  return confirmed == true;
+}
+
+class _BackupPreviewRow extends StatelessWidget {
+  const _BackupPreviewRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 5,
+          child: Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: AppFonts.dmSans,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: AppColors.mutedText,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          flex: 5,
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: AppFonts.dmSans,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

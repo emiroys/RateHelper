@@ -1,15 +1,20 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rate_helper/l10n.dart';
 import 'package:rate_helper/main.dart';
+import 'package:rate_helper/services/backup_service.dart';
 import 'package:rate_helper/services/github_access.dart';
 import 'package:rate_helper/settings_screen.dart';
 import 'package:rate_helper/shade_controls.dart';
 import 'package:rate_helper/shift_counter_store.dart';
+import 'package:rate_helper/tap_history_store.dart';
 import 'package:rate_helper/update_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_10y.dart' as tz;
+import 'package:timezone/timezone.dart' as tz_zone;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +23,7 @@ void main() {
   setUpAll(tz.initializeTimeZones);
 
   const systemChannel = MethodChannel('com.ratehelper.app/system');
+  const overlayChannel = MethodChannel('x-slayer/overlay_channel');
   const packageInfoChannel = MethodChannel(
     'dev.fluttercommunity.plus/package_info',
   );
@@ -39,6 +45,11 @@ void main() {
       if (call.method == 'isAccessibilityServiceEnabled') return false;
       return null;
     });
+    messenger.setMockMethodCallHandler(overlayChannel, (call) async {
+      if (call.method == 'isOverlayActive') return false;
+      if (call.method == 'closeOverlay') return true;
+      return null;
+    });
     messenger.setMockMethodCallHandler(packageInfoChannel, (call) async {
       if (call.method != 'getAll') return null;
       return <String, dynamic>{
@@ -55,6 +66,7 @@ void main() {
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(systemChannel, null);
+    messenger.setMockMethodCallHandler(overlayChannel, null);
     messenger.setMockMethodCallHandler(packageInfoChannel, null);
     ShiftCounterStore.resetInstanceForTest();
     S.setLang(AppLang.tr);
@@ -103,6 +115,7 @@ void main() {
     );
     await tester.pump();
     expect(find.text(S.settingsPreferences), findsOneWidget);
+    expect(find.text(S.navLang), findsOneWidget);
 
     await tester.scrollUntilVisible(
       find.text(S.crashLogTitle),
@@ -112,7 +125,6 @@ void main() {
     await tester.pump();
 
     expect(find.text(S.settingsSystem), findsOneWidget);
-    expect(find.text(S.navLang), findsOneWidget);
     expect(find.text(S.setupGuide), findsOneWidget);
     expect(find.text(S.updateCheckAction), findsOneWidget);
     expect(find.text(S.updateLastCheckedLabel(null)), findsOneWidget);
@@ -513,6 +525,306 @@ void main() {
     expect(find.text('v5.0.4'), findsOneWidget);
     expect(find.text(S.updateLastCheckedLabel(when)), findsOneWidget);
     expect(find.text(S.updateCheckAction), findsOneWidget);
+  });
+
+  group('backup & restore UI and pending taps reconciliation', () {
+    const backupKey = ValueKey('settings-backup-data');
+    const restoreKey = ValueKey('settings-restore-data');
+
+    setUp(() {
+      TapHistoryStore.resetInstanceForTest();
+      BackupService.resetForTest();
+    });
+
+    tearDown(() {
+      TapHistoryStore.resetInstanceForTest();
+      BackupService.resetForTest();
+    });
+
+    Future<void> openSettingsToBackupSection(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 1800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await pumpHome(tester);
+      await tester.tap(find.byIcon(Icons.settings_outlined));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.scrollUntilVisible(
+        find.byKey(restoreKey),
+        250,
+        scrollable: find.descendant(
+          of: find.byType(SettingsScreen),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.ensureVisible(find.byKey(restoreKey));
+      await tester.pump();
+    }
+
+    testWidgets(
+      'backup reconciles native pending taps via peek -> verified write -> ack before exporting',
+      (tester) async {
+        final memStore = _MemoryShiftStore()
+          ..data = const ShiftCounters(accepted: 10, rejected: 2, completed: 9);
+        ShiftCounterStore.instance = memStore;
+
+        final nowWarsaw = tz_zone.TZDateTime.now(
+          tz_zone.getLocation('Europe/Warsaw'),
+        );
+        final monday4am = BackupService.lastMonday4amWarsaw(nowWarsaw);
+        SharedPreferences.setMockInitialValues({
+          'appLanguage': 'tr',
+          'driver_mode_asked': true,
+          'lastResetTimestamp': monday4am.millisecondsSinceEpoch,
+          GithubAccess.promptAnsweredKey: true,
+          GithubAccess.autoUpdateKey: false,
+          GithubAccess.autoEventsKey: false,
+        });
+
+        String? exportedJson;
+        Map<Object?, Object?>? ackedArgs;
+
+        final calls = <String>[];
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(systemChannel, (call) async {
+              calls.add(call.method);
+              switch (call.method) {
+                case 'isAccessibilityServiceEnabled':
+                  return false;
+                case 'peekPendingTaps':
+                  return <String, int>{'accepted': 3, 'rejected': 1};
+                case 'ackPendingTaps':
+                  ackedArgs = call.arguments as Map<Object?, Object?>?;
+                  return true;
+                case 'saveBackupFile':
+                  final args = call.arguments as Map<Object?, Object?>;
+                  exportedJson = args['content'] as String?;
+                  return 'saved';
+              }
+              return null;
+            });
+
+        await openSettingsToBackupSection(tester);
+        await tester.ensureVisible(find.byKey(backupKey));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(backupKey));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 200));
+
+        expect(ackedArgs, isNotNull, reason: 'calls: $calls');
+        expect(ackedArgs!['accepted'], 3);
+        expect(ackedArgs!['rejected'], 1);
+        expect(exportedJson, isNotNull);
+
+        final decoded = jsonDecode(exportedJson!) as Map<String, dynamic>;
+        final payload = decoded['payload'] as Map<String, dynamic>;
+        final counters = payload['shiftCounters'] as Map<String, dynamic>;
+        expect(counters['a'], 13);
+        expect(counters['r'], 3);
+        expect(find.text(S.backupSuccess), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'backup aborts and rolls back disk delta when ackPendingTaps fails',
+      (tester) async {
+        final memStore = _MemoryShiftStore()
+          ..data = const ShiftCounters(accepted: 10, rejected: 2, completed: 9);
+        ShiftCounterStore.instance = memStore;
+
+        final nowWarsaw = tz_zone.TZDateTime.now(
+          tz_zone.getLocation('Europe/Warsaw'),
+        );
+        final monday4am = BackupService.lastMonday4amWarsaw(nowWarsaw);
+        SharedPreferences.setMockInitialValues({
+          'appLanguage': 'tr',
+          'driver_mode_asked': true,
+          'lastResetTimestamp': monday4am.millisecondsSinceEpoch,
+          GithubAccess.promptAnsweredKey: true,
+          GithubAccess.autoUpdateKey: false,
+          GithubAccess.autoEventsKey: false,
+        });
+
+        bool saveCalled = false;
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(systemChannel, (call) async {
+              switch (call.method) {
+                case 'isAccessibilityServiceEnabled':
+                  return false;
+                case 'peekPendingTaps':
+                  return <String, int>{'accepted': 4, 'rejected': 2};
+                case 'ackPendingTaps':
+                  return false; // Simulate native commit() failure
+                case 'saveBackupFile':
+                  saveCalled = true;
+                  return 'saved';
+              }
+              return null;
+            });
+
+        await openSettingsToBackupSection(tester);
+        await tester.tap(find.byKey(backupKey));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 200));
+
+        expect(saveCalled, isFalse);
+        // Delta must be rolled back so native taps are not double-counted later.
+        expect(
+          memStore.data,
+          const ShiftCounters(accepted: 10, rejected: 2, completed: 9),
+        );
+        expect(find.text(S.backupOverlayBusyError), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'restore previews older-week banner, respects cancel, and applies on confirm',
+      (tester) async {
+        final warsaw = tz_zone.getLocation('Europe/Warsaw');
+        final nowWarsaw = tz_zone.TZDateTime.now(warsaw);
+        final twoWeeksAgo = tz_zone.TZDateTime(
+          warsaw,
+          nowWarsaw.year,
+          nowWarsaw.month,
+          nowWarsaw.day - 14,
+          12,
+          0,
+        );
+
+        final memStore = _MemoryShiftStore()
+          ..data = const ShiftCounters(
+            accepted: 50,
+            rejected: 10,
+            completed: 48,
+            canceled: 2,
+          );
+        ShiftCounterStore.instance = memStore;
+
+        SharedPreferences.setMockInitialValues({
+          'appLanguage': 'en',
+          'driver_mode_asked': true,
+          'lastResetTimestamp': 0,
+          'lifetime_trips_total': 777,
+          'lifetime_trips_backfilled': true,
+          GithubAccess.promptAnsweredKey: true,
+          GithubAccess.autoUpdateKey: false,
+          GithubAccess.autoEventsKey: false,
+        });
+        final prefs = await SharedPreferences.getInstance();
+        final oldBackupJson = await BackupService.createBackupJson(
+          prefs: prefs,
+          appVersion: '5.0.4',
+          now: twoWeeksAgo,
+        );
+
+        // Now reset local state to current Turkish install with 5 accepted trips.
+        S.setLang(AppLang.tr);
+        await prefs.setString('appLanguage', 'tr');
+        await prefs.setInt(
+          'lastResetTimestamp',
+          BackupService.lastMonday4amWarsaw(nowWarsaw).millisecondsSinceEpoch,
+        );
+        await prefs.setInt('lifetime_trips_total', 100);
+        memStore.data = const ShiftCounters(accepted: 5, rejected: 1);
+
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(systemChannel, (call) async {
+              switch (call.method) {
+                case 'isAccessibilityServiceEnabled':
+                  return false;
+                case 'peekPendingTaps':
+                  return <String, int>{'accepted': 0, 'rejected': 0};
+                case 'pickBackupFile':
+                  return <String, dynamic>{
+                    'status': 'ok',
+                    'content': oldBackupJson,
+                  };
+              }
+              return null;
+            });
+
+        await openSettingsToBackupSection(tester);
+        await tester.tap(find.byKey(restoreKey));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 200));
+
+        // Preview dialog must be visible along with the older-week notice banner.
+        expect(find.text(S.restorePreviewTitle), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('restore-older-week-banner')),
+          findsOneWidget,
+        );
+        expect(find.text('777'), findsOneWidget);
+
+        // 1. Cancel first: nothing should be modified.
+        await tester.tap(find.text(S.cancel));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(prefs.getInt('lifetime_trips_total'), 100);
+        expect(memStore.data.accepted, 5);
+
+        // 2. Tap Restore again and confirm.
+        await tester.tap(find.byKey(restoreKey));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.tap(find.byKey(const ValueKey('restore-confirm-button')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // Lifetime trips and language from backup are restored, old shift
+        // counters are archived into weekly_archive, and current week is 0.
+        expect(prefs.getInt('lifetime_trips_total'), 777);
+        expect(prefs.getString('appLanguage'), 'en');
+        expect(memStore.data, const ShiftCounters());
+        final archive = prefs.getStringList('weekly_archive') ?? [];
+        expect(archive, isNotEmpty);
+      },
+    );
+
+    testWidgets(
+      'report a problem row coexists with backup/restore and opens bug report sheet',
+      (tester) async {
+        await openSettingsToBackupSection(tester);
+        expect(find.byKey(backupKey), findsOneWidget);
+        expect(find.byKey(restoreKey), findsOneWidget);
+
+        final settingsScrollable = find.descendant(
+          of: find.byType(SettingsScreen),
+          matching: find.byType(Scrollable),
+        );
+        const reportKey = ValueKey('settings-report-problem');
+        await tester.scrollUntilVisible(
+          find.byKey(reportKey),
+          300,
+          scrollable: settingsScrollable,
+        );
+        await tester.ensureVisible(find.byKey(reportKey));
+        await tester.pump();
+
+        expect(
+          find.byKey(const ValueKey('settings-contact-developer')),
+          findsOneWidget,
+        );
+        expect(find.byKey(reportKey), findsOneWidget);
+
+        await tester.tap(find.byKey(reportKey));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        expect(
+          find.byKey(const ValueKey('bug-report-description')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('bug-report-diagnostics-switch')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('bug-report-crash-logs-switch')),
+          findsOneWidget,
+        );
+      },
+    );
   });
 }
 

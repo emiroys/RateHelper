@@ -100,21 +100,30 @@ class ShiftCounterStore {
 
   final File? _fileOverride;
   File? _file;
-  Future<void> _queue = Future<void>.value();
+  Future<void>? _queue;
   ShiftCounters _last = const ShiftCounters();
 
   /// Chains [job] onto the store queue. A thrown job never poisons later
   /// writes: [_queue] recovers via [Future.catchError] at every link.
   Future<void> _enqueue(Future<void> Function() job) {
-    final run = _queue.then((_) => job());
-    _queue = run.catchError((Object e, StackTrace s) {
-      loge(
-        'shift counter queue failed',
-        name: 'shift_store',
-        error: e,
-        stack: s,
-      );
-    });
+    final prev = _queue;
+    final run = prev == null ? Future<void>.sync(job) : prev.then((_) => job());
+    late final Future<void> guarded;
+    guarded = run
+        .catchError((Object e, StackTrace s) {
+          loge(
+            'shift counter queue failed',
+            name: 'shift_store',
+            error: e,
+            stack: s,
+          );
+        })
+        .whenComplete(() {
+          if (identical(_queue, guarded)) {
+            _queue = null;
+          }
+        });
+    _queue = guarded;
     return run;
   }
 
@@ -144,6 +153,27 @@ class ShiftCounterStore {
     return _enqueue(() => _writeNow(counters));
   }
 
+  /// Writes [counters] with `flush: true` and verifies the on-disk content
+  /// matches before completing. Throws [FileSystemException] if verification
+  /// fails.
+  Future<void> writeVerified(ShiftCounters counters) async {
+    if (runtimeType != ShiftCounterStore) {
+      await write(counters);
+      final actual = await read();
+      if (actual != counters) {
+        throw const FileSystemException(
+          'Shift counter write verification failed',
+        );
+      }
+      return;
+    }
+    await _enqueue(() => _writeNow(counters, flush: true));
+    final actual = await _verifyReadBack();
+    if (actual != counters) {
+      throw const FileSystemException('Shift counter write verification failed');
+    }
+  }
+
   /// Adds signed deltas to whatever is currently on disk, as a single queued
   /// read-modify-write. Both isolates write counters only through here: an
   /// absolute write computed from an isolate's in-memory view would erase
@@ -166,6 +196,62 @@ class ShiftCounterStore {
     }).then((_) => _last);
   }
 
+  /// Same as [applyDelta], but flushes the write to disk and verifies by
+  /// reading back from disk before returning. Used when reconciling pending
+  /// taps before backup/restore so taps are never acknowledged unless durable.
+  Future<ShiftCounters> applyDeltaVerified({
+    int acceptedDelta = 0,
+    int rejectedDelta = 0,
+    int completedDelta = 0,
+    int canceledDelta = 0,
+    int max = 99999,
+  }) async {
+    if (runtimeType != ShiftCounterStore) {
+      final saved = await applyDelta(
+        acceptedDelta: acceptedDelta,
+        rejectedDelta: rejectedDelta,
+        completedDelta: completedDelta,
+        canceledDelta: canceledDelta,
+        max: max,
+      );
+      final actual = await read();
+      if (actual != saved) {
+        throw const FileSystemException(
+          'Shift counter delta verification failed',
+        );
+      }
+      return actual;
+    }
+    late ShiftCounters expected;
+    await _enqueue(() async {
+      final file = await _resolve();
+      final current = await _readFile(file) ?? const ShiftCounters();
+      expected = ShiftCounters(
+        accepted: (current.accepted + acceptedDelta).clamp(0, max),
+        rejected: (current.rejected + rejectedDelta).clamp(0, max),
+        completed: (current.completed + completedDelta).clamp(0, max),
+        canceled: (current.canceled + canceledDelta).clamp(0, max),
+      );
+      await _writeNow(expected, flush: true);
+    });
+    final actual = await _verifyReadBack();
+    if (actual != expected) {
+      throw const FileSystemException(
+        'Shift counter delta verification failed',
+      );
+    }
+    return actual;
+  }
+
+  Future<ShiftCounters> _verifyReadBack() async {
+    final file = await _resolve();
+    final onDisk = await _readFile(file);
+    if (onDisk == null) {
+      throw const FileSystemException('Shift counter file missing after write');
+    }
+    return onDisk;
+  }
+
   /// Per-isolate tag for temp file names. Home and the overlay each hold
   /// their own store (and queue), so a shared `.tmp` name let one isolate's
   /// rename publish or delete the other's half-written file.
@@ -173,11 +259,11 @@ class ShiftCounterStore {
       Random().nextInt(1 << 32).toRadixString(16).padLeft(8, '0');
   static int _tmpSeq = 0;
 
-  Future<void> _writeNow(ShiftCounters counters) async {
+  Future<void> _writeNow(ShiftCounters counters, {bool flush = false}) async {
     final file = await _resolve();
     await file.parent.create(recursive: true);
     final tmp = File('${file.path}.$_tmpTag.${_tmpSeq++}.tmp');
-    await tmp.writeAsString(counters.encode(), flush: false);
+    await tmp.writeAsString(counters.encode(), flush: flush);
     // rename(2) replaces the target atomically on Android, so the counters
     // file is never absent. Deleting first would open a window where a
     // process kill (Samsung battery manager is aggressive here) leaves no
@@ -190,7 +276,7 @@ class ShiftCounterStore {
         if (await file.exists()) await file.delete();
         await tmp.rename(file.path);
       } catch (_) {
-        await file.writeAsString(counters.encode(), flush: false);
+        await file.writeAsString(counters.encode(), flush: flush);
         try {
           await tmp.delete();
         } catch (_) {}
