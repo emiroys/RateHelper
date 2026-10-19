@@ -298,7 +298,7 @@ Future<BugReportDiagnostics> defaultLoadBugDiagnostics(
 ) async {
   var appVersion = (versionLabel != null && versionLabel.trim().isNotEmpty)
       ? versionLabel.trim()
-      : '5.0.4';
+      : '';
   var deviceModel = 'Android Device';
   var androidVersion = 'Android';
 
@@ -332,7 +332,7 @@ Future<BugReportDiagnostics> defaultLoadBugDiagnostics(
     // Fallback for tests or non-Android environments.
   } catch (_) {}
 
-  if (!appVersion.contains('+')) {
+  if (appVersion.isEmpty || !appVersion.contains('+')) {
     try {
       final info = await PackageInfo.fromPlatform();
       if (info.version.isNotEmpty) {
@@ -342,6 +342,9 @@ Future<BugReportDiagnostics> defaultLoadBugDiagnostics(
       }
     } catch (_) {}
   }
+  // Never invent a version: when every source failed, say so instead of
+  // reporting a stale release number in diagnostics.
+  if (appVersion.trim().isEmpty) appVersion = 'unknown';
 
   return BugReportDiagnostics(
     appVersion: appVersion,
@@ -473,8 +476,11 @@ class _BugReportSheetState extends State<_BugReportSheet> {
   @override
   void initState() {
     super.initState();
+    final versionLabel = widget.versionLabel?.trim() ?? '';
     _diagnostics = BugReportDiagnostics(
-      appVersion: widget.versionLabel ?? '5.0.4',
+      // Placeholder until _refreshDiagnostics reads the real package version;
+      // never a stale release number.
+      appVersion: versionLabel.isEmpty ? 'unknown' : versionLabel,
       deviceModel: 'Android Device',
       androidVersion: 'Android',
       language: widget.snapshot.lang.name,

@@ -1596,6 +1596,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         '${two(now.hour)}${two(now.minute)}.json';
   }
 
+  /// Version name for backup metadata. Prefers the already-loaded package info
+  /// and falls back to the updater's installed version instead of a stale
+  /// hardcoded release number. An empty result is written as "unknown" by
+  /// [BackupService.createBackupJson].
+  Future<String> _resolveVersionLabel() async {
+    final loaded = _appVersion?.trim();
+    if (loaded != null && loaded.isNotEmpty) return loaded;
+    final installed = await UpdateService.instance.installedVersion();
+    return installed == AppVersion.zero ? '' : installed.label;
+  }
+
   Future<void> _backupData(BuildContext settingsContext) async {
     if (_backupRestoreInFlight) return;
     _backupRestoreInFlight = true;
@@ -1614,9 +1625,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await _loadAndCheckReset();
       final prefs = await _getPrefs();
       final now = _nowWarsaw();
+      final appVersion = await _resolveVersionLabel();
       final jsonContent = await BackupService.createBackupJson(
         prefs: prefs,
-        appVersion: _appVersion ?? '5.0.5',
+        appVersion: appVersion,
         now: now,
       );
       final fileName = _formatBackupFileName(now);

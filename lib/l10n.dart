@@ -1407,6 +1407,26 @@ class S {
     'Could not reach the update server',
     'Nie udało się połączyć z serwerem aktualizacji',
   );
+  static String get updateNetworkError => _p(
+    'Güncelleme sunucusuna ulaşılamadı. İnternet bağlantını kontrol et.',
+    'Could not reach the update server. Check your internet connection.',
+    'Nie udało się połączyć z serwerem aktualizacji. Sprawdź połączenie z internetem.',
+  );
+  static String get updateHttpError => _p(
+    'Güncelleme sunucusu beklenmeyen bir yanıt döndürdü.',
+    'The update server returned an unexpected response.',
+    'Serwer aktualizacji zwrócił nieoczekiwaną odpowiedź.',
+  );
+  static String get updateInvalidJson => _p(
+    'Güncelleme dosyası okunamadı (geçersiz JSON).',
+    'The update file could not be read (invalid JSON).',
+    'Nie można odczytać pliku aktualizacji (nieprawidłowy JSON).',
+  );
+  static String get updateInvalidManifest => _p(
+    'Güncelleme bilgisi geçersiz veya eksik.',
+    'The update information is invalid or incomplete.',
+    'Informacje o aktualizacji są nieprawidłowe lub niekompletne.',
+  );
   static String get updateDisabled => _p(
     'Güncelleme denetimi bu derlemede kapalı',
     'Update checks are disabled in this build',

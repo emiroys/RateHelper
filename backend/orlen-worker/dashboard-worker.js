@@ -16,30 +16,30 @@
 // `lpg: false` mirrors `sellsLpg: false` on the Dart side.
 const STATIONS = {
   'nowohucka-71': { name: 'ORLEN Nowohucka', address: 'ul. Nowohucka 71' },
-  'sliwiaka-34': { name: 'ORLEN Åšliwiaka', address: 'ul. Tadeusza Åšliwiaka 34' },
+  'sliwiaka-34': { name: 'ORLEN Śliwiaka', address: 'ul. Tadeusza Śliwiaka 34' },
   'centralna-62': { name: 'ORLEN Centralna', address: 'ul. Centralna 62' },
-  'pilotow-4b': { name: 'ORLEN PilotÃ³w', address: 'ul. PilotÃ³w 4B' },
-  'jasnogorska-2b': { name: 'ORLEN JasnogÃ³rska', address: 'ul. JasnogÃ³rska 2B' },
-  'zakopianska-58': { name: 'ORLEN ZakopiaÅ„ska (Borek FaÅ‚Ä™cki)', address: 'ul. ZakopiaÅ„ska 58' },
-  'zakopianska-289': { name: 'ORLEN ZakopiaÅ„ska (Opatkowice)', address: 'ul. ZakopiaÅ„ska 289' },
+  'pilotow-4b': { name: 'ORLEN Pilotów', address: 'ul. Pilotów 4B' },
+  'jasnogorska-2b': { name: 'ORLEN Jasnogórska', address: 'ul. Jasnogórska 2B' },
+  'zakopianska-58': { name: 'ORLEN Zakopiańska (Borek Fałęcki)', address: 'ul. Zakopiańska 58' },
+  'zakopianska-289': { name: 'ORLEN Zakopiańska (Opatkowice)', address: 'ul. Zakopiańska 289' },
   'grota-roweckiego-33': { name: 'ORLEN Grota-Roweckiego', address: 'ul. Stefana Grota-Roweckiego 33' },
   'armii-krajowej-21a': { name: 'ORLEN Armii Krajowej', address: 'ul. Armii Krajowej 21A' },
   'olszanicka-174': { name: 'ORLEN Olszanicka', address: 'ul. Olszanicka 174' },
   'skotnicka-242': { name: 'ORLEN Skotnicka', address: 'ul. Skotnicka 242' },
-  'zawila-62': { name: 'ORLEN ZawiÅ‚a', address: 'ul. ZawiÅ‚a 62' },
-  'luzycka-40': { name: 'ORLEN ÅuÅ¼ycka', address: 'ul. ÅuÅ¼ycka 40' },
+  'zawila-62': { name: 'ORLEN Zawiła', address: 'ul. Zawiła 62' },
+  'luzycka-40': { name: 'ORLEN Łużycka', address: 'ul. Łużycka 40' },
   'tyniecka-186': { name: 'ORLEN Tyniecka', address: 'ul. Tyniecka 186' },
   'kamienna-18': { name: 'ORLEN Kamienna', address: 'ul. Kamienna 18' },
-  'wybickiego-3e': { name: 'ORLEN Wybickiego', address: 'ul. JÃ³zefa Wybickiego 3E' },
+  'wybickiego-3e': { name: 'ORLEN Wybickiego', address: 'ul. Józefa Wybickiego 3E' },
   'okulickiego-61': { name: 'ORLEN Okulickiego', address: 'ul. Gen. Leopolda Okulickiego 61' },
-  'andersa': { name: 'ORLEN Strusia', address: 'os. JÃ³zefa Strusia 24' },
+  'andersa': { name: 'ORLEN Strusia', address: 'os. Józefa Strusia 24' },
   'palacha': { name: 'ORLEN Opolska', address: 'ul. Opolska 5' },
   'mogilska': { name: 'ORLEN Mogilska', address: 'ul. Mogilska 122' },
   'bulwarowa': { name: 'ORLEN Wandy', address: 'os. Wandy 30A' },
-  'igolomska': { name: 'ORLEN IgoÅ‚omska', address: 'ul. IgoÅ‚omska 30L' },
-  'daszynskiego': { name: 'ORLEN DaszyÅ„skiego', address: 'al. Ignacego DaszyÅ„skiego 33' },
-  'wloczkow': { name: 'ORLEN WÅ‚Ã³czkÃ³w', address: 'ul. WÅ‚Ã³czkÃ³w 3', lpg: false },
-  'wioslarska': { name: 'ORLEN WioÅ›larska', address: 'ul. WioÅ›larska 1' },
+  'igolomska': { name: 'ORLEN Igołomska', address: 'ul. Igołomska 30L' },
+  'daszynskiego': { name: 'ORLEN Daszyńskiego', address: 'al. Ignacego Daszyńskiego 33' },
+  'wloczkow': { name: 'ORLEN Włóczków', address: 'ul. Włóczków 3', lpg: false },
+  'wioslarska': { name: 'ORLEN Wioślarska', address: 'ul. Wioślarska 1' },
   'zamknieta': { name: 'ORLEN Wielicka', address: 'ul. Wielicka 31' },
   'jerzmanowskiego': { name: 'ORLEN Jerzmanowskiego', address: 'ul. Erazma Jerzmanowskiego 39' },
   'bunscha': { name: 'ORLEN Bunscha', address: 'ul. Karola Bunscha 68' },
@@ -205,19 +205,19 @@ async function submit(request, env) {
   const station = STATIONS[proposal.stationId];
   const current = (await kv(env).get(PRICES_KEY, 'json'))?.stations?.[proposal.stationId]?.[proposal.fuel];
   const lines = [
-    'â›½ New price proposal',
+    '⛽ New price proposal',
     `${station.name}`,
     `${station.address}`,
-    `${FUELS[proposal.fuel]}: ${proposal.price.toFixed(2)} zÅ‚`,
-    current ? `Current: ${Number(current.price).toFixed(2)} zÅ‚ (${current.updatedAt})` : 'Current: none',
+    `${FUELS[proposal.fuel]}: ${proposal.price.toFixed(2)} zł`,
+    current ? `Current: ${Number(current.price).toFixed(2)} zł (${current.updatedAt})` : 'Current: none',
   ];
   const sent = await telegram(env, 'sendMessage', {
     chat_id: env.TELEGRAM_ADMIN_CHAT_ID,
     text: lines.join('\n'),
     reply_markup: {
       inline_keyboard: [[
-        { text: 'âœ… Approve & Publish', callback_data: `a:${id}` },
-        { text: 'âŒ Reject', callback_data: `r:${id}` },
+        { text: '✅ Approve & Publish', callback_data: `a:${id}` },
+        { text: '❌ Reject', callback_data: `r:${id}` },
       ]],
     },
   });
@@ -663,7 +663,7 @@ function formatSurveySummary(summary) {
   const line = (title, values) => {
     const parts = Object.entries(values)
       .map(([key, value]) => `${key} ${value.percent}% (${value.count})`)
-      .join(' Â· ');
+      .join(' · ');
     return `${title}: ${parts}`;
   };
   return [
@@ -716,13 +716,13 @@ async function telegramWebhook(request, env) {
   const pending = await kv(env).get(pendingKey, 'json');
   if (!pending) {
     await answer(env, query.id, 'Already handled or expired');
-    await closeMessage(env, query, 'â± Already handled or expired');
+    await closeMessage(env, query, '⏱ Already handled or expired');
     return new Response('ok');
   }
 
   if (action === 'a') {
     // Single admin, so a read-modify-write race on this key is not a concern.
-    // Delete the pending row only AFTER the prices write succeeds â€” otherwise
+    // Delete the pending row only AFTER the prices write succeeds — otherwise
     // a transient KV put error would drop the proposal with nothing published.
     const prices = (await kv(env).get(PRICES_KEY, 'json')) ?? { stations: {} };
     prices.stations[pending.stationId] ??= {};
@@ -733,11 +733,11 @@ async function telegramWebhook(request, env) {
     await kv(env).put(PRICES_KEY, JSON.stringify(prices));
     await kv(env).delete(pendingKey);
     await answer(env, query.id, 'Published');
-    await closeMessage(env, query, 'âœ… Published');
+    await closeMessage(env, query, '✅ Published');
   } else {
     await kv(env).delete(pendingKey);
     await answer(env, query.id, 'Rejected');
-    await closeMessage(env, query, 'âŒ Rejected');
+    await closeMessage(env, query, '❌ Rejected');
   }
   return new Response('ok');
 }

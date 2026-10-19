@@ -3,7 +3,7 @@
 > **Identyfikator aplikacji:** `com.ratehelper.app`  
 > **Platforma docelowa:** Android (arm64-v8a, zoptymalizowane pod flagowce typu Samsung Galaxy S24 Ultra)  
 > **Framework:** Flutter (Dart) + Natywny Kotlin/Java (Android OS Layer)  
-> **Wersja bieżąca:** `5.0.4+9` (versionName `5.0.4`, pubspec build `9`, arm64 versionCode `2009`)
+> **Wersja bieżąca:** `5.1.0+10` (versionName `5.1.0`, pubspec build `10`, arm64 versionCode `2010`)
 
 ---
 
@@ -32,15 +32,17 @@
 - Kalkulator wskaźnika akceptacji (Acceptance Rate) z dynamicznym systemem ostrzegania i celem tygodniowym,
 - Precyzyjny moduł księgowo-rozliczeniowy wyliczający realny zysk netto po odliczeniu podatku ryczałtowego VAT, prowizji partnera, progów najmu i rabatów paliwowych,
 - Niezależny drogomierz kursów osobistych zliczający postęp do darmowego tygodnia najmu (kamień milowy 2000 kursów),
+- **Centrum paliw ORLEN** – 30 stacji w Krakowie, ceny PB95/LPG zatwierdzane przez maintainera, nawigacja i paragony paliwowe,
 - Radar wydarzeń masowych w Krakowie (Tauron Arena, stadiony) przewidujący strefy podwyższonego popytu (surge),
 - Pełne wsparcie trójjęzyczne: Turecki (domyślny), Polski oraz Angielski.
 
 ### Główne zasady projektowe
-- **Dane kierowcy zostają na telefonie:** Przejazdy, paragony, zarobki i statystyki nie opuszczają urządzenia. Nie ma konta ani zewnętrznej bazy tych danych. Automatyczne sprawdzanie aktualizacji i automatyczne pobieranie wydarzeń są domyślnie wyłączone. Włączenie ich albo ręczne „Sprawdź aktualizacje” / „Wczytaj wydarzenia” wysyła tylko adres IP i zwykłe nagłówki żądania — bez danych użytkownika.
+- **Dane kierowcy zostają na telefonie:** Przejazdy, paragony, zarobki i statystyki nie opuszczają urządzenia. Nie ma konta ani zewnętrznej bazy tych danych. Do backendu Cloudflare trafiają tylko jawnie uruchomione funkcje sieciowe: zgłoszenia cen paliwa (`POST /submissions`), raporty błędów (`POST /bug-report`) i odpowiedzi ankiety (`POST /survey`). Automatyczne sprawdzanie aktualizacji i automatyczne pobieranie wydarzeń są domyślnie wyłączone. Włączenie ich albo ręczne „Sprawdź aktualizacje” / „Wczytaj wydarzenia” wysyła tylko adres IP i zwykłe nagłówki żądania — bez danych użytkownika.
   - `gist.githubusercontent.com` — manifest aktualizacji
   - `api.github.com` — zapasowy odczyt ostatniego wydania, tylko gdy manifest się nie wczyta podczas sprawdzenia, które już trwa
   - `github.com` oraz przekierowania na `*.githubusercontent.com` — plik APK, dopiero po stuknięciu akcji aktualizacji
   - `raw.githubusercontent.com` — publiczny JSON wydarzeń w Krakowie
+  - Cloudflare Worker (`ORLEN_API_URL`, adres wyłącznie w gitignored `dart_defines.json`) — zgłoszenia cen, raporty błędów, ankiety
 - **Driving-First UI:** Ekstremalny ciemny motyw OLED, dotykowe punkty interakcji spełniające normy bezpieczeństwa (minimum 48–68 dp) oraz selektywna haptyka dostosowana do obsługi w uchwycie samochodowym.
 - **Kompaktowość i płynność:** Niski narzut na baterię i pamięć RAM podczas 12-godzinnych zmian roboczych.
 
@@ -51,7 +53,12 @@
 | Moduł | Opis Funkcjonalny | Mechanizm Implementacji |
 | :--- | :--- | :--- |
 | **Pływająca Nakładka (Pill Overlay)** | Widget **276×80 dp** (Yatay / poziomo) lub **74×194 dp** (Dikey / pionowo) nad aplikacją Uber/Bolt. Stuknięcie **% akceptacji** zwija pigułkę do okrągłej bańki **R** (**48 dp**) — mniej zasłania mapę; stuknięcie **R** przywraca pełną pigułkę. +/− bez opuszczania mapy. Kierunek: **Ayarlar → Baloncuk Yönü**. | Osobny izolat (`packages/flutter_overlay_window`); okno natywne = widoczny stadion. `resizeOverlay` **tylko** w izolacie nakładki (zwijanie/rozwijanie). Zmiana orientacji: zamknij + otwórz ponownie — **nie** z głównego izolatu. |
-| **Ekran ustawień** | Wszystkie przełączniki (tryb jazdy, balon, język, GitHub auto, kierownica, wakelock), **Sprawdź aktualizacje**, **Kurulum Rehberi**, wersja. | `lib/settings_screen.dart` — ikona **koła zębatego** na pasku ekranu głównego; `SettingsSnapshot` synchronizuje stan z home. |
+| **Ekran ustawień** | Pogrupowane karty: **Sürüş ve sayaçlar**, **Baloncuk**, **Tercihler**, **Sistem ve destek**; tryb jazdy, balon, język, GitHub auto, kierownica, wakelock, sprawdź aktualizacje, kreator konfiguracji, **ceny paliw**, **kopia zapasowa**, **przywracanie**, **zgłoś problem**, **kontakt z deweloperem**, wersja. | `lib/settings_screen.dart` — ikona **koła zębatego** na pasku ekranu głównego; `SettingsSnapshot` synchronizuje stan z home. |
+| **Kreator pierwszego uruchomienia (5 kroków)** | Powitanie → uprawnienie nakładki → niezawodność baterii → funkcje opcjonalne → gotowe. Wybór języka TR/EN/PL od pierwszego ekranu; uczciwe konsekwencje pominięcia kroku. | `lib/onboarding_screen.dart`, `lib/startup_language.dart` — zapisany język wygrywa; świeża instalacja bierze język urządzenia (tr/pl, inaczej en). |
+| **Centrum paliw ORLEN** | 30 stacji w Krakowie: ceny PB95/LPG z zatwierdzonych zgłoszeń, sortowanie najtańsze/najbliższe, nawigacja Google Maps/Waze, paragony paliwowe z podziałem na współkierowców. Bez `ORLEN_API_URL` działa wszystko poza zdalnymi cenami i zgłaszaniem. | `lib/fuel/*`, `backend/orlen-worker/` — `GET /prices`, `POST /submissions`, zatwierdzanie w Telegramie. Uwaga: brak ceny LPG nie oznacza braku tego paliwa na stacji. |
+| **Kopia zapasowa i przywracanie** | Pełny lokalny eksport JSON (ustawienia, liczniki zmiany, archiwum tygodni, zarobki) z podglądem przed przywróceniem, SHA-256 i dziennikiem odtwarzania po nagłym zamknięciu. **Plik nie jest zaszyfrowany — traktuj go jak dane wrażliwe.** | `lib/services/backup_service.dart`; wpisy w Settings i odzyskiwanie przy starcie (`recoverPendingRestoreIfNeeded`). |
+| **Zgłaszanie błędów** | Kategoria + opis z podglądem i czyszczeniem; opcjonalny zrzut ekranu (PNG/JPEG 5 MB), diagnostyka i dziennik błędów (domyślnie wyłączony); jeden przycisk „Wyślij”. | `lib/bug_report_sheet.dart`, `lib/bug_report_api.dart` — `POST /bug-report` przez Worker do Telegrama; brak tokenów/chat id w aplikacji. |
+| **Jednorazowa ankieta cenowa** | Trzy pytania o przyszłość aplikacji, raz na instalację; brak Skip/Later/back; odpowiedzi anonimowe, offline trafiają do lokalnej kolejki i wysyłają się później. **Bez płatności i subskrypcji.** | `lib/survey_screen.dart`, `lib/survey_store.dart`, `lib/survey_api.dart`; Worker `POST /survey`, chroniony `GET /survey/summary` i komenda `/surveysummary`. |
 | **Pulpit Akceptacji (AR) i Odzyskiwania** | Precyzyjny licznik zleceń (Zaakceptowane, Odrzucone, Ukończone, Anulowane). Dynamiczny bufor ostrzegawczy (2.0% wokół progu celu) oraz kalkulator liczby kursów potrzebnych do odzyskania bezpiecznego wskaźnika. | `home_screen.dart`, wzór odzyskiwania $X = \max(1, \lfloor \frac{r \cdot R - (1-r) \cdot A}{1-r} \rfloor + 1)$, reaktywne notifiery `ValueNotifier`. |
 | **Archiwum tygodni (Logi)** | Po resecie tygodnia zapis v2 JSON z celem (`goalTier`, progi akceptacji/iptal); karty `WeeklyArchiveCard` z **Hedef Tuttu / Tutmadı**; scalanie duplikatów tego samego tygodnia. | `weekly_archive_entry.dart`, `weekly_archive_card.dart`, `collapseWeeklyArchive`, prefs `weekly_archive`. |
 | **Śledzenie Zarobków i Podatków** | Tygodniowy arkusz rozliczeniowy: VAT 12%, opłata ERES 4.3125%, paliwo −10%, najem progowy. Trend 4-tygodniowy i karty miesiąc/rok używają **`blendedHourlyRate`** (zysk ÷ godziny). Tydzień-placeholder paliwa (`isUnreported`) nie dolicza najmu. | `earnings_screen.dart`, `earnings_models.dart`, podgląd live. |
@@ -211,12 +218,16 @@ $$\text{Break-Even} = \frac{\text{Koszty Stałe (Paliwo po rabacie + Koszt najmu
 
 ## 6. Bezpieczeństwo, Prywatność i Integralność Danych
 
-- **Dane na urządzeniu:** Księgowość i historia w `SharedPreferences`, liczniki zmiany i dziennik stuknięć w plikach aplikacji. Kopia zapasowa w chmurze wyłączona (`android:allowBackup="false"`). Te dane nie są wysyłane.
+- **Dane na urządzeniu:** Księgowość i historia w `SharedPreferences`, liczniki zmiany i dziennik stuknięć w plikach aplikacji. Kopia zapasowa w chmurze wyłączona (`android:allowBackup="false"`). Zdecydowana większość danych nie jest wysyłana; wyjątki to funkcje sieciowe, które kierowca uruchamia świadomie (zobacz niżej), a także zwykły adres IP i nagłówki żądań.
+- **Funkcje sieciowe za zgodą albo na żądanie:** zgłoszenie ceny paliwa (`POST /submissions`), raport błędu (`POST /bug-report`) i odpowiedź ankiety (`POST /survey`) trafiają do backendu Cloudflare (adres wyłącznie w gitignored `dart_defines.json` jako `ORLEN_API_URL`). Zgłoszenie ceny zawiera identyfikator stacji, rodzaj paliwa i cenę; raport błędu zawiera opis, kategorię, a opcjonalnie zrzut ekranu, diagnostykę urządzenia i dziennik błędów; ankieta zawiera wyłącznie losowy identyfikator instalacji, wersję ankiety i trzy wybrane odpowiedzi. **Zrzut ekranu lub opis w raporcie mogą zawierać dane osobowe — dołączaj je świadomie.** Nie ma tu konta, reklamowego identyfikatora ani zewnętrznej analityki.
+- **Ankieta bez danych wrażliwych:** pytania nie dotyczą zarobków, przejazdów ani lokalizacji; odpowiedzi nie zawierają imienia, telefonu, e-maila, GPS ani historii przejazdów. Gdy telefon jest offline, odpowiedź zostaje w lokalnej kolejce i wysyła się przy następnym uruchomieniu aplikacji na pierwszym planie. Aplikacja pozostaje darmowa — ankieta nie uruchamia subskrypcji ani płatności.
+- **Nie obiecuj „nigdy”:** powyższe zasady opisują aktualny kod, a nie kryptograficzną gwarancję. Każda funkcja sieciowa może zostać zmieniona w przyszłej wersji; kierowca zawsze widzi, kiedy aplikacja łączy się z siecią.
 - **GitHub tylko za zgodą albo na żądanie:** Przy pierwszym uruchomieniu tej wersji (także u kogoś, kto aktualizuje starszą) pada jedno pytanie. „Zezwól” włącza oba przełączniki, „Nie, tylko gdy poproszę” zostawia je wyłączone. Da się je zmienić w ustawieniach. Dopóki oba są wyłączone i kierowca nic nie stuknie, aplikacja nie otwiera połączenia. Wychodzą wtedy wyłącznie adres IP i standardowe nagłówki (między innymi `Accept` i `User-Agent: RateHelper-Updater` przy sprawdzeniu aktualizacji) — bez przejazdów, zarobków ani identyfikatora konta.
   - `gist.githubusercontent.com` — manifest aktualizacji
   - `api.github.com` — zapas, tylko gdy manifest podczas tego samego sprawdzenia się nie wczyta
   - `github.com` i przekierowania `*.githubusercontent.com` — APK po stuknięciu aktualizacji
   - `raw.githubusercontent.com` — JSON wydarzeń
+- **Kopia zapasowa nie jest szyfrowana:** eksportowany plik JSON zawiera ustawienia, liczniki, archiwum i zarobki w postaci czytelnej. Przechowuj go jak dane wrażliwe; aplikacja pokazuje podgląd przed przywróceniem i potrafi dokończyć operację po nagłym zamknięciu z `restore_journal.json`.
 - **Zaciemnianie `envied` (to nie sekret):** Adres URL manifestu Gist i oczekiwany skrót certyfikatu APK trafiają do wygenerowanego `env.g.dart` jako tablice XOR. Utrudnia to odczyt ciągu w pliku binarnym. Nie szyfruje wartości i nie ukrywa ich przed kimś, kto uruchomi albo zdekompiluje aplikację — zaciemnienie nie jest tajemnicą.
 - **Ostrzeżenie o naruszeniu sygnatury (to nie granica bezpieczeństwa):** W buildzie release aplikacja porównuje skrót certyfikatu z `package_info_plus` z wartością z `.env`. Przy rozbieżności kierowca widzi ostrzeżenie, po czym aplikacja się zamyka. To sygnał o możliwej podmianie APK. Przepakowany pakiet może ten kod usunąć. Granicą instalacji pozostaje podpis Androida (keystore z `key.properties`; brak `key.properties` → build release kończy się błędem Gradle, bez cichego podpisu debug).
 - **Brama instalacji OTA:** Przed `startActivity` instalatora Kotlin weryfikuje pakiet `com.ratehelper.app`, wyższy `versionCode`, ten sam SHA-256 certyfikatu co zainstalowana aplikacja oraz (opcjonalnie) `apk_sha256` z manifestu Gist. Pobranie tylko z przycisku aktualizacji; strumieniowy SHA-256, limit 100 MB, magic ZIP `PK`.
@@ -273,10 +284,10 @@ AppVersion.parse + porównanie numeryczne (semver + build)
 | [`release/YAYIN_TR.md`](release/YAYIN_TR.md) | Publikacja krok po kroku (TR) |
 | [`release/GITHUB_RELEASE_CHECKLIST.md`](release/GITHUB_RELEASE_CHECKLIST.md) | Checklist EN + smoke test |
 | [`release/update.json`](release/update.json) | OTA manifest (Gist şablonu) + `notes_*` (GitHub Release metni) |
-| [`release/RELEASE_NOTES_v5.0.4_*.md`](release/RELEASE_NOTES_v5.0.4_TR.md) | Pełne notatki dla kierowcy (TR / PL / EN) |
-| [`release/CHANGELOG_v5.0.4.md`](release/CHANGELOG_v5.0.4.md) | Lista zmian dla maintainerów |
+| [`release/RELEASE_NOTES_v5.1.0_*.md`](release/RELEASE_NOTES_v5.1.0_PL.md) | Pełne notatki dla kierowcy (TR / PL / EN) |
+| [`release/CHANGELOG_v5.1.0.md`](release/CHANGELOG_v5.1.0.md) | Lista zmian dla maintainerów |
 
-**Offset versionCode przy `--split-per-abi`:** arm64 build `7` → `versionCode` **2007** (`2×1000+7`). `UpdateService.pubspecBuildNumber()` redukuje `% 1000` przed porównaniem z polem `"build"` w manifeście.
+**Offset versionCode przy `--split-per-abi`:** arm64 build `10` → `versionCode` **2010** (`2×1000+10`). `UpdateService.pubspecBuildNumber()` redukuje `% 1000` przed porównaniem z polem `"build"` w manifeście.
 
 ---
 
@@ -308,8 +319,15 @@ flutter clean && dart run build_runner build --delete-conflicting-outputs && flu
 ```
 
 Lokalny, ignorowany przez Git plik `dart_defines.json` jest wymagany do
-włączenia usług konfigurowanych w czasie kompilacji. Nie wyświetlaj jego
-zawartości ani nie dodawaj go do repozytorium.
+włączenia usług konfigurowanych w czasie kompilacji:
+
+- `ORLEN_API_URL` — adres Cloudflare Workera. Bez niego centrum paliw nadal
+  pokazuje stacje, sortowanie, nawigację i paragony, ale zdalne ceny oraz
+  zgłaszanie cen są wyłączone.
+- `CONTACT_WHATSAPP` — opcjonalny cel „Kontakt z deweloperem”; bez niego
+  wiersz prowadzi do strony zgłoszeń GitHub.
+
+Nie wyświetlaj zawartości tego pliku ani nie dodawaj go do repozytorium.
 
 > **Krytyczny wymóg archiwizacji symboli:**  
 > Katalog `symbols/` wygenerowany podczas kompilacji **musi zostać zarchiwizowany przez wydawcę dla każdej opublikowanej wersji**. Ponieważ kod produkcyjny jest poddawany zaciemnianiu (`--obfuscate`), zrzuty błędów z pliku `crash.log` zgłaszane przez kierowców będą zawierać zaszyfrowane ścieżki stosu. Ich odszyfrowanie możliwe jest wyłącznie przy użyciu zachowanego katalogu symboli danej kompilacji (`flutter symbolize`).
@@ -323,9 +341,9 @@ Wygenerowany plik produkcyjny dla nowoczesnych smartfonów:
 
 ```
 lib/
-├── main.dart                  # Wstępna konfiguracja, inicjalizacja wątków
+├── main.dart                  # Wstępna konfiguracja, bramka onboarding → ankieta → home, wpisy overlayMain
 ├── home_screen.dart           # Główny kokpit, liczniki ValueNotifier, reset tygodnia, plakietka KK383CT
-├── settings_screen.dart       # Wszystkie ustawienia, UpdateCheckTile, przewodnik konfiguracji
+├── settings_screen.dart       # Pogrupowane karty, ceny paliw, backup/restore, zgłoś problem, kontakt, UpdateCheckTile
 ├── github_consent_dialog.dart # Jednorazowa zgoda na połączenia GitHub
 ├── weekly_archive_card.dart   # Rozwijalne karty archiwum tygodni (zakładka Logi)
 ├── update_dialog.dart         # Dialog aktualizacji OTA + UpdateCheckTile (używany w Settings)
@@ -339,12 +357,29 @@ lib/
 ├── radar_screen.dart          # Kalendarz i wskaźnik zapotrzebowania imprez masowych w Krakowie
 ├── overlay_widget.dart        # Pigułka nakładki: 276×80 dp poziomo / 74×194 dp pionowo
 ├── overlay_sync.dart          # Bezpośredni protokół synchronizacji liczników IPC
+├── shade_controls.dart        # Klucze prefs i reguła „tylko powiadomienia” (ukrycie pigułki)
 ├── shift_counter_store.dart   # Trwały magazyn liczników bieżącej zmiany (shift_counters.json)
 ├── tap_history_store.dart     # Dziennik kliknięć typu append-only (tap_history.jsonl, max 500)
-├── onboarding_screen.dart     # Asystent przyznawania uprawnień systemowych (Nakładka + Bateria)
+├── onboarding_screen.dart     # Pięcioetapowy kreator: powitanie → nakładka → bateria → opcje → gotowe
+├── startup_language.dart      # Zapisany język wygrywa; świeża instalacja bierze język urządzenia
+├── bug_report_sheet.dart      # Formularz zgłoszenia z podglądem, opcjonalnym zrzutem/diagnostyką
+├── bug_report_api.dart        # Klient HTTPS POST /bug-report (fixed-schema multipart)
+├── survey_screen.dart         # Jednorazowa ankieta: 3 pytania, brak Skip/Later/back
+├── survey_store.dart          # Sürümlü tamamlama + kolejka offline dla ankiety
+├── survey_api.dart            # Klient HTTPS POST /survey (to samo ORLEN_API_URL)
+├── contact_developer.dart     # Cel WhatsApp (dart-define) albo strona zgłoszeń GitHub
+├── external_url.dart          # Natywne otwieranie dozwolonych linków zewnętrznych
 ├── fonts.dart                 # Deklaracje lokalnych rodzin czcionek (DM Sans, JetBrains Mono)
 ├── l10n.dart                  # Wielojęzyczność (TR / EN / PL) oraz lokalne formatowanie walutowe
 ├── crash_logger.dart          # Lokalny bufor dziennika awarii i błędów (crash.log)
+├── fuel/                      # Centrum paliw ORLEN (ekran, API, ceny, paragony, dane stacji)
+│   ├── fuel_screen.dart       # Zakładki Stacje / Dodaj paliwo
+│   ├── fuel_api.dart          # GET /prices, POST /submissions, cache i mock
+│   ├── fuel_prices.dart       # Model PriceBook, walidacja, sortowanie najtańsze/najbliższe
+│   ├── fuel_platform.dart     # Lokalizacja i linki Google Maps / Waze
+│   ├── fuel_receipts.dart     # Paragony paliwowe w bieżącym tygodniu
+│   ├── fuel_ui.dart           # Karty, przyciski i styl centrum paliw
+│   └── orlen_stations.dart    # 30 stacji ORLEN w Krakowie (stabilne identyfikatory)
 ├── models/
 │   ├── event_model.dart       # Struktura danych wydarzenia masowego (Radar)
 │   └── weekly_archive_entry.dart # Model archiwalny podsumowań tygodniowych (v2 JSON)
@@ -353,7 +388,15 @@ lib/
     ├── github_access.dart     # Przełączniki auto-update / auto-events, promptSettled
     ├── github_http.dart       # HttpClient z allowlistą hostów GitHub
     ├── apk_install_check.dart # Wspólna brama podpisu/wersji przed instalacją
+    ├── backup_service.dart    # Eksport/przywracanie JSON, SHA-256, restore_journal.json
     └── update_service.dart    # Manifest Gist, semver, pobieranie APK, instalacja natywna
+
+backend/orlen-worker/          # Cloudflare Worker (plain JS, bez zależności npm)
+├── src/worker.js              # /prices, /submissions, /telegram/webhook, /bug-report, /survey, /survey/summary
+├── src/stations.js            # 30 stacji — musi być zgodne z lib/fuel/orlen_stations.dart
+├── dashboard-worker.js        # Jednoplikowy bundle do wklejenia w Cloudflare Dashboard
+├── test/worker.test.js        # Testy Worker
+└── README.md                  # Kontrakt, konfiguracja, limity darmowego planu
 
 android/
 ├── build.gradle.kts           # Konfiguracja nadrzędna z obejściem Kotlin DSL dla modułu :jni
@@ -361,9 +404,11 @@ android/
     ├── build.gradle.kts       # Konfiguracja aplikacji, weryfikacja key.properties, desugaring
     └── src/main/kotlin/com/ratehelper/app/
         ├── MainActivity.kt    # MethodChannel: bateria, A11y, drainPendingTaps, installApk (FileProvider)
+        ├── ShadeControls.kt   # Decorator powiadomienia + odbiornik przycisków
+        ├── TapDelivery.kt     # Jedna ścieżka zewnętrznych dotknięć (nakładka ACK albo prefs)
         └── MediaKeyAccessibilityService.kt # Przechwytywanie przycisków na kierownicy
 ```
 
 ---
 
-> **RateHelper v5.0.4** — Bezkompromisowe narzędzie stworzone z perspektywy fotela kierowcy. Realna kontrola zysków na krakowskich drogach.
+> **RateHelper v5.1.0** — Bezkompromisowe narzędzie stworzone z perspektywy fotela kierowcy. Realna kontrola zysków na krakowskich drogach.

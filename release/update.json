@@ -1,9 +1,14 @@
 {
-  "latest": "5.0.4",
-  "build": 9,
-  "apk_url": "https://github.com/emiroys/ratehelper/releases/download/v5.0.4/app-arm64-v8a-release.apk",
+  "latest": "5.1.0",
+  "build": 10,
+  "apk_url": "https://github.com/emiroys/ratehelper/releases/download/v5.1.0/app-arm64-v8a-release.apk",
   "mandatory": false,
-  "notes_tr": "Ayarlar ekranı (dişli); haftalık kayıt kartları; baloncuk %→R küçültme; ana ekran anlık senkron; GitHub opt-in; güncelleme Ayarlar'da; KK383CT rozeti; güvenli APK kurulumu.",
-  "notes_pl": "Ekran ustawień (koło zębate); karty archiwum tygodni; dymek %→R; liczniki na żywo; zgoda GitHub; aktualizacja w Ustawieniach; tabliczka KK383CT; bezpieczna instalacja APK.",
-  "notes_en": "Settings screen (gear); weekly archive cards; pill %→R collapse; live home sync; GitHub opt-in; update check in Settings; KK383CT badge; safer APK install gate."
+  "notes_tr": "ORLEN yakıt merkezi (30 istasyon, PB95/LPG, fiyat bildirimi, navigasyon ve yakıt fişleri); bildirim paneli kontrolleri ve yalnızca-panel modu; yerel yedekleme ve geri yükleme; beş adımlı kurulum sihirbazı; hata bildirimi (isteğe bağlı ekran görüntüsü/tanılama); tek seferlik fiyat anketi. Uygulama ücretsizdir; abonelik veya ödeme yoktur.",
+  "notes_pl": "Centrum paliw ORLEN (30 stacji, PB95/LPG, zgłaszanie cen, nawigacja i paragony); sterowanie z powiadomień i tryb tylko-powiadomienia; lokalna kopia zapasowa i przywracanie; pięcioetapowy kreator konfiguracji; zgłaszanie błędów (opcjonalny zrzut ekranu/diagnostyka); jednorazowa ankieta cenowa. Aplikacja jest darmowa — bez subskrypcji i płatności.",
+  "notes_en": "ORLEN fuel hub (30 stations, PB95/LPG, price submissions, navigation and fuel receipts); notification-shade controls and shade-only mode; local backup & restore; five-step setup wizard; bug reporting (optional screenshot/diagnostics); one-time pricing survey. The app is free — no subscription or payment.",
+  "_local_pending": {
+    "apk_url": "PROPOSED — verify HTTP 200 after the v5.1.0 GitHub Release is published",
+    "apk_sha256": "NOT SET — optional; add the lowercase SHA-256 of the signed APK only after the maintainer builds and verifies it",
+    "gist": "LOCAL ONLY — do not paste this file into the live Gist until the v5.1.0 APK is published and its URL is verified"
+  }
 }

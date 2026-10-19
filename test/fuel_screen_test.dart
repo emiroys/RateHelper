@@ -270,7 +270,62 @@ void main() {
           multiLine: true,
         ).allMatches(js).map((m) => m.group(1)).toSet();
         expect(noLpg, expectedNoLpg, reason: path);
+
+        // Names and addresses matter to Telegram messages, and a wrong
+        // encoding (UTF-8 read as ANSI) used to slip past the id-only check.
+        final workerRecords = <String, ({String name, String address})>{};
+        final recordPattern = RegExp(
+          r"^\s*'([a-z0-9-]+)':\s*\{\s*name:\s*'([^']*)',\s*address:\s*'([^']*)'",
+          multiLine: true,
+        );
+        for (final match in recordPattern.allMatches(js)) {
+          workerRecords[match.group(1)!] = (
+            name: match.group(2)!,
+            address: match.group(3)!,
+          );
+        }
+        for (final station in krakowOrlenStations) {
+          final record = workerRecords[station.id];
+          expect(record, isNotNull, reason: '$path is missing ${station.id}');
+          expect(
+            record!.name,
+            station.name,
+            reason: '$path name mismatch for ${station.id}',
+          );
+          expect(
+            record.address,
+            station.address,
+            reason: '$path address mismatch for ${station.id}',
+          );
+        }
       }
+    });
+
+    test('the dashboard bundle is src/worker.js with the stations inlined', () {
+      String normalize(String text) => text.replaceAll('\r\n', '\n');
+      final worker = normalize(
+        File('backend/orlen-worker/src/worker.js').readAsStringSync(),
+      );
+      final stations = normalize(
+        File('backend/orlen-worker/src/stations.js').readAsStringSync(),
+      );
+      final dashboard = normalize(
+        File('backend/orlen-worker/dashboard-worker.js').readAsStringSync(),
+      );
+      const importLine = "import { STATIONS } from './stations.js';";
+      expect(worker, contains(importLine));
+      const header =
+          '// Dashboard single-file build: station data is intentionally inlined below.\n'
+          '// Must list exactly the ids in lib/fuel/orlen_stations.dart\n'
+          '// (test/fuel_screen_test.dart fails when they drift apart).\n'
+          '// `lpg: false` mirrors `sellsLpg: false` on the Dart side.\n';
+      final block = stations
+          .split('\n')
+          .where((line) => !line.trimLeft().startsWith('//'))
+          .join('\n')
+          .replaceFirst('export const STATIONS', 'const STATIONS')
+          .trim();
+      expect(dashboard, worker.replaceFirst(importLine, header + block));
     });
 
     test('FuelType wire names are stable', () {

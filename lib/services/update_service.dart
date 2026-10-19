@@ -26,12 +26,45 @@ enum UpdateStatus {
   /// A strictly newer build exists and [UpdateCheckResult.info] is set.
   available,
 
-  /// Manifest and fallback were both unreachable (offline, DNS, timeout,
-  /// malformed JSON, missing release asset). Never surfaced on startup.
+  /// Manifest and fallback could not produce a usable result. The precise
+  /// reason is in [UpdateCheckResult.failure]. Never surfaced on startup.
   unreachable,
 
   /// No manifest URL is baked into this build, so checking is impossible.
   disabled,
+}
+
+/// Why an update check could not produce a usable result.
+///
+/// The manual-check UI maps each value to a distinct message so "no internet"
+/// is not confused with "the server returned 500" or "the manifest is broken".
+enum UpdateFailure {
+  /// Offline, DNS, TLS, connection reset or timeout.
+  network,
+
+  /// The server answered with a status other than HTTP 200.
+  httpStatus,
+
+  /// The response body was not valid JSON.
+  invalidJson,
+
+  /// JSON was valid but the manifest/release lacked a usable version or APK
+  /// URL, or an allowed download URL was missing.
+  invalidManifest,
+}
+
+/// Typed failure from one update source. Public only so tests can assert the
+/// classification without exposing the HTTP implementation.
+class UpdateFetchException implements Exception {
+  const UpdateFetchException(this.failure, {this.statusCode});
+
+  final UpdateFailure failure;
+  final int? statusCode;
+
+  @override
+  String toString() =>
+      'UpdateFetchException(${failure.name}'
+      '${statusCode == null ? '' : ', HTTP $statusCode'})';
 }
 
 /// `major.minor.patch` plus the pubspec build number, compared numerically.
@@ -161,11 +194,14 @@ class UpdateInfo {
 }
 
 class UpdateCheckResult {
-  const UpdateCheckResult(this.status, this.current, [this.info]);
+  const UpdateCheckResult(this.status, this.current, {this.info, this.failure});
 
   final UpdateStatus status;
   final AppVersion current;
   final UpdateInfo? info;
+
+  /// Set when [status] is [UpdateStatus.unreachable]; explains why.
+  final UpdateFailure? failure;
 }
 
 /// Checks GitHub for a newer sideloaded APK and hands the download to the
@@ -185,9 +221,6 @@ class UpdateService {
 
   /// Repository that owns every release we are willing to install.
   static const String _repoSlug = 'emiroys/ratehelper';
-
-  static const String _releasesPrefix =
-      'https://github.com/$_repoSlug/releases/';
 
   static final Uri _releasesApi = Uri.https(
     'api.github.com',
@@ -319,14 +352,47 @@ class UpdateService {
     }
 
     try {
-      final manifest = await _fromManifest(languageCode: languageCode);
-      final info = manifest ?? await _fromReleasesApi();
+      UpdateInfo? manifest;
+      UpdateFailure? manifestFailure;
+      try {
+        manifest = await _fromManifest(languageCode: languageCode);
+      } on UpdateFetchException catch (e) {
+        manifestFailure = e.failure;
+        await _logFailure(
+          'manifest: ${e.failure.name}'
+          '${e.statusCode == null ? '' : ' HTTP ${e.statusCode}'}',
+        );
+      } catch (e) {
+        manifestFailure = UpdateFailure.network;
+        await _logFailure('manifest: ${e.runtimeType}', e);
+      }
+
+      UpdateInfo? info = manifest;
+      UpdateFailure? fallbackFailure;
+      if (info == null) {
+        try {
+          info = await _fromReleasesApi();
+        } on UpdateFetchException catch (e) {
+          fallbackFailure = e.failure;
+          await _logFailure(
+            'releases-api: ${e.failure.name}'
+            '${e.statusCode == null ? '' : ' HTTP ${e.statusCode}'}',
+          );
+        } catch (e) {
+          fallbackFailure = UpdateFailure.network;
+          await _logFailure('releases-api: ${e.runtimeType}', e);
+        }
+      }
 
       if (info == null) {
-        return UpdateCheckResult(UpdateStatus.unreachable, current);
+        return UpdateCheckResult(
+          UpdateStatus.unreachable,
+          current,
+          failure: manifestFailure ?? fallbackFailure ?? UpdateFailure.network,
+        );
       }
       if (info.version.isNewerThan(current)) {
-        return UpdateCheckResult(UpdateStatus.available, current, info);
+        return UpdateCheckResult(UpdateStatus.available, current, info: info);
       }
 
       // The manifest is the source of truth. When it could not be read, the
@@ -335,7 +401,11 @@ class UpdateService {
       // here is how a broken manifest used to hide in plain sight.
       if (manifest == null) {
         await _logFailure('manifest unreadable; releases fallback not newer');
-        return UpdateCheckResult(UpdateStatus.unreachable, current);
+        return UpdateCheckResult(
+          UpdateStatus.unreachable,
+          current,
+          failure: manifestFailure ?? UpdateFailure.invalidManifest,
+        );
       }
       return UpdateCheckResult(UpdateStatus.upToDate, current);
     } finally {
@@ -792,11 +862,11 @@ class UpdateService {
 
   // ---------------------------------------------------------------- sources
 
-  Future<UpdateInfo?> _fromManifest({String? languageCode}) async {
+  Future<UpdateInfo> _fromManifest({String? languageCode}) async {
     final base = Uri.tryParse(Env.gistUrl.trim());
     if (base == null) {
       await _logFailure('manifest URL is not a valid URI');
-      return null;
+      throw const UpdateFetchException(UpdateFailure.invalidManifest);
     }
 
     // GitHub serves the raw gist through a CDN with `cache-control:
@@ -812,26 +882,36 @@ class UpdateService {
     );
 
     final json = await _getJson(uri, 'manifest');
-    if (json == null) return null;
+    return _parseManifest(json, languageCode: languageCode);
+  }
 
+  Future<UpdateInfo> _parseManifest(
+    Map<String, dynamic> json, {
+    String? languageCode,
+  }) async {
     final latest = json['latest']?.toString().trim();
     if (latest == null || latest.isEmpty) {
       await _logFailure('manifest has no usable "latest" field');
-      return null;
+      throw const UpdateFetchException(UpdateFailure.invalidManifest);
     }
 
     final apkUrl = _pickApkUrl(json);
     if (apkUrl == null) {
       await _logFailure('manifest "apk_url" failed the allowlist');
-      return null;
+      throw const UpdateFetchException(UpdateFailure.invalidManifest);
     }
 
     final build = json['build'] is num
         ? (json['build'] as num).toInt()
         : int.tryParse(json['build']?.toString().trim() ?? '');
+    final version = AppVersion.parse(latest, build: build);
+    if (version.major == 0 && version.minor == 0 && version.patch == 0) {
+      await _logFailure('manifest "latest" is not a version');
+      throw const UpdateFetchException(UpdateFailure.invalidManifest);
+    }
 
     return UpdateInfo(
-      version: AppVersion.parse(latest, build: build),
+      version: version,
       displayVersion: latest,
       apkUrl: apkUrl,
       mandatory: json['mandatory'] == true,
@@ -844,14 +924,19 @@ class UpdateService {
   /// IP, which is why it is never the primary source.
   Future<UpdateInfo?> _fromReleasesApi() async {
     final json = await _getJson(_releasesApi, 'releases-api');
-    if (json == null) return null;
 
     final tag = json['tag_name']?.toString().trim();
-    if (tag == null || tag.isEmpty) return null;
+    if (tag == null || tag.isEmpty) {
+      await _logFailure('releases-api has no usable "tag_name"');
+      throw const UpdateFetchException(UpdateFailure.invalidManifest);
+    }
     if (json['draft'] == true || json['prerelease'] == true) return null;
 
     final assets = json['assets'];
-    if (assets is! List) return null;
+    if (assets is! List) {
+      await _logFailure('releases-api "assets" is not a list');
+      throw const UpdateFetchException(UpdateFailure.invalidManifest);
+    }
 
     // Walk our preference list rather than the response order, so a release
     // carrying both per-ABI and fat APKs still yields the arm64 one.
@@ -861,8 +946,13 @@ class UpdateService {
         if (asset['name']?.toString().trim() != wanted) continue;
         final url = _sanitizeApkUrl(asset['browser_download_url']?.toString());
         if (url != null) {
+          final version = AppVersion.parse(tag);
+          if (version.major == 0 && version.minor == 0 && version.patch == 0) {
+            await _logFailure('releases-api tag is not a version');
+            throw const UpdateFetchException(UpdateFailure.invalidManifest);
+          }
           return UpdateInfo(
-            version: AppVersion.parse(tag),
+            version: version,
             displayVersion: tag,
             apkUrl: url,
             mandatory: false,
@@ -871,27 +961,34 @@ class UpdateService {
         }
       }
     }
-    // Tag exists but no installable asset — treat as "nothing to offer"
-    // instead of sending the driver to a release page with no APK.
-    return null;
+    // Tag exists but no installable asset — this is a broken release bundle,
+    // not a reason to send the driver to a release page with no APK.
+    await _logFailure('releases-api has no installable asset');
+    throw const UpdateFetchException(UpdateFailure.invalidManifest);
   }
 
   // ------------------------------------------------------------- transport
 
-  /// Single hardened GET used by both sources. Returns null on any failure:
-  /// offline, DNS, TLS, timeout, non-200, non-JSON, or non-object body.
+  /// Single hardened GET used by both sources.
   ///
-  /// Every failure is logged (never the URL itself, which is a build secret)
-  /// so a driver can read the reason from "Çökme Kayıtları" instead of
+  /// Throws [UpdateFetchException] with a precise failure kind; never returns
+  /// null. Every failure is logged (never the URL itself, which is a build
+  /// secret) so a driver can read the reason from "Çökme Kayıtları" instead of
   /// guessing why the check came back empty.
-  Future<Map<String, dynamic>?> _getJson(Uri uri, String label) async {
-    if (uri.scheme != 'https') {
-      await _logFailure('$label: scheme is not https');
-      return null;
-    }
-    if (!_allowedMetadataHosts.contains(uri.host)) {
-      await _logFailure('$label: host ${uri.host} is not allowlisted');
-      return null;
+  Future<Map<String, dynamic>> _getJson(
+    Uri uri,
+    String label, {
+    bool enforceAllowlist = true,
+  }) async {
+    if (enforceAllowlist) {
+      if (uri.scheme != 'https') {
+        await _logFailure('$label: scheme is not https');
+        throw const UpdateFetchException(UpdateFailure.invalidManifest);
+      }
+      if (!_allowedMetadataHosts.contains(uri.host.toLowerCase())) {
+        await _logFailure('$label: host ${uri.host} is not allowlisted');
+        throw const UpdateFetchException(UpdateFailure.invalidManifest);
+      }
     }
 
     GithubHttp.note(uri);
@@ -914,20 +1011,42 @@ class UpdateService {
         // surfacing the code makes that distinguishable from a 404.
         await _logFailure('$label: HTTP ${response.statusCode}');
         await response.drain<void>().catchError((Object _) {});
-        return null;
+        throw UpdateFetchException(
+          UpdateFailure.httpStatus,
+          statusCode: response.statusCode,
+        );
       }
 
-      final body =
-          await response.transform(utf8.decoder).join().timeout(_readTimeout);
-      final decoded = jsonDecode(body);
+      String body;
+      try {
+        body = await response
+            .transform(utf8.decoder)
+            .join()
+            .timeout(_readTimeout);
+      } on FormatException {
+        await _logFailure('$label: invalid UTF-8');
+        throw const UpdateFetchException(UpdateFailure.invalidJson);
+      }
+
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(body);
+      } on FormatException {
+        await _logFailure('$label: invalid JSON');
+        throw const UpdateFetchException(UpdateFailure.invalidJson);
+      }
       if (decoded is! Map) {
-        await _logFailure('$label: body is ${decoded.runtimeType}, not an object');
-        return null;
+        await _logFailure(
+          '$label: body is ${decoded.runtimeType}, not an object',
+        );
+        throw const UpdateFetchException(UpdateFailure.invalidManifest);
       }
       return decoded.cast<String, dynamic>();
+    } on UpdateFetchException {
+      rethrow;
     } catch (e) {
       await _logFailure('$label: ${e.runtimeType}', e);
-      return null;
+      throw const UpdateFetchException(UpdateFailure.network);
     } finally {
       client.close(force: true);
     }
@@ -980,23 +1099,50 @@ class UpdateService {
   /// Parses and allowlists an APK URL. Everything else is dropped silently,
   /// so a compromised manifest can at worst stop updates — never redirect the
   /// driver to an attacker-controlled installer.
+  ///
+  /// GitHub repository paths are case-insensitive: the live Gist may publish
+  /// `github.com/emiroys/RateHelper/...` while the canonical repo slug is
+  /// lowercase. Only owner/repo are compared case-insensitively; the
+  /// `releases/download` route and the asset filename stay exact.
   Uri? _sanitizeApkUrl(String? raw) {
     final trimmed = raw?.trim();
     if (trimmed == null || trimmed.isEmpty) return null;
-    if (!trimmed.startsWith(_releasesPrefix)) return null;
 
     final uri = Uri.tryParse(trimmed);
     if (uri == null) return null;
-    if (uri.scheme != 'https' || uri.host != 'github.com') return null;
+    if (uri.scheme != 'https' || uri.host.toLowerCase() != 'github.com') {
+      return null;
+    }
 
     final segments = uri.pathSegments;
-    if (!segments.contains('download')) return null;
+    if (segments.length < 5 ||
+        segments[0].toLowerCase() != 'emiroys' ||
+        segments[1].toLowerCase() != 'ratehelper' ||
+        segments[2] != 'releases' ||
+        segments[3] != 'download') {
+      return null;
+    }
 
-    final fileName = segments.isEmpty ? '' : segments.last;
+    final fileName = segments.last;
     if (!_apkAssetPreference.contains(fileName)) return null;
 
     return uri;
   }
+
+  @visibleForTesting
+  Uri? sanitizeApkUrlForTest(String? raw) => _sanitizeApkUrl(raw);
+
+  @visibleForTesting
+  Future<UpdateInfo> parseManifestForTest(
+    Map<String, dynamic> json, {
+    String? languageCode,
+  }) => _parseManifest(json, languageCode: languageCode);
+
+  /// Bypasses the https/host allowlist so a loopback HTTP fixture can exercise
+  /// status/body handling. Never used by the app.
+  @visibleForTesting
+  Future<Map<String, dynamic>> fetchJsonForTest(Uri uri) =>
+      _getJson(uri, 'test', enforceAllowlist: false);
 
   bool _isTrustedApkUrl(Uri uri) => _sanitizeApkUrl(uri.toString()) != null;
 }

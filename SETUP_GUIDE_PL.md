@@ -6,7 +6,7 @@ Ten przewodnik krok po kroku wyjaśnia, **jakie uprawnienia Androida** trzeba w�
 > **Szacowany czas konfiguracji:** 2–3 minuty  
 > **Wersja turecka:** [`SETUP_GUIDE_TR.md`](SETUP_GUIDE_TR.md)
 
-> **Przewodnik konfiguracji w aplikacji** (**Ustawienia** → ikona **koła zębatego**) pokazuje tylko **dwa kroki uprawnień** (nakładka + bateria). Ten plik to **pełna instrukcja obsługi**.
+> **Przewodnik konfiguracji w aplikacji** (**Ustawienia** → ikona **koła zębatego**) otwiera ponownie **pięcioetapowy kreator**: powitanie, uprawnienie nakładki, niezawodność baterii, funkcje opcjonalne i podsumowanie. Ten plik to **pełna instrukcja obsługi**.
 
 ---
 
@@ -15,14 +15,14 @@ Ten przewodnik krok po kroku wyjaśnia, **jakie uprawnienia Androida** trzeba w�
 1. Skopiuj otrzymany plik APK na telefon (WhatsApp, USB, e-mail — bez różnicy).  
    Nazwa pliku to zwykle `app-arm64-v8a-release.apk` lub `ratehelper.apk`.
 2. Dotknij pliku. Jeśli telefon poprosi o **„Instalację z nieznanych źródeł”** → **Zezwól** → wróć do APK → **Zainstaluj**.
-3. Przy pierwszym uruchomieniu aplikacja automatycznie otworzy ekran **Konfiguracja RateHelper**.
-4. Po konfiguracji (albo po pierwszej aktualizacji do tej wersji) **raz** zapyta o GitHub: automatyczne aktualizacje i wydarzenia w Krakowie. **Nie** = brak sieci przy starcie; dane jazdy zostają w telefonie — włączysz później w **Ustawieniach**.
+3. Przy pierwszym uruchomieniu aplikacja otworzy **pięcioetapowy kreator konfiguracji**: powitanie, uprawnienie nakładki, niezawodność baterii, funkcje opcjonalne i podsumowanie. Język (turecki / polski / angielski) wybiera się już na pierwszym ekranie.
+4. Po konfiguracji (albo po pierwszej aktualizacji do tej wersji) może najpierw pojawić się **jednorazowa, krótka ankieta**, a dopiero potem **raz** pytanie o GitHuba: automatyczne aktualizacje i wydarzenia w Krakowie. **Nie** = brak sieci przy starcie; dane jazdy zostają w telefonie — włączysz później w **Ustawieniach**.
 
 > Instrukcję ponownie: ekran główny → **koło zębate (Ustawienia)** → **Przewodnik konfiguracji**.
 
 ---
 
-## 2) Pierwsza konfiguracja — dwa wymagane uprawnienia
+## 2) Pierwsza konfiguracja — dwa wymagane uprawnienia (część pięcioetapowego kreatora)
 
 RateHelper potrzebuje **dwóch uprawnień Androida**, aby działać nad aplikacją Uber Driver i nie być zabijany w tle podczas zmiany.
 
@@ -133,11 +133,75 @@ Ekran główny → **koło zębate** u góry. Sekcje:
 | Sekcja | Zawartość |
 | --- | --- |
 | **Jazda i liczniki** | **Tryb jazdy** (1 / 2 / 3 kierowców), **Automatyczne ukończenie**, **Licznik z kierownicy (Beta)**, **Utrzymuj ekran włączony** |
-| **Dymek** | **Kierunek dymka** (poziomy / pionowy), **Przycisk anulowania na dymku** (opcjonalnie), **Sterowanie z powiadomienia** (opcjonalnie) |
+| **Dymek** | **Kierunek dymka** (poziomy / pionowy), **Przycisk anulowania na dymku** (opcjonalnie), **Sterowanie z powiadomienia** (opcjonalnie), **Ukryj pigułkę** (przy włączonym sterowaniu z powiadomienia) |
 | **Preferencje** | **Język**, **Automatyczne sprawdzanie aktualizacji**, **Automatyczne pobieranie wydarzeń** |
-| **System i wsparcie** | **Sprawdź aktualizacje** (czas ostatniego sprawdzenia + wersja), **Przewodnik konfiguracji**, **Dziennik awarii** |
+| **Paliwo** | **Ceny paliw ORLEN** — 30 stacji, PB95/LPG, sortowanie najtańsze/najbliższe, nawigacja |
+| **Dane** | **Kopia zapasowa danych**, **Przywróć z kopii** |
+| **System i wsparcie** | **Sprawdź aktualizacje** (czas ostatniego sprawdzenia + wersja), **Przewodnik konfiguracji**, **Dziennik awarii**, **Zgłoś problem**, **Kontakt z deweloperem** |
 
 > Język można też zmienić ikoną 🌐 w dolnym menu — to ten sam wybór.
+
+---
+
+## 3c) Centrum paliw ORLEN
+
+Przycisk **Paliwo** na ekranie głównym (albo Ustawienia → **Ceny paliw ORLEN**) otwiera centrum z dwiema zakładkami:
+
+### Stacje
+
+- Lista **30 zweryfikowanych stacji ORLEN** w granicach Krakowa.
+- Przełącznik u góry sortuje po **najtańszej** lub **najbliższej** stacji. **Najbliższa** liczy odległość tylko po przyznaniu dostępu do lokalizacji; bez zgody lista zostaje w poprzedniej kolejności.
+- Każda karta pokazuje cenę PB95 i (jeśli jest) LPG, czas aktualizacji oraz przycisk **nawigacji**. Nawigacja otwiera Google Maps albo Waze.
+- Ceny pochodzą ze zgłoszeń kierowców zatwierdzonych przez maintainera. W buildzie bez `ORLEN_API_URL` stacje, sortowanie, nawigacja i paragony działają; wyłączone są tylko zdalne ceny i zgłaszanie.
+
+### Zgłaszanie ceny
+
+1. Wybierz stację → **Zaktualizuj cenę**.
+2. Wybierz paliwo (PB95 / LPG) i wpisz cenę.
+3. Wyślij; zgłoszenie trafia najpierw do zatwierdzenia. Po akceptacji widać je dla wszystkich.
+
+> Nie każda stacja musi fizycznie oferować LPG. Cena LPG jest pokazywana tylko tam, gdzie model danych to obsługuje; brak ceny nie oznacza automatycznie braku tego paliwa.
+
+### Paragony paliwowe
+
+W drugiej zakładce (**Dodaj paliwo**) zapiszesz kwotę tankowania, szybkie kwoty albo podział między współkierowców. Paragony trafiają do tygodniowego rozliczenia zarobków.
+
+---
+
+## 3d) Kopia zapasowa i przywracanie
+
+- **Eksport:** Ustawienia → **Kopia zapasowa danych**. Aplikacja zapisuje ustawienia, liczniki zmiany, archiwum tygodni i zarobki do jednego pliku JSON. Trzymaj go w bezpiecznym miejscu.
+- **Przywracanie:** Ustawienia → **Przywróć z kopii**. Przed potwierdzeniem zobaczysz **podgląd** (wersja, tydzień liczników, liczba wpisów). Możesz anulować.
+- **Bezpieczeństwo:** Kopia **nie jest zaszyfrowana** — każdy, kto ma plik, może odczytać jego zawartość. Nie wysyłaj jej publicznymi kanałami ani nie wrzucaj bez namysłu do chmury.
+- **Odzyskiwanie:** Jeśli aplikacja zostanie zamknięta w trakcie przywracania, następne uruchomienie dokończy operację z dziennika; nie zostanie połowicznie zapisany stan.
+- Ukończenie ankiety nie jest częścią kopii — przywrócenie **nie pokaże ankiety ponownie**.
+
+---
+
+## 3e) Zgłaszanie problemu, dziennik awarii i jednorazowa ankieta
+
+### Zgłoś problem
+
+Ustawienia → **Zgłoś problem**:
+
+1. Wybierz kategorię (np. dymek, liczniki, zarobki/paliwo, kierownica/powiadomienia, inne) i opisz problem.
+2. Przed wysłaniem otwiera się **podgląd**; dane wrażliwe są w miarę możliwości czyszczone.
+3. Opcjonalnie dołącz **zrzut ekranu**, **diagnostykę urządzenia** i **dziennik błędów**. Dziennik jest domyślnie **wyłączony**.
+4. **Wyślij** — raport trafia do developera przez backend Cloudflare.
+
+> Zrzut ekranu lub opis mogą zawierać dane osobowe; dołączaj je świadomie i przeczytaj podgląd przed wysłaniem.
+
+### Dziennik awarii
+
+Ustawienia → **Dziennik awarii** → **KOPIUJ**. Dzienniki są w wewnętrznej pamięci aplikacji (sandbox); nie ma do nich dostępu z menedżera plików — można je tylko skopiować i wysłać.
+
+### Jednorazowa ankieta cenowa
+
+- Pokazuje się **raz**: po aktualizacji (istniejąca instalacja) albo po pięcioetapowym kreatorze (nowa instalacja).
+- Ma trzy pytania; **nie ma** przycisku Pomiń / Później / Nie pokazuj ponownie i nie da się jej zamknąć przyciskiem Wstecz.
+- Odpowiedzi są anonimowe; nie zawierają imienia, telefonu, e-maila, GPS, przejazdów ani zarobków. Wysyłany jest tylko losowy identyfikator instalacji, wersja ankiety i trzy odpowiedzi.
+- Bez internetu odpowiedź zostaje zapisana lokalnie i wysyła się przy następnym uruchomieniu / powrocie aplikacji na pierwszy plan.
+- **Aplikacja pozostaje darmowa; ankieta nie uruchamia subskrypcji ani płatności.** Celem jest zrozumienie, jak dalej rozwijać projekt.
 
 ---
 
@@ -211,7 +275,7 @@ Przy każdym **RESETUJ TYDZIEŃ** podsumowanie trafia tutaj jako **karta**. Stuk
 
 ## 7) Śledzenie zarobków (💰)
 
-Ekran **Zarobki** liczy tygodniowy przychód z Ubera, paliwo, czynsz, podatki i zysk netto. **Wszystkie dane zostają w telefonie** — nic nie trafia do chmury.
+Ekran **Zarobki** liczy tygodniowy przychód z Ubera, paliwo, czynsz, podatki i zysk netto. Większość danych jazdy i rozliczeń **zostaje w telefonie**. Do sieci wychodzą tylko funkcje uruchamiane świadomie: zgłoszenie ceny paliwa, raport błędu i jednorazowa ankieta (backend Cloudflare). Szczegóły w sekcjach 3e i 11.
 
 ### Pierwsze uruchomienie
 
@@ -277,11 +341,20 @@ Ekran główny → **koło zębate (Ustawienia)** → **Tryb jazdy** → **Jeden
 2. **Zatrzymaj** widget → **Uruchom** ponownie.
 3. Na Samsungu **zablokuj** kartę RateHelper w ostatnich aplikacjach.
 
+### Zgłoś problem (z aplikacji)
+
+1. **Ustawienia → Zgłoś problem**
+2. Wybierz kategorię, opisz problem i sprawdź podgląd.
+3. Opcjonalnie dołącz zrzut ekranu / diagnostykę (dziennik błędów jest domyślnie wyłączony).
+4. **Wyślij** — raport trafia do developera. Jeśli wysyłka się nie uda, możesz spróbować ponownie.
+
+> Raport idzie przez backend Cloudflare; opis i zrzut ekranu mogą zawierać dane osobowe.
+
 ### Wysyłanie dziennika awarii
 
 1. **Ustawienia → Dziennik awarii**
 2. Naciśnij **KOPIUJ**
-3. Wklej i wyślij przez WhatsApp do developera
+3. Wklej i wyślij przez WhatsApp do developera (albo użyj bezpośrednio **Zgłoś problem**)
 
 > Dzienniki są w **wewnętrznej** pamięci aplikacji (sandbox). Nie ma do nich dostępu z menedżera plików — używaj tylko **KOPIUJ** w aplikacji.
 
@@ -314,7 +387,9 @@ flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbo
 - `--obfuscate` → usuwa symbole Dart AOT.
 - `--split-debug-info` → symbole poza projektem (zachowaj do debugowania).
 - `--split-per-abi` → APK ~8 MB na architekturę.
-- `--dart-define-from-file` → dodaje lokalną konfigurację ignorowaną przez Git; nie wyświetlaj zawartości pliku ani nie dodawaj go do repozytorium.
+- `--dart-define-from-file` → dodaje lokalną konfigurację ignorowaną przez Git; nie wyświetlaj zawartości pliku ani nie dodawaj go do repozytorium. Musi zawierać **`ORLEN_API_URL`**; bez niego ceny paliw i zgłaszanie cen są wyłączone w buildzie release. `CONTACT_WHATSAPP` jest opcjonalny — bez niego „Kontakt z deweloperem” prowadzi do strony zgłoszeń GitHub.
+
+`backend/orlen-worker/` to źródło Workera Cloudflare. Produkcyjny Worker aktualizuje się **ręcznie przez Cloudflare Dashboard**: wklej `dashboard-worker.js`; zachowaj binding `ORLEN_KV` oraz sekrety `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET` i nowy `SURVEY_ADMIN_TOKEN` (tylko nazwy; nigdy nie wypisuj wartości). Webhook Telegrama musi być ustawiony z `allowed_updates=["callback_query","message"]`, aby komenda `/surveysummary` w czacie administratora działała. Pełna kolejność: [`release/YAYIN_TR.md`](release/YAYIN_TR.md).
 
 `key.properties` musi leżeć w katalogu głównym projektu (nie w `android/`) i być czytelny. Brak albo błąd odczytu **przerywa build release** (`GradleException`) — klucz debug nie jest używany. Build debug działa bez tego pliku. Każda wersja tym samym keystore.
 

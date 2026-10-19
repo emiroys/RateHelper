@@ -119,11 +119,19 @@ Plan the shared 1k-write budget accordingly.
 ## Keeping stations in sync
 
 `src/stations.js` must list exactly the ids in `lib/fuel/orlen_stations.dart`;
-`test/fuel_screen_test.dart` fails when they differ. Station ids are part of
-the stored data, so never rename one; add a new id instead.
+`test/fuel_screen_test.dart` fails when the ids, names, addresses or
+`lpg: false` flags differ. Station ids are part of the stored data, so never
+rename one; add a new id instead.
 
 ## Dashboard single-file bundle
 
 `dashboard-worker.js` is the copy pasted into the Cloudflare Dashboard; it
 inlines `src/stations.js` and must otherwise stay in sync with `src/worker.js`
 (including `/survey` and `/survey/summary`). It has no relative imports.
+
+Regenerate the bundle as **UTF-8** (read and write with the encoding explicitly;
+a Windows PowerShell `Get-Content` → `Set-Content` round-trip without `-Encoding utf8`
+silently double-encoded Polish station names and Telegram emojis in the
+v5.1.0 bundle). After any regeneration: `node --check dashboard-worker.js`,
+`npm test`, and `flutter test test/fuel_screen_test.dart` (stations, names,
+addresses and `lpg` flags must match).

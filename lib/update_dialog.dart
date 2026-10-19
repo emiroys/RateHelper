@@ -469,9 +469,26 @@ Future<void> presentManualUpdateCheck(
     case UpdateStatus.upToDate:
       _showUpdateSnack(messenger, S.updateUpToDate);
     case UpdateStatus.unreachable:
-      _showUpdateSnack(messenger, S.updateUnreachable);
+      _showUpdateSnack(messenger, updateFailureMessage(result.failure));
     case UpdateStatus.disabled:
       _showUpdateSnack(messenger, S.updateDisabled);
+  }
+}
+
+/// Maps a failed check to a distinct, localized reason. Falls back to the
+/// historical generic message when the failure kind is unknown.
+String updateFailureMessage(UpdateFailure? failure) {
+  switch (failure) {
+    case UpdateFailure.network:
+      return S.updateNetworkError;
+    case UpdateFailure.httpStatus:
+      return S.updateHttpError;
+    case UpdateFailure.invalidJson:
+      return S.updateInvalidJson;
+    case UpdateFailure.invalidManifest:
+      return S.updateInvalidManifest;
+    case null:
+      return S.updateUnreachable;
   }
 }
 

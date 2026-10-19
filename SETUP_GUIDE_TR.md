@@ -6,7 +6,7 @@ Bu rehber, RateHelper’i telefonuna kurduktan sonra **doğru çalışması içi
 > **Tahmini kurulum süresi:** 2–3 dakika  
 > **Lehçe sürüm:** [`SETUP_GUIDE_PL.md`](SETUP_GUIDE_PL.md)
 
-> **Uygulama içi “Kurulum Rehberi”** (**Ayarlar** → dişli ikonu) yalnızca **iki izin adımını** (overlay + pil) gösterir. Bu dosya **tam kullanım kılavuzudur**.
+> **Uygulama içi “Kurulum Rehberi”** (**Ayarlar** → dişli ikonu) **beş adımlı sihirbazı** yeniden açar: karşılama, overlay izni, pil güvenilirliği, isteğe bağlı özellikler ve özet. Bu dosya **tam kullanım kılavuzudur**.
 
 ---
 
@@ -15,14 +15,14 @@ Bu rehber, RateHelper’i telefonuna kurduktan sonra **doğru çalışması içi
 1. Sana gönderilen APK dosyasını telefona kopyala (WhatsApp, USB, e-posta — fark etmez).  
    Dosya adı genelde `app-arm64-v8a-release.apk` veya `ratehelper.apk` olur.
 2. Dosyaya dokun. Telefon **“Bilinmeyen kaynaklardan yükleme”** izni isterse → **İzin Ver** → tekrar APK’ya dön → **Yükle**.
-3. İlk açılışta uygulama seni otomatik olarak **RateHelper Kurulumu** ekranına götürür.
-4. Kurulum bittikten sonra (veya bu sürüme ilk kez güncellediğinde) **bir kez** sorulur: GitHub üzerinden otomatik güncelleme ve Kraków etkinlikleri çekilsin mi? İstemezsen **Hayır** de — verilerin yine telefonda kalır; istersen sonra **Ayarlar**’dan açarsın.
+3. İlk açılışta uygulama seni otomatik olarak **beş adımlı kurulum sihirbazına** götürür: karşılama, overlay izni, pil güvenilirliği, isteğe bağlı özellikler ve özet. Dil (Türkçe / Lehçe / İngilizce) ilk ekranda seçilir.
+4. Kurulum bittikten sonra (ya da bu sürüme ilk kez güncellediğinde) önce **tek seferlik kısa bir anket** gösterilebilir; ondan sonra **bir kez** GitHub sorusu gelir: otomatik güncelleme ve Kraków etkinlikleri çekilsin mi? İstemezsen **Hayır** de — sürüş ve kazanç verilerin telefonda kalır; istersen sonra **Ayarlar**’dan açarsın.
 
 > Kurulum ekranını tekrar okumak için: ana ekran → sağ üst **dişli (Ayarlar)** → **Kurulum Rehberi**.
 
 ---
 
-## 2) İlk kurulum — iki zorunlu izin
+## 2) İlk kurulum — iki zorunlu izin (beş adımlı sihirbazın parçası)
 
 RateHelper’in Uber Driver’ın üstünde çalışabilmesi ve vardiya boyunca arka planda öldürülmemesi için **iki Android izni** şarttır.
 
@@ -133,11 +133,75 @@ Ana ekran → sağ üst **dişli**. Bölümler:
 | Bölüm | Ne var? |
 | --- | --- |
 | **Sürüş ve sayaçlar** | **Sürüş modu** (Tek / İki / Üç sürücü), **Otomatik tamamla**, **Direksiyon tuşu (Beta)**, **Ekranı açık tut** |
-| **Baloncuk** | **Baloncuk yönü** (Yatay / Dikey), **Baloncukta iptal düğmesi** (isteğe bağlı), **Bildirim kontrolleri** (isteğe bağlı) |
+| **Baloncuk** | **Baloncuk yönü** (Yatay / Dikey), **Baloncukta iptal düğmesi** (isteğe bağlı), **Bildirim kontrolleri** (isteğe bağlı), **Yalnızca bildirim paneli** (bildirim kontrolleri açıkken) |
 | **Tercihler** | **Dil**, **Otomatik güncelleme denetimi**, **Etkinlikleri otomatik getir** |
-| **Sistem ve destek** | **Güncellemeleri denetle** (son kontrol saati + sürüm), **Kurulum Rehberi**, **Çökme Kayıtları** |
+| **Yakıt** | **ORLEN yakıt fiyatları** — 30 istasyon, PB95/LPG, en ucuz/en yakın sıralaması, yol tarifi |
+| **Veri** | **Verileri yedekle**, **Yedekten geri yükle** |
+| **Sistem ve destek** | **Güncellemeleri denetle** (son kontrol saati + sürüm), **Kurulum Rehberi**, **Çökme Kayıtları**, **Sorun bildir**, **Geliştiriciyle iletişim** |
 
 > Dil de alt menüdeki 🌐 ile değişir; ikisi aynı ayarı kullanır.
+
+---
+
+## 3c) ORLEN yakıt merkezi
+
+Ana ekrandaki **Yakıt** düğmesi (veya Ayarlar → **ORLEN yakıt fiyatları**) iki sekmeli merkezi açar:
+
+### İstasyonlar
+
+- Kraków şehir sınırları içindeki **30 doğrulanmış ORLEN istasyonu** listelenir.
+- Üstteki sıralama ile **En ucuz** veya **En yakın** seçilir. **En yakın** yalnızca konum izni verdiğinde mesafe hesaplar; izin vermezsen liste eski sırasında kalır.
+- Her kartta PB95 ve (varsa) LPG fiyatı, son güncelleme zamanı ve **yol tarifi** düğmesi bulunur. Yol tarifi Google Maps veya Waze açar.
+- Fiyatlar, diğer sürücülerin gönderdiği ve yöneticinin onayladığı kayıtlardan gelir. `ORLEN_API_URL` tanımlı olmayan bir derlemede istasyonlar, sıralama, navigasyon ve fişler çalışır; yalnızca uzak fiyatlar ve fiyat gönderme kapalı olur.
+
+### Fiyat güncelleme
+
+1. İstasyonu seç → **Fiyat güncelle**.
+2. Yakıtı (PB95 / LPG) ve fiyatı gir.
+3. Gönderirsin; kayıt önce yönetici onayına gider. Onaylanınca herkese görünür.
+
+> Her istasyon fiziksel olarak LPG satmak zorunda değildir. LPG fiyatı yalnızca veri modelinde desteklenen istasyonlarda gösterilir; fiyatın olmaması istasyonda LPG olmadığı anlamına gelmez.
+
+### Yakıt fişleri
+
+İkinci sekmede (**Yakıt ekle**) tanktığın tutarı kaydedebilir, hızlı tutar düğmelerini kullanabilir veya tutarı araç paylaşıyorsan bölebilirsin. Fişler o haftanın kazanç hesabına işlenir.
+
+---
+
+## 3d) Yedekleme ve geri yükleme
+
+- **Yedek al:** Ayarlar → **Verileri yedekle**. Uygulama; ayarları, vardiya sayaçlarını, haftalık arşivi ve kazançları tek bir JSON dosyasına yazar. Dosyayı güvenli bir yerde sakla.
+- **Geri yükle:** Ayarlar → **Yedekten geri yükle**. Onaydan önce **önizleme** görürsün (sürüm, sayaç haftası, kayıt sayısı). İptal edebilirsin.
+- **Güvenlik:** Yedek **şifrelenmez** — dosyayı bulan herkes içeriği okuyabilir. Genel WhatsApp gruplarına veya buluta bilinçsizce yükleme.
+- **Kurtarma:** Geri yükleme sırasında uygulama kapanırsa, bir sonraki açılışta işlem günlükten devam eder; yarım kalan veri oluşmaz.
+- Anket tamamlanma durumu yedeğe dahil edilmez; geri yükleme **anketi yeniden göstermez**.
+
+---
+
+## 3e) Sorun bildirme, çökme kayıtları ve tek seferlik anket
+
+### Sorun bildir
+
+Ayarlar → **Sorun bildir**:
+
+1. Kategori seç (ör. baloncuk, sayaçlar, kazanç/yakıt, direksiyon/bildirim, diğer) ve sorunu anlat.
+2. Göndermeden önce **önizleme** açılır; kişisel bilgiler mümkün olduğunca temizlenir.
+3. İsteğe bağlı: **ekran görüntüsü**, **cihaz tanılaması** ve **çökme günlüğü** ekleyebilirsin. Çökme günlüğü varsayılan olarak **kapalıdır**.
+4. **Gönder** → rapor Cloudflare arka ucu üzerinden geliştiriciye ulaşır.
+
+> Ekran görüntüsü veya açıklama kişisel bilgi içerebilir; bilinçli ekle. Rapor göndermeden önce önizlemeyi oku.
+
+### Çökme kayıtları
+
+Ayarlar → **Çökme Kayıtları** → **KOPYALA**. Kayıtlar uygulamanın sandbox alanındadır; dosya yöneticisiyle erişilemez, yalnızca kopyalayıp gönderebilirsin.
+
+### Tek seferlik fiyat anketi
+
+- Güncellemeden sonra (mevcut kullanıcı) veya beş adımlı kurulumdan sonra (yeni kurulum) **bir kez** gösterilir.
+- Üç soru vardır; **atla / sonra / bir daha gösterme** yoktur, geri tuşuyla kapatılamaz.
+- Yanıtlar anonimdir; ad, telefon, e-posta, GPS, yolculuk veya kazanç gönderilmez. Yalnızca rastgele kurulum kimliği, anket sürümü ve üç yanıt gönderilir.
+- Cihaz çevrimdışıysa yanıt yerelde saklanır ve uygulama bir sonraki açılışta/ön plana geldiğinde gönderilir.
+- **Uygulama ücretsizdir; anket abonelik veya ödeme başlatmaz.** Amaç, geliştirmenin nasıl sürdürüleceğini anlamaktır.
 
 ---
 
@@ -211,7 +275,7 @@ Her **HAFTAYI SIFIRLA** işleminde o haftanın özeti buraya **kart** olarak kay
 
 ## 7) Kazanç takibi (💰)
 
-**Kazanç** ekranı haftalık Uber gelirini, yakıt, kira, vergi ve net kârını hesaplar. Tüm veriler **telefonda kalır** — buluta gönderilmez.
+**Kazanç** ekranı haftalık Uber gelirini, yakıt, kira, vergi ve net kârını hesaplar. Sürüş ve hesap verilerinin çoğu **telefonda kalır**. Yalnızca bilinçli kullandığın ağ özellikleri dışarı veri gönderir: yakıt fiyatı bildirimi, hata raporu ve tek seferlik anket (Cloudflare arka ucu). Ayrıntılar için bölüm 3e ve 11’e bak.
 
 ### İlk açılış
 
@@ -277,11 +341,20 @@ Ana ekran → **dişli (Ayarlar)** → **Sürüş modu** → **Tek Sürücü**, 
 2. Widget’ı **Durdur** → tekrar **Başlat**.
 3. Samsung’da Recents’te RateHelper kartını **kilitle**.
 
+### Sorun bildir (uygulama içinden)
+
+1. **Ayarlar → Sorun bildir**
+2. Kategori seç, sorunu yaz; önizlemeyi kontrol et.
+3. İsteğe bağlı ekran görüntüsü / tanılama ekle (çökme günlüğü varsayılan kapalı).
+4. **Gönder** — rapor geliştiriciye ulaşır. Gönderim başarısız olursa tekrar deneyebilirsin.
+
+> Hata raporu Cloudflare arka ucuna gider; açıklama ve ekran görüntüsü kişisel bilgi içerebilir.
+
 ### Çökme kaydı gönderme
 
 1. **Ayarlar → Çökme Kayıtları**
 2. **KOPYALA** butonuna bas
-3. Yapıştırdığını WhatsApp üzerinden geliştiriciye gönder
+3. Yapıştırdığını WhatsApp üzerinden geliştiriciye gönder (ya da doğrudan **Sorun bildir**’i kullan)
 
 > Çökme kayıtları uygulamanın **dahili** (sandbox) alanında tutulur. Dosya yöneticisiyle erişilemez — yalnızca uygulama içindeki **KOPYALA** yolunu kullan.
 
@@ -314,7 +387,9 @@ flutter build apk --release --split-per-abi --obfuscate --split-debug-info=symbo
 - `--obfuscate` → Dart AOT sembollerini siler.
 - `--split-debug-info` → sembolleri proje dışında tutar (geri izleme için sakla).
 - `--split-per-abi` → APK boyutunu ~8 MB / mimari seviyesine düşürür.
-- `--dart-define-from-file` → Git tarafından yok sayılan yerel yapılandırmayı derlemeye ekler; dosyanın içeriğini yazdırma veya commit etme.
+- `--dart-define-from-file` → Git tarafından yok sayılan yerel yapılandırmayı derlemeye ekler; dosyanın içeriğini yazdırma veya commit etme. İçinde **`ORLEN_API_URL`** bulunmalıdır; yoksa yakıt fiyatları ve fiyat gönderme release'de kapalı kalır. `CONTACT_WHATSAPP` ise isteğe bağlıdır; yoksa “Geliştiriciyle iletişim” GitHub sorun sayfasına gider.
+
+`backend/orlen-worker/` Cloudflare Worker'ının kaynağıdır. Canlı Worker **Cloudflare Dashboard** üzerinden elle güncellenir: `dashboard-worker.js` dosyasını yapıştır; `ORLEN_KV` binding’i, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET` ve yeni `SURVEY_ADMIN_TOKEN` secret’ları (adları; değerleri asla yazma) korunmalıdır. Telegram webhook’u `allowed_updates=["callback_query","message"]` ile kurulmalıdır ki admin sohbetinden `/surveysummary` özeti çalışsın. Ayrıntılı sıra: [`release/YAYIN_TR.md`](release/YAYIN_TR.md).
 
 `key.properties` proje kökünde durmalı ve okunabilir olmalı (`android/key.properties` değil). Yoksa veya okunamazsa release derlemesi `GradleException` ile durur — debug anahtarına düşmez. Debug derlemesi bu dosya olmadan çalışır. Her sürümde aynı keystore kullan.
 
